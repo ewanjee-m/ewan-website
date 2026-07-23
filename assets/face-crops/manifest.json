@@ -1,0 +1,222 @@
+{
+  "player-male": {
+    "file": "player-male.rgb",
+    "size": 640,
+    "sourceBox": [
+      293,
+      75,
+      703,
+      486
+    ],
+    "figureTop": 75,
+    "figureHeight": 1201,
+    "skinBox": [
+      387,
+      167,
+      609,
+      316
+    ],
+    "body": {
+      "file": "player-male-body.rgb",
+      "width": 228,
+      "height": 600,
+      "sourceBox": [
+        272,
+        76,
+        728,
+        1276
+      ]
+    },
+    "back": {
+      "file": "player-male-back.rgb",
+      "size": 640,
+      "sourceBox": [
+        310,
+        92,
+        715,
+        497
+      ],
+      "figureTop": 92,
+      "figureHeight": 1184
+    },
+    "bodyBack": {
+      "file": "player-male-back-body.rgb",
+      "width": 219,
+      "height": 600,
+      "sourceBox": [
+        297,
+        92,
+        730,
+        1277
+      ]
+    }
+  },
+  "player-female": {
+    "file": "player-female.rgb",
+    "size": 640,
+    "sourceBox": [
+      365,
+      49,
+      631,
+      316
+    ],
+    "figureTop": 45,
+    "figureHeight": 1355,
+    "skinBox": [
+      430,
+      145,
+      566,
+      289
+    ],
+    "body": {
+      "file": "player-female-body.rgb",
+      "width": 193,
+      "height": 600,
+      "sourceBox": [
+        296,
+        46,
+        733,
+        1402
+      ]
+    },
+    "back": {
+      "file": "player-female-back.rgb",
+      "size": 640,
+      "sourceBox": [
+        388,
+        81,
+        649,
+        341
+      ],
+      "figureTop": 77,
+      "figureHeight": 1322
+    },
+    "bodyBack": {
+      "file": "player-female-back-body.rgb",
+      "width": 191,
+      "height": 600,
+      "sourceBox": [
+        304,
+        77,
+        726,
+        1400
+      ]
+    }
+  },
+  "npc-airport-traveler": {
+    "file": "npc-airport-traveler.rgb",
+    "size": 640,
+    "sourceBox": [
+      377,
+      244,
+      648,
+      516
+    ],
+    "figureTop": 103,
+    "figureHeight": 1291,
+    "skinBox": [
+      460,
+      342,
+      565,
+      489
+    ],
+    "body": {
+      "file": "npc-airport-traveler-body.rgb",
+      "width": 253,
+      "height": 600,
+      "sourceBox": [
+        195,
+        103,
+        739,
+        1394
+      ]
+    }
+  },
+  "npc-gyukatsu-chef": {
+    "file": "npc-gyukatsu-chef.rgb",
+    "size": 640,
+    "sourceBox": [
+      356,
+      69,
+      656,
+      369
+    ],
+    "figureTop": 53,
+    "figureHeight": 1299,
+    "skinBox": [
+      425,
+      186,
+      587,
+      314
+    ],
+    "body": {
+      "file": "npc-gyukatsu-chef-body.rgb",
+      "width": 215,
+      "height": 600,
+      "sourceBox": [
+        261,
+        54,
+        762,
+        1452
+      ]
+    }
+  },
+  "npc-sakura-visitor": {
+    "file": "npc-sakura-visitor.rgb",
+    "size": 640,
+    "sourceBox": [
+      327,
+      54,
+      697,
+      424
+    ],
+    "figureTop": 54,
+    "figureHeight": 1353,
+    "skinBox": [
+      412,
+      115,
+      612,
+      293
+    ],
+    "body": {
+      "file": "npc-sakura-visitor-body.rgb",
+      "width": 228,
+      "height": 600,
+      "sourceBox": [
+        260,
+        54,
+        775,
+        1407
+      ]
+    }
+  },
+  "npc-hanabi-yukata": {
+    "file": "npc-hanabi-yukata.rgb",
+    "size": 640,
+    "sourceBox": [
+      371,
+      74,
+      635,
+      338
+    ],
+    "figureTop": 53,
+    "figureHeight": 1402,
+    "skinBox": [
+      437,
+      169,
+      569,
+      312
+    ],
+    "body": {
+      "file": "npc-hanabi-yukata-body.rgb",
+      "width": 193,
+      "height": 600,
+      "sourceBox": [
+        283,
+        54,
+        734,
+        1456
+      ]
+    }
+  }
+}
