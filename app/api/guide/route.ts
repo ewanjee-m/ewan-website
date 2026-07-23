@@ -13,12 +13,13 @@ type BodyReadResult =
   | { ok: true; text: string }
   | { ok: false; error: "invalid_request" | "payload_too_large" };
 
-function json(body: unknown, status: number) {
+function json(body: unknown, status: number, headers?: HeadersInit) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store"
+      "cache-control": "no-store",
+      ...headers
     }
   });
 }
@@ -143,13 +144,17 @@ export async function POST(request: Request) {
   if (!guideRequest) {
     return json({ error: "invalid_request" }, 400);
   }
+  if (process.env.AI_GUIDE_ENABLED === "false") {
+    return json({ error: "guide_unavailable" }, 503, {
+      "x-guide-mode": "disabled"
+    });
+  }
 
   try {
     const recommendation = await requestOpenAIGuideRecommendation(guideRequest, {
       apiKey: process.env.OPENAI_API_KEY,
       model: process.env.OPENAI_GUIDE_MODEL?.trim() || DEFAULT_GUIDE_MODEL,
       safetyIdentifier: clientId,
-      enabled: process.env.AI_GUIDE_ENABLED !== "false",
       signal: deadlineSignal
     });
     return json({ recommendation }, 200);

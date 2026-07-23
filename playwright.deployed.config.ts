@@ -1,9 +1,13 @@
 import { defineConfig } from "@playwright/test";
 
 const publicBaseUrl = process.env.PUBLIC_BASE_URL;
+const publicGuideMode = process.env.PUBLIC_GUIDE_MODE ?? "enabled";
 
 if (!publicBaseUrl) {
   throw new Error("PUBLIC_BASE_URL is required for deployed smoke tests");
+}
+if (!["enabled", "disabled"].includes(publicGuideMode)) {
+  throw new Error("PUBLIC_GUIDE_MODE must be enabled or disabled");
 }
 
 const deployedUrl = new URL(publicBaseUrl);

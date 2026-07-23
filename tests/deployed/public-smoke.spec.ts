@@ -2,6 +2,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 type Box = { x: number; y: number; width: number; height: number };
 type HttpError = { method: string; status: number; url: string };
+const publicGuideMode = process.env.PUBLIC_GUIDE_MODE ?? "enabled";
 
 function expectFullyVisible(
   box: Box | null,
@@ -155,8 +156,9 @@ test("public deployment serves the complete world flow", async ({
     expect(resultHeading).toBeVisible({ timeout: 6_000 })
   ]);
 
-  expect([200, 503]).toContain(guideResponse.status());
-  if (guideResponse.status() === 503) {
+  if (publicGuideMode === "disabled") {
+    expect(guideResponse.status()).toBe(503);
+    expect(guideResponse.headers()["x-guide-mode"]).toBe("disabled");
     await expect(
       page.locator(".guide-notice", {
         hasText:
@@ -164,6 +166,8 @@ test("public deployment serves the complete world flow", async ({
       })
     ).toBeVisible();
   } else {
+    expect(guideResponse.status()).toBe(200);
+    expect(guideResponse.headers()["x-guide-mode"]).toBeUndefined();
     await expect(page.locator(".guide-notice")).toHaveCount(0);
   }
   await expect(
@@ -188,6 +192,7 @@ test("public deployment serves the complete world flow", async ({
   const unexpectedHttpErrors = httpErrors.filter(
     (error) =>
       !(
+        publicGuideMode === "disabled" &&
         error.method === "POST" &&
         error.status === 503 &&
         isGuideResponse(error.url)

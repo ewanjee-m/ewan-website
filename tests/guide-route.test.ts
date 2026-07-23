@@ -240,4 +240,22 @@ describe("guide route boundary", () => {
       error: "guide_unavailable"
     });
   });
+
+  it("marks a deliberately disabled guide without invoking OpenAI", async () => {
+    vi.stubEnv("AI_GUIDE_ENABLED", "false");
+    vi.stubEnv("OPENAI_API_KEY", "test-server-key");
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    const { POST } = await import("../app/api/guide/route");
+
+    const response = await POST(routeRequest(validBody));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-guide-mode")).toBe("disabled");
+    expect(fetcher).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      error: "guide_unavailable"
+    });
+  });
 });
