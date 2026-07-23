@@ -43,6 +43,7 @@ import {
   type RpgScreenMovementTelemetry
 } from "./RpgScreenMovement";
 import {
+  RPG_WORLD_BACKDROP_IMAGE_SIZE,
   RpgWorldBackdrop,
   type RpgWorldBackdropHandle
 } from "./RpgWorldBackdrop";
@@ -208,9 +209,29 @@ interface ShadowContract {
   readonly footOffset: number;
 }
 
-function resolveViewportProfile(width: number, height: number) {
-  if (width === 1440 && height === 900) return "desktop" as const;
-  if (width === 390 && height === 844) return "mobile" as const;
+export function resolveFlatWorldViewportProfile(width: number, height: number) {
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    return null;
+  }
+  if (width >= 320 && width <= 768 && height >= 568 && height >= width) {
+    return "mobile" as const;
+  }
+  const aspectRatio = width / height;
+  const maximumBackdropAspectRatio =
+    RPG_WORLD_BACKDROP_IMAGE_SIZE[0] / RPG_WORLD_BACKDROP_IMAGE_SIZE[1];
+  if (
+    width >= 768 &&
+    height >= 600 &&
+    aspectRatio >= 1.2 &&
+    aspectRatio <= maximumBackdropAspectRatio
+  ) {
+    return "desktop" as const;
+  }
   return null;
 }
 
@@ -242,6 +263,15 @@ function shadowContract(
     return { width: 50, height: 14, opacity: 0.44, blur: 2, footOffset: 4 };
   }
   return { width: 52, height: 14, opacity: 0.43, blur: 2, footOffset: 4 };
+}
+
+function viewportContentScale(
+  profile: FlatCameraProfileId,
+  transform: RpgReferenceViewportTransform
+) {
+  return profile === "mobile"
+    ? transform.safeFrame.height / 780
+    : transform.safeFrame.height / 900;
 }
 
 function writeTelemetry(
@@ -319,13 +349,20 @@ function FlatWorldCanvas(props: FlatWorldCanvasProps) {
       viewport.profileId && initialPlacement
         ? resolveRpgReferenceViewportTransform({
             profile: viewport.profileId,
+            viewport: { width: viewport.width, height: viewport.height },
             referenceFoot: initialPlacement.playerReferenceProjection.pixel,
             navigationRegion: initialNavigation.navigationRegion,
             revision: 0,
             navigationRevision: initialNavigation.revision
           })
         : null,
-    [initialNavigation, initialPlacement, viewport.profileId]
+    [
+      initialNavigation,
+      initialPlacement,
+      viewport.height,
+      viewport.profileId,
+      viewport.width
+    ]
   );
 
   useEffect(() => {
@@ -334,7 +371,7 @@ function FlatWorldCanvas(props: FlatWorldCanvasProps) {
     const measure = () => {
       const width = renderer.clientWidth;
       const height = renderer.clientHeight;
-      const profileId = resolveViewportProfile(width, height);
+      const profileId = resolveFlatWorldViewportProfile(width, height);
       renderer.dataset.worldReady = "false";
       renderer.dataset.viewport = `${width},${height}`;
       renderer.dataset.viewportSize = `${width},${height}`;
@@ -449,7 +486,16 @@ function FlatWorldCanvas(props: FlatWorldCanvasProps) {
         region: navigation.navigationRegion
       });
       const previous = lastValidFrameRef.current;
-      const profileChanged = lastProfileRef.current !== profileId;
+      const frameChanged =
+        previous !== null &&
+        (previous.transform.safeFrame.x !== initialTransform.safeFrame.x ||
+          previous.transform.safeFrame.y !== initialTransform.safeFrame.y ||
+          previous.transform.safeFrame.width !==
+            initialTransform.safeFrame.width ||
+          previous.transform.safeFrame.height !==
+            initialTransform.safeFrame.height);
+      const profileChanged =
+        lastProfileRef.current !== profileId || frameChanged;
       const updateKind = classifyRpgReferenceFrameUpdate({
         discreteReason,
         profileChanged,
@@ -458,6 +504,7 @@ function FlatWorldCanvas(props: FlatWorldCanvasProps) {
       const transform = placement
         ? stepRpgReferenceViewportTransform({
             profile: profileId,
+            viewport: { width: viewport.width, height: viewport.height },
             referenceFoot: placement.playerReferenceProjection.pixel,
             navigationRegion: navigation.navigationRegion,
             revision: (previous?.transform.revision ?? -1) + 1,
@@ -506,7 +553,7 @@ function FlatWorldCanvas(props: FlatWorldCanvasProps) {
       const displayHeight = playerDisplayHeight(
         profileId,
         navigation.currentZoneId
-      );
+      ) * viewportContentScale(profileId, transform);
       const deviceScale = Math.min(2, window.devicePixelRatio || 1);
       const canvasWidth = Math.round(transform.safeFrame.width * deviceScale);
       const canvasHeight = Math.round(transform.safeFrame.height * deviceScale);
@@ -543,29 +590,38 @@ function FlatWorldCanvas(props: FlatWorldCanvasProps) {
         displayHeight
       });
       const shadowSpec = shadowContract(profileId, navigation.currentZoneId);
+      const contentScale = viewportContentScale(profileId, transform);
       const shadowScale = spriteState.pose.shadowScale;
-      const shadowWidth = shadowSpec.width * shadowScale;
-      const shadowHeight = shadowSpec.height * shadowScale;
+      const shadowWidth = shadowSpec.width * shadowScale * contentScale;
+      const shadowHeight = shadowSpec.height * shadowScale * contentScale;
       applyRpgReferenceLayerTransform(shadow, transform, "player-shadow");
       shadow.style.left = `${screenFoot[0] - shadowWidth / 2}px`;
       shadow.style.top = `${
-        screenFoot[1] + shadowSpec.footOffset - shadowHeight / 2
+        screenFoot[1] +
+        shadowSpec.footOffset * contentScale -
+        shadowHeight / 2
       }px`;
       shadow.style.width = `${shadowWidth}px`;
       shadow.style.height = `${shadowHeight}px`;
       shadow.style.opacity = String(
         shadowSpec.opacity * (spriteState.pose.shadowOpacity / 0.56)
       );
-      shadow.style.filter = `blur(${shadowSpec.blur}px)`;
+      shadow.style.filter = `blur(${shadowSpec.blur * contentScale}px)`;
       shadow.style.visibility = "visible";
       shadow.dataset.rpgPlayerShadowBounds = [
         screenFoot[0] - shadowWidth / 2,
-        screenFoot[1] + shadowSpec.footOffset - shadowHeight / 2,
+        screenFoot[1] +
+          shadowSpec.footOffset * contentScale -
+          shadowHeight / 2,
         shadowWidth,
         shadowHeight
       ].join(",");
-      shadow.dataset.rpgPlayerShadowBlur = String(shadowSpec.blur);
-      shadow.dataset.rpgPlayerShadowFootOffset = String(shadowSpec.footOffset);
+      shadow.dataset.rpgPlayerShadowBlur = String(
+        shadowSpec.blur * contentScale
+      );
+      shadow.dataset.rpgPlayerShadowFootOffset = String(
+        shadowSpec.footOffset * contentScale
+      );
       shadow.dataset.rpgPlayerShadowColor = "#07101d";
       writeRpgPlayerSpriteTelemetry(
         canvas,

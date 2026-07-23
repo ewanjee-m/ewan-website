@@ -6,7 +6,8 @@ import {
   applyRpgReferenceCanvasFrameTelemetry,
   applyRpgReferenceNavigationFrameInput,
   classifyRpgReferenceFrameUpdate,
-  createFlatWorldPlayerSpriteFrameInput
+  createFlatWorldPlayerSpriteFrameInput,
+  resolveFlatWorldViewportProfile
 } from "../app/world/FlatWorldCanvas";
 import { calculateRpgReferenceCameraPlacement } from "../app/world/RpgCameraPlacement";
 import {
@@ -175,6 +176,93 @@ function expectAtomicReferencePublication({
 }
 
 describe("RPG player sprite renderer integration", () => {
+  it.each([
+    [1440, 900, "desktop"],
+    [1280, 800, "desktop"],
+    [1366, 768, "desktop"],
+    [390, 844, "mobile"],
+    [375, 812, "mobile"],
+    [393, 852, "mobile"],
+    [412, 915, "mobile"]
+  ] as const)(
+    "resolves the %sx%s viewport to the %s world profile",
+    (width, height, profile) => {
+      expect(resolveFlatWorldViewportProfile(width, height)).toBe(profile);
+    }
+  );
+
+  it.each([
+    [0, 0],
+    [319, 568],
+    [844, 390],
+    [1440, 500],
+    [2560, 900]
+  ] as const)("rejects the unsupported %sx%s viewport", (width, height) => {
+    expect(resolveFlatWorldViewportProfile(width, height)).toBeNull();
+  });
+
+  it.each([
+    {
+      profile: "desktop",
+      viewport: { width: 1280, height: 800 },
+      safeFrame: { x: 0, y: 0, width: 1280, height: 800 }
+    },
+    {
+      profile: "desktop",
+      viewport: { width: 1366, height: 768 },
+      safeFrame: { x: 0, y: 0, width: 1366, height: 768 }
+    },
+    {
+      profile: "mobile",
+      viewport: { width: 375, height: 812 },
+      safeFrame: { x: 0, y: 64, width: 375, height: 748 }
+    },
+    {
+      profile: "mobile",
+      viewport: { width: 412, height: 915 },
+      safeFrame: { x: 0, y: 64, width: 412, height: 851 }
+    }
+  ] as const)(
+    "fills the live $viewport.width x $viewport.height $profile safe frame",
+    ({ profile, viewport, safeFrame }) => {
+      const navigation = createInitialFlatWorldNavigationSnapshot();
+      const placement = calculateRpgReferenceCameraPlacement({
+        player: navigation.position,
+        profile,
+        region: navigation.navigationRegion
+      });
+      expect(placement).not.toBeNull();
+
+      const transform = resolveRpgReferenceViewportTransform({
+        profile,
+        viewport,
+        referenceFoot: placement!.playerReferenceProjection.pixel,
+        navigationRegion: navigation.navigationRegion,
+        revision: 0,
+        navigationRevision: navigation.revision
+      });
+      expect(transform).not.toBeNull();
+      expect(transform!.safeFrame).toEqual(safeFrame);
+      expect(transform!.imageFrame.x).toBeLessThanOrEqual(safeFrame.x);
+      expect(transform!.imageFrame.y).toBeLessThanOrEqual(safeFrame.y);
+      expect(
+        transform!.imageFrame.x + transform!.imageFrame.width
+      ).toBeGreaterThanOrEqual(safeFrame.x + safeFrame.width);
+      expect(
+        transform!.imageFrame.y + transform!.imageFrame.height
+      ).toBeGreaterThanOrEqual(safeFrame.y + safeFrame.height);
+
+      const foot = projectReferencePointToViewport(
+        placement!.playerReferenceProjection.pixel,
+        transform!
+      );
+      expect(foot[0]).toBeGreaterThanOrEqual(safeFrame.x);
+      expect(foot[0]).toBeLessThanOrEqual(safeFrame.x + safeFrame.width);
+      expect(foot[1]).toBeGreaterThanOrEqual(safeFrame.y);
+      expect(foot[1]).toBeLessThanOrEqual(safeFrame.y + safeFrame.height);
+    }
+  );
+
   it("uses the actual model projection for all five canonical scene feet", () => {
     const targets = {
       airport: [430, 600],

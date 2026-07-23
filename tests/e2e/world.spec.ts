@@ -122,6 +122,59 @@ test("serves the Japanese festival favicon from the conventional URL", async ({
   expect(await response.text()).toContain('aria-label="Hanabi festival torii"');
 });
 
+test.describe("common desktop viewports", () => {
+  for (const viewport of [
+    { width: 1280, height: 800 },
+    { width: 1366, height: 768 }
+  ]) {
+    test(`${viewport.width}x${viewport.height} renders the registered world without overflow`, async ({
+      page
+    }) => {
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      page.on("console", (message) => {
+        if (message.type() === "error") {
+          errors.push(message.text());
+        }
+      });
+      await page.setViewportSize(viewport);
+      await enterWorld(page);
+
+      const renderer = page.locator(".flat-world-renderer");
+      const backdrop = page.locator(
+        '[data-rpg-world-backdrop="approved-image"]'
+      );
+      await expect(renderer).toHaveAttribute(
+        "data-viewport",
+        `${viewport.width},${viewport.height}`
+      );
+      await expect(renderer).toHaveAttribute(
+        "data-viewport-supported",
+        "true"
+      );
+      await expect(renderer).toHaveAttribute("data-camera-profile", "desktop");
+      await expect(backdrop).toHaveAttribute(
+        "data-rpg-world-backdrop-safe-frame",
+        `0,0,${viewport.width},${viewport.height}`
+      );
+      expectFullyVisible(await backdrop.boundingBox(), viewport);
+      expect(await renderer.locator(":scope > *").count()).toBeGreaterThan(0);
+
+      const overflow = await page.evaluate(() => ({
+        horizontal:
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+        vertical:
+          document.documentElement.scrollHeight -
+          document.documentElement.clientHeight
+      }));
+      expect(overflow.horizontal).toBeLessThanOrEqual(0);
+      expect(overflow.vertical).toBeLessThanOrEqual(0);
+      expect(errors).toEqual([]);
+    });
+  }
+});
+
 test("desktop keeps the Canvas2D world active through guidance, movement, reset, and locale change", async ({
   page
 }) => {

@@ -37,6 +37,10 @@ export interface RpgReferenceViewportTransform {
 
 export interface RpgReferenceViewportTransformInput {
   readonly profile: RpgReferenceViewportProfile;
+  readonly viewport?: Readonly<{
+    readonly width: number;
+    readonly height: number;
+  }>;
   readonly referenceFoot: readonly [number, number];
   readonly navigationRegion: NavigationRegion;
   readonly revision: number;
@@ -75,8 +79,6 @@ const RPG_REFERENCE_MAX_ORDINARY_AXIS_STEP_CSS_PX =
   RPG_REFERENCE_MAX_ORDINARY_STEP_CSS_PX / Math.SQRT2;
 export const RPG_REFERENCE_MOBILE_SCALE = 1.3;
 const DESKTOP_SCALE = 900 / 866;
-const MOBILE_MAX_SOURCE_X = 1517;
-const MOBILE_MAX_SOURCE_Y = 266;
 
 export const RPG_REFERENCE_DESIRED_FOOT_Y = Object.freeze({
   airport: 690.6,
@@ -189,6 +191,36 @@ function desiredFootY(region: NavigationRegion) {
   return from + (to - from) * eased;
 }
 
+function resolveSafeFrame(
+  input: RpgReferenceViewportTransformInput
+): RpgReferenceViewportFrame | null {
+  const viewport = input.viewport;
+  if (!viewport) {
+    return input.profile === "mobile"
+      ? RPG_REFERENCE_MOBILE_SAFE_FRAME
+      : RPG_REFERENCE_DESKTOP_SAFE_FRAME;
+  }
+  if (
+    !Number.isFinite(viewport.width) ||
+    !Number.isFinite(viewport.height) ||
+    viewport.width <= 0 ||
+    viewport.height <= 0
+  ) {
+    return null;
+  }
+  if (input.profile === "mobile") {
+    const height = viewport.height - RPG_REFERENCE_MOBILE_SAFE_FRAME.y;
+    if (height <= 0) return null;
+    return {
+      x: 0,
+      y: RPG_REFERENCE_MOBILE_SAFE_FRAME.y,
+      width: viewport.width,
+      height
+    };
+  }
+  return { x: 0, y: 0, width: viewport.width, height: viewport.height };
+}
+
 function createTransform(
   input: RpgReferenceViewportTransformInput,
   sourceOffsetX: number,
@@ -229,36 +261,54 @@ export function resolveRpgReferenceViewportTransform(
   ) {
     return null;
   }
+  const safeFrame = resolveSafeFrame(input);
+  if (!safeFrame) return null;
+  const [imageWidth, imageHeight] = RPG_WORLD_BACKDROP_IMAGE_SIZE;
 
   if (input.profile === "mobile") {
-    const sourceOffsetX = clamp(referenceX - 150, 0, MOBILE_MAX_SOURCE_X);
-    const sourceOffsetY = clamp(
-      referenceY -
-        (desiredFootY(input.navigationRegion) -
-          RPG_REFERENCE_MOBILE_SAFE_FRAME.y) /
-          RPG_REFERENCE_MOBILE_SCALE,
+    const scale =
+      RPG_REFERENCE_MOBILE_SCALE *
+      (safeFrame.height / RPG_REFERENCE_MOBILE_SAFE_FRAME.height);
+    const visibleWidth = safeFrame.width / scale;
+    const visibleHeight = safeFrame.height / scale;
+    const maximumSourceX = Math.max(0, imageWidth - visibleWidth);
+    const maximumSourceY = Math.max(0, imageHeight - visibleHeight);
+    const scaledDesiredFootY =
+      safeFrame.y +
+      (desiredFootY(input.navigationRegion) -
+        RPG_REFERENCE_MOBILE_SAFE_FRAME.y) *
+        (safeFrame.height / RPG_REFERENCE_MOBILE_SAFE_FRAME.height);
+    const sourceOffsetX = clamp(
+      referenceX - visibleWidth / 2,
       0,
-      MOBILE_MAX_SOURCE_Y
+      maximumSourceX
+    );
+    const sourceOffsetY = clamp(
+      referenceY - (scaledDesiredFootY - safeFrame.y) / scale,
+      0,
+      maximumSourceY
     );
     return createTransform(
       input,
       sourceOffsetX,
       sourceOffsetY,
-      RPG_REFERENCE_MOBILE_SCALE,
-      RPG_REFERENCE_MOBILE_SAFE_FRAME
+      scale,
+      safeFrame
     );
   }
 
   if (input.profile === "desktop") {
-    const visibleWidth =
-      RPG_REFERENCE_DESKTOP_SAFE_FRAME.width / DESKTOP_SCALE;
-    const maximumSourceX = RPG_WORLD_BACKDROP_IMAGE_SIZE[0] - visibleWidth;
+    const scale =
+      DESKTOP_SCALE *
+      (safeFrame.height / RPG_REFERENCE_DESKTOP_SAFE_FRAME.height);
+    const visibleWidth = safeFrame.width / scale;
+    const maximumSourceX = Math.max(0, imageWidth - visibleWidth);
     return createTransform(
       input,
       clamp(referenceX - visibleWidth / 2, 0, maximumSourceX),
       0,
-      DESKTOP_SCALE,
-      RPG_REFERENCE_DESKTOP_SAFE_FRAME
+      scale,
+      safeFrame
     );
   }
   return null;
