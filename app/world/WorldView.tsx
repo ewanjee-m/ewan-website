@@ -45,7 +45,7 @@ interface WorldLabels {
   movementControl: string;
   resetPosition: string;
   jump: string;
-  webglFallback: string;
+  worldFallback: string;
   portfolioLabel: string;
   openPortfolio: string;
   closePortfolioMenu: string;
@@ -115,7 +115,7 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
   const readableFallback = (
     <div className="world-fallback">
       <p className="start-eyebrow">{labels.loadingWorld}</p>
-      <p>{labels.webglFallback}</p>
+      <p>{labels.worldFallback}</p>
     </div>
   );
   const updateNavigation = useCallback(

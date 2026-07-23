@@ -22,7 +22,7 @@ export class WorldErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("3D world render failed", error, errorInfo);
+    console.error("World render failed", error, errorInfo);
   }
 
   render() {

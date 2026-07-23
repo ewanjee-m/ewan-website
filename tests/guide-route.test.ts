@@ -39,6 +39,8 @@ function streamedRouteRequest(stream: ReadableStream<Uint8Array>) {
 
 describe("guide route boundary", () => {
   afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.resetModules();
@@ -172,6 +174,59 @@ describe("guide route boundary", () => {
     const response = await responsePromise;
     expect(upstreamSignal?.aborted).toBe(true);
     expect(response.status).toBe(503);
+  });
+
+  it("aborts the OpenAI call at the 4.5 second deadline", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("OPENAI_API_KEY", "test-server-key");
+    const timeout = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation((milliseconds) => {
+        const controller = new AbortController();
+        setTimeout(
+          () =>
+            controller.abort(
+              new DOMException("The operation timed out", "TimeoutError")
+            ),
+          milliseconds
+        );
+        return controller.signal;
+      });
+    let upstreamSignal: AbortSignal | undefined;
+    const fetcher = vi.fn(
+      (_url: string | URL | Request, init?: RequestInit) => {
+        const signal = init?.signal as AbortSignal | undefined;
+        if (!signal) {
+          throw new Error("Expected an upstream abort signal");
+        }
+        upstreamSignal = signal;
+        return new Promise<Response>((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true }
+          );
+        });
+      }
+    );
+    vi.stubGlobal("fetch", fetcher);
+    const { POST } = await import("../app/api/guide/route");
+
+    const responsePromise = POST(routeRequest(validBody));
+    await vi.advanceTimersByTimeAsync(4499);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(timeout).toHaveBeenCalledWith(4500);
+    expect(upstreamSignal?.aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    const response = await responsePromise;
+
+    expect(upstreamSignal?.aborted).toBe(true);
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({
+      error: "guide_unavailable"
+    });
   });
 
   it("returns one generic unavailable response when the key is absent", async () => {

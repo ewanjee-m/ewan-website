@@ -26,8 +26,8 @@ const messages = {
     resetCamera: "카메라 초기화",
     resetPosition: "시작 위치로 돌아가기",
     jump: "점프",
-    webglFallback:
-      "이 기기에서는 3D를 실행할 수 없어 읽기 가능한 포트폴리오를 표시합니다.",
+    worldFallback:
+      "월드를 표시하지 못해 읽기 가능한 포트폴리오를 대신 표시합니다.",
     portfolioLabel: "포트폴리오 장소",
     openPortfolio: "작업 보기",
     closePortfolioMenu: "작업 목록 닫기",
@@ -174,8 +174,8 @@ const messages = {
     resetCamera: "カメラをリセット",
     resetPosition: "スタート地点に戻る",
     jump: "ジャンプ",
-    webglFallback:
-      "この端末では3Dを実行できないため、読みやすいポートフォリオを表示します。",
+    worldFallback:
+      "ワールドを表示できないため、読みやすいポートフォリオを代わりに表示します。",
     portfolioLabel: "ポートフォリオの場所",
     openPortfolio: "作品を見る",
     closePortfolioMenu: "作品一覧を閉じる",
@@ -323,8 +323,8 @@ const messages = {
     resetCamera: "Reset camera",
     resetPosition: "Return to start",
     jump: "Jump",
-    webglFallback:
-      "3D is unavailable on this device, so the readable portfolio is shown instead.",
+    worldFallback:
+      "The world could not be displayed, so the readable portfolio is shown instead.",
     portfolioLabel: "Portfolio landmarks",
     openPortfolio: "View work",
     closePortfolioMenu: "Close work list",

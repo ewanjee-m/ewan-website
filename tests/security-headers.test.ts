@@ -18,6 +18,9 @@ describe("site security headers", () => {
     expect(response.headers.get("referrer-policy")).toBe(
       "strict-origin-when-cross-origin"
     );
+    expect(response.headers.get("strict-transport-security")).toBe(
+      "max-age=31536000; includeSubDomains"
+    );
     expect(response.headers.get("permissions-policy")).toBe(
       "camera=(), microphone=(), geolocation=()"
     );
