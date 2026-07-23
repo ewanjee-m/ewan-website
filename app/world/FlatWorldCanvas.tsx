@@ -227,7 +227,6 @@ export function resolveFlatWorldViewportProfile(width: number, height: number) {
   if (
     width >= 768 &&
     height >= 600 &&
-    aspectRatio >= 1.2 &&
     aspectRatio <= maximumBackdropAspectRatio
   ) {
     return "desktop" as const;

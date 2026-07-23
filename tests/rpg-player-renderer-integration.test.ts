@@ -178,6 +178,8 @@ function expectAtomicReferencePublication({
 describe("RPG player sprite renderer integration", () => {
   it.each([
     [1440, 900, "desktop"],
+    [800, 896, "desktop"],
+    [864, 996, "desktop"],
     [1280, 800, "desktop"],
     [1366, 768, "desktop"],
     [390, 844, "mobile"],
@@ -202,6 +204,11 @@ describe("RPG player sprite renderer integration", () => {
   });
 
   it.each([
+    {
+      profile: "desktop",
+      viewport: { width: 864, height: 996 },
+      safeFrame: { x: 0, y: 0, width: 864, height: 996 }
+    },
     {
       profile: "desktop",
       viewport: { width: 1280, height: 800 },

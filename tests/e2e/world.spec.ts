@@ -124,6 +124,8 @@ test("serves the Japanese festival favicon from the conventional URL", async ({
 
 test.describe("common desktop viewports", () => {
   for (const viewport of [
+    { width: 800, height: 896 },
+    { width: 864, height: 996 },
     { width: 1280, height: 800 },
     { width: 1366, height: 768 }
   ]) {
@@ -425,6 +427,55 @@ test.describe("mobile portrait world", () => {
     expect(overflow.horizontal).toBeLessThanOrEqual(0);
     expect(overflow.vertical).toBeLessThanOrEqual(0);
     expect(errors).toEqual([]);
+  });
+
+  test("moves the player with the mobile joystick and resets its knob on release", async ({
+    page
+  }) => {
+    await enterWorld(page);
+
+    const movement = page.getByRole("region", {
+      name: "Mobile movement control"
+    });
+    const knob = movement.locator(".mobile-move-knob");
+    const movementBox = await movement.boundingBox();
+    expect(movementBox).not.toBeNull();
+
+    const startPosition = await readWorldPosition(page);
+    const centerX = movementBox!.x + movementBox!.width / 2;
+    const centerY = movementBox!.y + movementBox!.height / 2;
+
+    await page.mouse.move(centerX, centerY);
+    await page.mouse.down();
+    try {
+      await page.mouse.move(centerX, centerY - movementBox!.height * 0.38, {
+        steps: 4
+      });
+
+      await expect
+        .poll(async () => {
+          const currentPosition = await readWorldPosition(page);
+          return Math.hypot(
+            currentPosition[0] - startPosition[0],
+            currentPosition[2] - startPosition[2]
+          );
+        })
+        .toBeGreaterThan(0.5);
+
+      expect(
+        await knob.evaluate(
+          (element) => (element as HTMLElement).style.transform
+        )
+      ).not.toBe("translate(0px, 0px)");
+    } finally {
+      await page.mouse.up();
+    }
+
+    await expect
+      .poll(() =>
+        knob.evaluate((element) => (element as HTMLElement).style.transform)
+      )
+      .toBe("translate(0px, 0px)");
   });
 });
 
