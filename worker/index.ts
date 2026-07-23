@@ -29,6 +29,7 @@ interface ImageBinding {
 interface Env {
   ASSETS: AssetBinding;
   IMAGES: ImageBinding;
+  AI_GUIDE_ENABLED?: string;
   SITE_ORIGIN?: string;
   GUIDE_IP_RATE_LIMITER: RateLimitBinding;
   GUIDE_CLIENT_RATE_LIMITER: RateLimitBinding;
@@ -62,12 +63,32 @@ function writeRequestLog(log: RequestLog) {
   console.info(serialized);
 }
 
+function unavailableGuideResponse(mode?: "disabled") {
+  return withSecurityHeaders(
+    new Response(JSON.stringify({ error: "guide_unavailable" }), {
+      status: 503,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        ...(mode ? { "x-guide-mode": mode } : {})
+      }
+    })
+  );
+}
+
 async function handleRequest(
   request: Request,
   env: Env | undefined,
   ctx: ExecutionContext,
   url: URL
 ): Promise<Response> {
+  if (
+    env?.AI_GUIDE_ENABLED === "false" &&
+    isGuideApiPath(url.pathname)
+  ) {
+    return unavailableGuideResponse("disabled");
+  }
+
   if (env) {
     if (
       !env.GUIDE_CLIENT_RATE_LIMITER ||
@@ -75,15 +96,7 @@ async function handleRequest(
       !env.GUIDE_GLOBAL_RATE_LIMITER
     ) {
       if (isGuideApiPath(url.pathname)) {
-        return withSecurityHeaders(
-          new Response(JSON.stringify({ error: "guide_unavailable" }), {
-            status: 503,
-            headers: {
-              "content-type": "application/json; charset=utf-8",
-              "cache-control": "no-store"
-            }
-          })
-        );
+        return unavailableGuideResponse();
       }
     } else {
       const limited = await enforceGuideRateLimit(

@@ -117,6 +117,7 @@ describe("public worker runtime", () => {
 
     expect(response.status).toBe(503);
     expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-guide-mode")).toBeNull();
     expectSecurityHeaders(response);
     expect(appFetch).not.toHaveBeenCalled();
     const log = parsedLog(error);
@@ -128,6 +129,36 @@ describe("public worker runtime", () => {
     });
     expect(log.durationMs).toBeGreaterThanOrEqual(0);
     expect(log.requestId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(warn).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
+    expectNoSensitiveLogData(error, warn, info);
+  });
+
+  it("marks an intentionally disabled guide before checking unavailable limiters", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const env = {
+      ...bindings(),
+      AI_GUIDE_ENABLED: "false"
+    };
+    Reflect.deleteProperty(env, "GUIDE_IP_RATE_LIMITER");
+    Reflect.deleteProperty(env, "GUIDE_CLIENT_RATE_LIMITER");
+    Reflect.deleteProperty(env, "GUIDE_GLOBAL_RATE_LIMITER");
+
+    const response = await worker.fetch(guideRequest(), env as never, ctx);
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-guide-mode")).toBe("disabled");
+    expectSecurityHeaders(response);
+    expect(appFetch).not.toHaveBeenCalled();
+    expect(parsedLog(error)).toMatchObject({
+      event: "http_request",
+      method: "POST",
+      path: "/api/guide",
+      status: 503
+    });
     expect(warn).not.toHaveBeenCalled();
     expect(info).not.toHaveBeenCalled();
     expectNoSensitiveLogData(error, warn, info);
