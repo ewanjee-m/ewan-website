@@ -662,40 +662,6 @@ function createHeadGeometry() {
   return geometry;
 }
 
-function createAlmondGeometry(width, height, depth) {
-  const shape = new Shape();
-  shape.moveTo(-width / 2, 0);
-  shape.quadraticCurveTo(-width * 0.2, height * 0.56, 0, height / 2);
-  shape.quadraticCurveTo(width * 0.2, height * 0.56, width / 2, 0);
-  shape.quadraticCurveTo(width * 0.2, -height * 0.5, 0, -height / 2);
-  shape.quadraticCurveTo(-width * 0.2, -height * 0.5, -width / 2, 0);
-  const geometry = new ExtrudeGeometry(shape, {
-    depth,
-    steps: 1,
-    curveSegments: activeDetailProfile.curveSegments,
-    bevelEnabled: true,
-    bevelSegments: 1,
-    bevelSize: depth * 0.18,
-    bevelThickness: depth * 0.16
-  });
-  geometry.translate(0, 0, -depth / 2);
-  return geometry;
-}
-
-function addAlmond(parts, options, boneIndices) {
-  addGeometry(
-    parts,
-    createAlmondGeometry(options.width, options.height, options.depth),
-    {
-      center: options.center,
-      rotation: options.rotation,
-      color: options.color,
-      influences: options.influences
-    },
-    boneIndices
-  );
-}
-
 function createFanGeometry(radius, depth) {
   const shape = new Shape();
   shape.moveTo(0, 0);
@@ -1549,9 +1515,6 @@ function addNpcDetails(parts, model, boneIndices) {
 const PROCEDURAL_HEAD_SCALE = 0.78;
 const SCULPTED_HEAD_SCALE = 1.0;
 const NECK_CUT_RATIO = 0.788;
-// Vertical span of the face crop in unit-sphere coordinates, matching
-// FACE_IMAGE_TOP..FACE_IMAGE_BOTTOM in the atlas painter.
-const FACE_IMAGE_SPAN = 1.88;
 const HEAD_RADIUS_RELIEF = 1.0;
 const HEAD_REACH = 1.25;
 
