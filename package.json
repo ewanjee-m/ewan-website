@@ -13,6 +13,7 @@
     "test:unit": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test --config=playwright.config.ts",
+    "test:deployed": "playwright test --config=playwright.deployed.config.ts",
     "test:visual": "node tests/visual/g007-verification.mjs --capture",
     "test:visual:finalize": "node tests/visual/g007-verification.mjs --finalize",
     "test:visual:check": "node tests/visual/g007-verification.mjs --self-test",
