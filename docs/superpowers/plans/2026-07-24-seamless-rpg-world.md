@@ -3779,16 +3779,20 @@ git push fork HEAD:agent/visual-fidelity-map-alignment
 
 **Files:**
 - Create: `tests/fixtures/rpg-visual-camera-fixtures.ts`
+- Create: `tests/fixtures/rpg-playwright-world.ts`
 - Create: `tests/e2e/rpg-performance.spec.ts`
 - Create: `tests/visual/rpg-world-verification.mjs`
 - Create: `docs/adr/0004-seamless-rpg-world.md`
 - Create: `playwright.performance.config.ts`
+- Modify: `app/world/ChaseOrbitCamera3d.tsx`
+- Modify: `app/world/WorldNavigationPublisher.ts`
 - Modify: `package.json`
 - Modify: `vitest.config.ts`
 - Modify: `playwright.config.ts`
 - Modify: `playwright.deployed.config.ts`
 - Modify: `tests/e2e/world.spec.ts`
 - Modify: `tests/e2e/map-accessibility.spec.ts`
+- Modify: `tests/world-navigation-publisher.test.ts`
 - Modify: `tests/deployed/public-smoke.spec.ts`
 - Modify: `tests/public-copy-privacy.test.ts`
 - Modify: `tests/visual/g007-verification.test.ts` (package-script expectation only)
@@ -3838,7 +3842,13 @@ export const RPG_VISUAL_CAMERA_FIXTURES = {
 
 Put walk and run in separate tests and set only those two tests to `120_000`; do not combine them under one timeout.
 
-The shared `driveCanonicalRoute(page, { runRequested })` helper rotates the camera so forward input follows each fixture segment, holds `W` plus optional `Shift`, polls `data-player-position`, and releases at `<=0.05 world units` from each vertex. It records `performance.now()` before the first keydown and after the Hanabi arrival, records every distinct `data-navigation-region`, and fails immediately if `data-camera-boom < 2.6`, `data-camera-safe-violation-ms > 250`, or `data-camera-diagnostic !== "ok"`.
+Create the shared helper in `tests/fixtures/rpg-playwright-world.ts`; do not export it from a spec file because importing a spec registers its tests. `driveCanonicalRoute(page, { runRequested })` rotates the camera so forward input follows each fixture segment, holds `W` plus optional `Shift`, polls the full-precision `data-player-position` on `.seamless-world-renderer`, and releases at `<=0.05 world units` from each vertex. It records browser `performance.now()` before the first keydown and after the Hanabi arrival, records every distinct `data-navigation-region` on `[data-testid="world-view"]` for diagnostics, validates the five-zone order from that node's `data-current-zone`, and releases every held key in `finally`. It fails immediately if `data-camera-boom < 2.6`, `data-camera-safe-violation-ms > 250`, or `data-camera-diagnostic !== "ok"`.
+
+Observe `world-environment-concept.png` only after world entry, or retain request initiator evidence that proves the active Canvas/map did not initiate it. The start screen intentionally uses that reference image and is outside this assertion.
+
+Change `WorldNavigationPublisher`'s default ordinary-movement interval from `0.1s` to `0.075s`, preserving immediate region and interaction publication. Update `tests/world-navigation-publisher.test.ts` so `0.074s` does not publish and `0.075s` does. For the browser `<=100ms` map gate, install one `MutationObserver` before movement. Record browser `performance.now()`, full-precision position, and projected anchor for every renderer `data-navigation-revision`. When `.rpg-mini-map-player[data-navigation-revision]` changes, match that exact revision and require its `data-anchor-reference` to equal the recorded projection before measuring the paired timestamps. Reject a missing revision or mismatched projection instead of pairing unrelated frames.
+
+Publish the live camera pitch as `data-camera-pitch` beside yaw and boom in `ChaseOrbitCamera3d`. The active `tests/e2e/world.spec.ts` assertions must fail if pitch is missing/non-finite and must compare the capture fixture's requested pitch with the live telemetry.
 
 - [ ] **Step 3: Add the performance test**
 
@@ -3848,8 +3858,8 @@ The shared `driveCanonicalRoute(page, { runRequested })` helper rotates the came
 - reload for each trial, wait for `worldReady`, then exclude a 5-second warm-up;
 - clear RAF, request, error, and mount baselines immediately after warm-up;
 - read `startQualityStage` from `.seamless-world-renderer[data-quality-stage]` immediately after warm-up and validate it against `RPG_QUALITY_DEGRADATION_ORDER`;
-- start one RAF sampler, execute the canonical route with run held for `64.3s ±5%`, then orbit the Hanabi camera for the remaining time;
-- require the orbit remainder to be `10.7s ±5%` and stop the sampler exactly `75_000ms` after it began, so route and orbit are measured together rather than before a separate collection window;
+- start one RAF sampler, execute the canonical route with run held for `64.3s ±5%`, then orbit the Hanabi camera for the positive remaining time;
+- stop the sampler exactly `75_000ms` after it began and require `orbitMs` to equal `durationMs - traversalMs` within one RAF interval; `10.7s` is the nominal remainder, not a second independent tolerance;
 - repeat the full warm-up plus 75-second sample three times per project;
 - assert the median desktop average/p5 is at least `55/40`;
 - call `client.send("Emulation.setCPUThrottlingRate", { rate: 4 })` for the mobile project;
@@ -3860,7 +3870,9 @@ The shared `driveCanonicalRoute(page, { runRequested })` helper rotates the came
 - read `endQualityStage` from the same `data-quality-stage` attribute at the exact 75-second stop, and assert `window.__RPG_PERFORMANCE__.qualityStage` matches it;
 - attach browser, OS, CPU, memory, DPR, WebGL renderer and quality levels.
 
-Use browser-side timestamps and RAF intervals, not Node `Date.now()`. Install the request listener before warm-up but begin counting only when the page-side `measurementStarted` flag becomes true. The only allowed network count during the measured route is `0`; analytics/guide traffic is disabled for this config.
+Use browser-side timestamps and RAF intervals, not Node `Date.now()`. Install the request listener before warm-up. After warm-up and baseline clearing, enable the Node request-count boolean first, then atomically set the page-side `measurementStarted` flag and start the RAF sampler in one awaited browser task. Begin route input only after that task resolves. This conservative boundary may count an immediately preceding request but cannot miss one in the activation gap. The only allowed network count during the measured route is `0`; analytics/guide traffic is disabled for this config.
+
+The already-installed request listener reads only the synchronous Node boolean; do not call asynchronous `page.evaluate()` from inside it. Run this config with `workers: 1`, fixed locale/timezone/reduced-motion settings, and no retries.
 
 Each trial result has this exact minimum shape:
 
@@ -3868,7 +3880,7 @@ Each trial result has this exact minimum shape:
 interface RpgPerformanceTrial {
   durationMs: number;             // 75_000 ± one RAF interval
   traversalMs: number;            // 64_300 ±5%
-  orbitMs: number;                // 10_700 ±5%
+  orbitMs: number;                // positive derived remainder; nominally 10_700
   averageFps: number;
   p5Fps: number;
   longFrameCount: 0;
@@ -3953,7 +3965,46 @@ const CAPTURE_IDS = [
 
 For both viewport groups, capture `airport` with the male GLB and `npc-interaction` with the female GLB; record `selectedCharacter` in every manifest row. The reviewer compares those two captures with the corresponding local front/back character reference PNGs as well as checking foot contact and 3D proportions.
 
-`visual-review.json` contains one row per PNG with:
+All capture states must be reached through real keyboard or touch input; the capture tool must not call a travel or teleport API. The two camera-specific states are exact:
+
+- `narrow-camera`: walk from the Gyukatsu canonical arrival `[8, 0, 0]` to `[5, 0, 7]`, face west, apply the Gyukatsu fixture (`yawOffsetDegrees: -20`, `pitchDegrees: 38`, viewport distance), and capture only after the position is within `0.05`, `data-current-zone="gyukatsu"`, `data-camera-safe="true"`, and `data-camera-diagnostic="ok"`.
+- `obstacle-camera`: remain at `[5, 0, 7]`, face east so the requested rear boom crosses the expanded `gyukatsu-main-machiya` footprint, use zero yaw offset with `pitchDegrees: 38`, and wait until the actual boom is at least `2.6` and at least `0.1` shorter than the requested viewport distance. The safety violation must stay `<=250ms` and the diagnostic must remain `ok`. If live browser telemetry cannot establish these predicates, capture fails rather than silently choosing another position.
+
+Each `capture-manifest.json` row records the ID, relative PNG path, SHA-256, viewport, selected character, player position/heading, camera yaw/pitch/boom, navigation revision/zone, required landmarks, and any character reference assets used for review. The manifest also records the exact commit SHA and a top-level capture producer `{ "id": "rpg-world-verification.mjs", "capturedAt": "<ISO-8601>" }`.
+
+`visual-review.json` has this top-level shape:
+
+```json
+{
+  "protocol": "rpg-visual-review",
+  "evidenceDirectory": "rpg-<UTC>-<pid>",
+  "commitSha": "<40-hex>",
+  "captureManifestSha256": "<64-hex>",
+  "reviewer": {
+    "id": "<independent-agent-or-human-id>",
+    "reviewedAt": "<ISO-8601>"
+  },
+  "referenceAssets": [
+    {
+      "character": "male",
+      "front": "public/assets/characters/player-male.png",
+      "frontSha256": "<64-hex>",
+      "back": "public/assets/characters/player-male-back.png",
+      "backSha256": "<64-hex>"
+    },
+    {
+      "character": "female",
+      "front": "public/assets/characters/player-female.png",
+      "frontSha256": "<64-hex>",
+      "back": "public/assets/characters/player-female-back.png",
+      "backSha256": "<64-hex>"
+    }
+  ],
+  "rows": []
+}
+```
+
+`rows` contains one row per PNG with:
 
 ```json
 {
@@ -3967,7 +4018,7 @@ For both viewport groups, capture `airport` with the male GLB and `npc-interacti
 }
 ```
 
-`--finalize` verifies exactly 20 approved rows, unchanged PNG hashes, zero browser/network errors, and writes `rpg-visual-verification.json` with `status: "PASS"` and `phase: "finalize_complete"`. It must never start a server or recapture.
+`--finalize` verifies exact set equality between the 20 manifest row IDs and the 20 review row IDs, rejecting missing, extra, or duplicate rows. It also verifies every row is approved, the reviewer ID is non-empty and differs from the capture-producer ID, the review timestamp is valid, evidence-directory/commit/manifest hashes match, front/back reference paths and hashes match, PNG hashes are unchanged, and browser/network errors are zero. Task 11 procedurally assigns the review to a separate reviewer context; the ID mismatch binds that decision to the evidence but does not replace the procedural independence gate. Finalize writes `rpg-visual-verification.json` with `status: "PASS"` and `phase: "finalize_complete"`. It must never start a server or recapture.
 
 - [ ] **Step 5: Update scripts and test inclusion**
 
@@ -4004,6 +4055,8 @@ const world = page.locator(
 ```
 
 The smoke must directly move through at least airport → Gyukatsu → Sakura → Hanabi, drag the camera in desktop and mobile projects, open the map without changing position, and assert zero page errors, console errors, failed requests and core asset 404s.
+
+Set this direct-route smoke to `120_000ms`; the deployed config's ordinary `45_000ms` timeout remains the default for other tests.
 
 - [ ] **Step 7: Update authority documents**
 
@@ -4047,7 +4100,7 @@ Expected:
 - [ ] **Step 9: Commit and push**
 
 ```bash
-git add package.json vitest.config.ts playwright.config.ts playwright.deployed.config.ts playwright.performance.config.ts tests/fixtures/rpg-visual-camera-fixtures.ts tests/e2e/rpg-performance.spec.ts tests/e2e/world.spec.ts tests/e2e/map-accessibility.spec.ts tests/deployed/public-smoke.spec.ts tests/public-copy-privacy.test.ts tests/visual/g007-verification.test.ts tests/visual/rpg-world-verification.mjs README.md CONTEXT.md docs/handoff.md docs/interface-design.md docs/product-plan.md docs/world-design.md docs/character-design.md docs/adr/0003-approved-reference-canvas-renderer.md docs/adr/0004-seamless-rpg-world.md
+git add app/world/ChaseOrbitCamera3d.tsx app/world/WorldNavigationPublisher.ts package.json vitest.config.ts playwright.config.ts playwright.deployed.config.ts playwright.performance.config.ts tests/fixtures/rpg-visual-camera-fixtures.ts tests/fixtures/rpg-playwright-world.ts tests/e2e/rpg-performance.spec.ts tests/e2e/world.spec.ts tests/e2e/map-accessibility.spec.ts tests/deployed/public-smoke.spec.ts tests/world-navigation-publisher.test.ts tests/public-copy-privacy.test.ts tests/visual/g007-verification.test.ts tests/visual/rpg-world-verification.mjs README.md CONTEXT.md docs/handoff.md docs/interface-design.md docs/product-plan.md docs/world-design.md docs/character-design.md docs/adr/0003-approved-reference-canvas-renderer.md docs/adr/0004-seamless-rpg-world.md
 git commit -m "Replace validation with the seamless RPG contract" \
   -m "Generated with Codex" \
   -m "Co-Authored-By: OpenAI Codex <noreply@openai.com>"
