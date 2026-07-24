@@ -1,3 +1,8 @@
+import {
+  RPG_QUALITY_DEGRADATION_ORDER,
+  type RpgQualityDegradationStage
+} from "./AdaptiveQuality";
+
 export type SceneQualityLevel = "high" | "medium" | "low";
 
 const FIREWORK_SEQUENCE = [
@@ -12,6 +17,8 @@ const FIREWORK_SEQUENCE = [
 interface SceneQualityInput {
   level: SceneQualityLevel;
   reducedMotion: boolean;
+  degradationStage?: RpgQualityDegradationStage;
+  coarsePointer?: boolean;
 }
 
 export function detectSceneQualityLevel({
@@ -33,7 +40,9 @@ export function detectBrowserSceneQualityLevel(): SceneQualityLevel {
   }
   return detectSceneQualityLevel({
     hardwareConcurrency: navigator.hardwareConcurrency || 8,
-    coarsePointer: window.matchMedia("(pointer: coarse)").matches
+    coarsePointer:
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(pointer: coarse)").matches
   });
 }
 
@@ -51,11 +60,16 @@ export function getSceneShadowMapSize(level: SceneQualityLevel) {
   return level === "medium" ? 1024 : 0;
 }
 
-export function getSceneQuality({ level, reducedMotion }: SceneQualityInput) {
+export function getSceneQuality({
+  level,
+  reducedMotion,
+  degradationStage = "full",
+  coarsePointer = false
+}: SceneQualityInput) {
   const levels = {
     high: {
       petals: { near: 36, middle: 52, far: 68 },
-      particlesPerBurst: 72,
+      particlesPerBurst: 220,
       trailSeconds: 1.15,
       minDpr: 1,
       // A retina panel reports 2. Capping under it drew the world at 88 per
@@ -65,34 +79,66 @@ export function getSceneQuality({ level, reducedMotion }: SceneQualityInput) {
     },
     medium: {
       petals: { near: 28, middle: 34, far: 0 },
-      particlesPerBurst: 48,
+      particlesPerBurst: 140,
       trailSeconds: 1.15,
       minDpr: 1,
       maxDpr: 1.25
     },
     low: {
       petals: { near: 18, middle: 0, far: 0 },
-      particlesPerBurst: 28,
+      particlesPerBurst: 80,
       trailSeconds: 0.5,
       minDpr: 0.85,
       maxDpr: 1
     }
   } as const;
   const selected = levels[level];
+  const stageIndex =
+    RPG_QUALITY_DEGRADATION_ORDER.indexOf(degradationStage);
+  const atLeast = (stage: RpgQualityDegradationStage) =>
+    stageIndex >= RPG_QUALITY_DEGRADATION_ORDER.indexOf(stage);
+  const pixelRatioDegraded = atLeast("pixel-ratio");
+  const shadowsDegraded = atLeast("shadows");
+  const fireworksDegraded = atLeast("fireworks");
+  const farDecorationsDegraded = atLeast("far-decorations");
+  const npcMotionDegraded = atLeast("npc-secondary-motion");
+  const baseParticles = reducedMotion ? 18 : selected.particlesPerBurst;
+  const baseTrailSeconds = reducedMotion ? 0.35 : selected.trailSeconds;
 
-  return {
-    petals: reducedMotion
+  return Object.freeze({
+    level,
+    degradationStage,
+    coreLayers: Object.freeze({
+      terrain: true,
+      roads: true,
+      collision: true,
+      landmarks: true,
+      player: true
+    }),
+    petals: Object.freeze(reducedMotion
       ? { near: 8, middle: 0, far: 0 }
-      : { ...selected.petals },
+      : { ...selected.petals }),
     petalRotationSpeed: reducedMotion ? 0 : 1,
     busPetalSwirl: !reducedMotion,
     minDpr: selected.minDpr,
-    maxDpr: selected.maxDpr,
-    fireworks: {
+    maxDpr: pixelRatioDegraded
+      ? Math.min(selected.maxDpr, coarsePointer ? 1 : 1.25)
+      : selected.maxDpr,
+    shadowMapSize: shadowsDegraded ? 1024 : getSceneShadowMapSize(level),
+    shadowUpdateEveryFrames: shadowsDegraded ? 4 : 1,
+    farDecorationDistance: farDecorationsDegraded ? 18 : 48,
+    npcSecondaryMotion: !npcMotionDegraded,
+    fireworks: Object.freeze({
       sequence: FIREWORK_SEQUENCE,
-      particlesPerBurst: reducedMotion ? 18 : selected.particlesPerBurst,
-      trailSeconds: reducedMotion ? 0.35 : selected.trailSeconds,
+      particlesPerBurst: fireworksDegraded
+        ? Math.floor(baseParticles * 0.5)
+        : baseParticles,
+      trailSeconds: fireworksDegraded
+        ? baseTrailSeconds * 0.5
+        : baseTrailSeconds,
       softPulseOnly: reducedMotion
-    }
-  };
+    })
+  });
 }
+
+export type SceneQualitySettings = ReturnType<typeof getSceneQuality>;

@@ -2,16 +2,15 @@
 
 import { useFrame } from "@react-three/fiber";
 import {
-  Component,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
-  type ReactNode,
+  useState,
   type RefObject
 } from "react";
 import { Group, Vector3 } from "three";
 import { NPC_CHARACTER_MODELS } from "./NpcCharacterModels";
+import { RpgAssetBoundary } from "./RpgAssetBoundary";
 import type { NpcSpriteId } from "./NpcAssets";
 import {
   createNpcPatrolPose,
@@ -31,6 +30,7 @@ import {
   type RpgLandmark
 } from "./RpgTownSceneLayout";
 import { getSurfaceHeight } from "./RpgWorldGeometry";
+import type { WorldRuntime } from "./WorldRuntime";
 
 type NpcLandmark = RpgLandmark & {
   kind: "npc";
@@ -43,22 +43,9 @@ function isNpcLandmark(landmark: RpgLandmark): landmark is NpcLandmark {
 
 const NPC_LANDMARKS = RPG_LANDMARKS.filter(isNpcLandmark);
 
-class RpgNpcAssetBoundary extends Component<
-  { children: ReactNode; onAssetError: () => void },
-  { failed: boolean }
-> {
-  state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  componentDidCatch() {
-    this.props.onAssetError();
-  }
-
-  render() {
-    return this.state.failed ? null : this.props.children;
+class RpgNpcAssetBoundary extends RpgAssetBoundary {
+  override componentDidCatch(error: Error) {
+    super.componentDidCatch(error);
   }
 }
 
@@ -66,12 +53,18 @@ function RpgNpcActor({
   landmark,
   playerPosition,
   dynamicObstacles,
-  reducedMotion
+  reducedMotion,
+  npcSecondaryMotion,
+  runtime,
+  telemetry
 }: {
   landmark: NpcLandmark;
   playerPosition: RefObject<Vector3>;
   dynamicObstacles: RefObject<Map<string, RpgCameraDynamicObstacle>>;
   reducedMotion: boolean;
+  npcSecondaryMotion: boolean;
+  runtime?: WorldRuntime;
+  telemetry?: RefObject<HTMLDivElement | null>;
 }) {
   const root = useRef<Group>(null);
   const character = useRef<RpgNpcCharacter3dHandle>(null);
@@ -87,32 +80,56 @@ function RpgNpcActor({
     yaw: 0,
     clearance: RPG_NPC_CAMERA_CLEARANCE
   });
-  const removeObstacle = useRef<() => void>(() => undefined);
+  const [assetAvailable, setAssetAvailable] = useState(true);
   const assetFailed = useRef(false);
-  const handleAssetError = useCallback(() => {
+  const removeObstacle = () => {
+    dynamicObstacles.current.delete(landmark.id);
+  };
+  const handleAssetError = () => {
     assetFailed.current = true;
-    removeObstacle.current();
-  }, []);
+    setAssetAvailable(false);
+    removeObstacle();
+    runtime?.setInteractionTargetAvailable(landmark.id, false);
+    const failedIds = new Set(
+      (telemetry?.current?.dataset.unavailableNpcIds ?? "")
+        .split(",")
+        .filter(Boolean)
+    );
+    failedIds.add(landmark.id);
+    telemetry?.current?.setAttribute(
+      "data-unavailable-npc-ids",
+      [...failedIds].sort().join(",")
+    );
+  };
 
   useEffect(() => {
     const obstacles = dynamicObstacles.current;
-    const remove = () => {
+    if (!assetAvailable || assetFailed.current) {
+      obstacles.delete(landmark.id);
+      return;
+    }
+    obstacles.set(landmark.id, obstacle.current);
+    return () => {
       obstacles.delete(landmark.id);
     };
-    removeObstacle.current = remove;
-    if (!assetFailed.current) {
-      obstacles.set(landmark.id, obstacle.current);
-    }
-    return remove;
-  }, [dynamicObstacles, landmark.id]);
+  }, [assetAvailable, dynamicObstacles, landmark.id]);
 
   useFrame(({ clock }) => {
+    if (!assetAvailable || assetFailed.current) return;
     evaluateNpcPatrolMotionInto(
       route,
       clock.elapsedTime,
       reducedMotion,
       pose.current
     );
+    if (!npcSecondaryMotion) {
+      pose.current.stride = 0;
+      pose.current.bob = 0;
+      pose.current.rotation = 0;
+      if (!pose.current.moving) {
+        pose.current.animationKind = "idle";
+      }
+    }
     const surfaceHeight = getSurfaceHeight([pose.current.x, pose.current.z]);
     root.current?.position.set(
       pose.current.x,
@@ -133,7 +150,11 @@ function RpgNpcActor({
 
   return (
     <group ref={root}>
-      <RpgNpcAssetBoundary onAssetError={handleAssetError}>
+      <RpgNpcAssetBoundary
+        assetId={landmark.id}
+        fallback={null}
+        onError={handleAssetError}
+      >
         <RpgNpcCharacter3d
           ref={character}
           npcId={landmark.id}
@@ -148,11 +169,17 @@ function RpgNpcActor({
 export function RpgNpcCrowd({
   playerPosition,
   dynamicObstacles,
-  reducedMotion
+  reducedMotion,
+  npcSecondaryMotion = true,
+  runtime,
+  telemetry
 }: {
   playerPosition: RefObject<Vector3>;
   dynamicObstacles: RefObject<Map<string, RpgCameraDynamicObstacle>>;
   reducedMotion: boolean;
+  npcSecondaryMotion?: boolean;
+  runtime?: WorldRuntime;
+  telemetry?: RefObject<HTMLDivElement | null>;
 }) {
   return (
     <group name="rpg-npc-crowd">
@@ -163,6 +190,9 @@ export function RpgNpcCrowd({
           playerPosition={playerPosition}
           dynamicObstacles={dynamicObstacles}
           reducedMotion={reducedMotion}
+          npcSecondaryMotion={npcSecondaryMotion}
+          runtime={runtime}
+          telemetry={telemetry}
         />
       ))}
     </group>

@@ -1,24 +1,43 @@
 import type { SceneQualityLevel } from "./SceneQuality";
 
 const LEVELS: readonly SceneQualityLevel[] = ["low", "medium", "high"];
+export const RPG_QUALITY_DEGRADATION_ORDER = [
+  "full",
+  "pixel-ratio",
+  "shadows",
+  "fireworks",
+  "far-decorations",
+  "npc-secondary-motion"
+] as const;
+
+export type RpgQualityDegradationStage =
+  (typeof RPG_QUALITY_DEGRADATION_ORDER)[number];
 
 export function createAdaptiveQuality({
   initialLevel,
   sampleSeconds = 2,
   lowFps = 42,
-  recoveryFps = 55
+  recoveryFps = 55,
+  lowSamplesBeforeChange = 2,
+  recoverySamplesBeforeChange = 4
 }: {
   initialLevel: SceneQualityLevel;
   sampleSeconds?: number;
   lowFps?: number;
   recoveryFps?: number;
+  lowSamplesBeforeChange?: number;
+  recoverySamplesBeforeChange?: number;
 }) {
   const maximumLevelIndex = LEVELS.indexOf(initialLevel);
-  let levelIndex = maximumLevelIndex;
+  let stageIndex = 0;
   let elapsed = 0;
   let frames = 0;
   let lowSamples = 0;
   let recoverySamples = 0;
+  const getLegacyLevel = () => {
+    const drops = Math.min(2, stageIndex);
+    return LEVELS[Math.max(0, maximumLevelIndex - drops)];
+  };
 
   return {
     recordFrame(deltaSeconds: number) {
@@ -27,12 +46,12 @@ export function createAdaptiveQuality({
         deltaSeconds <= 0 ||
         deltaSeconds > 0.25
       ) {
-        return LEVELS[levelIndex];
+        return getLegacyLevel();
       }
       elapsed += deltaSeconds;
       frames += 1;
       if (elapsed + 1e-9 < sampleSeconds) {
-        return LEVELS[levelIndex];
+        return getLegacyLevel();
       }
 
       const fps = frames / elapsed;
@@ -41,25 +60,34 @@ export function createAdaptiveQuality({
       if (fps < lowFps) {
         lowSamples += 1;
         recoverySamples = 0;
-        if (lowSamples >= 2 && levelIndex > 0) {
-          levelIndex -= 1;
+        if (
+          lowSamples >= lowSamplesBeforeChange &&
+          stageIndex < RPG_QUALITY_DEGRADATION_ORDER.length - 1
+        ) {
+          stageIndex += 1;
           lowSamples = 0;
         }
       } else if (fps >= recoveryFps) {
         recoverySamples += 1;
         lowSamples = 0;
-        if (recoverySamples >= 4 && levelIndex < maximumLevelIndex) {
-          levelIndex += 1;
+        if (
+          recoverySamples >= recoverySamplesBeforeChange &&
+          stageIndex > 0
+        ) {
+          stageIndex -= 1;
           recoverySamples = 0;
         }
       } else {
         lowSamples = 0;
         recoverySamples = 0;
       }
-      return LEVELS[levelIndex];
+      return getLegacyLevel();
     },
     getLevel() {
-      return LEVELS[levelIndex];
+      return getLegacyLevel();
+    },
+    getStage(): RpgQualityDegradationStage {
+      return RPG_QUALITY_DEGRADATION_ORDER[stageIndex];
     }
   };
 }

@@ -9,7 +9,10 @@ import {
   type RpgLandmark
 } from "./RpgTownSceneLayout";
 import { RPG_RENDERED_RICH_LANDMARKS } from "./RpgTownRenderStats";
-import type { SceneQualityLevel } from "./SceneQuality";
+import type {
+  SceneQualityLevel,
+  SceneQualitySettings
+} from "./SceneQuality";
 
 const richLanterns = RPG_RENDERED_RICH_LANDMARKS.filter(
   ({ kind }) => kind === "lantern"
@@ -363,14 +366,19 @@ function Landmark(props: LandmarkProps) {
 }
 
 export const RpgSignatureLandmarks = memo(function RpgSignatureLandmarks({
-  qualityLevel,
+  qualitySettings,
   presentation
 }: {
-  qualityLevel: SceneQualityLevel;
+  qualitySettings: SceneQualitySettings;
   presentation: RefObject<RpgRegionPresentationState>;
 }) {
   return (
-    <group name="rpg-signature-landmarks">
+    <group
+      name="rpg-signature-landmarks"
+      userData={{
+        farDecorationDistance: qualitySettings.farDecorationDistance
+      }}
+    >
       {RPG_RENDERED_RICH_LANDMARKS
         .filter(
           (landmark) =>
@@ -382,7 +390,7 @@ export const RpgSignatureLandmarks = memo(function RpgSignatureLandmarks({
           <Landmark
             key={landmark.id}
             landmark={landmark}
-            qualityLevel={qualityLevel}
+            qualityLevel={qualitySettings.level}
             presentation={presentation}
           />
         ))}

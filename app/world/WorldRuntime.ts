@@ -58,6 +58,9 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
   let jumpOffset = 0;
   let jumpVelocity = 0;
   let revision = 0;
+  const unavailableInteractionTargetIds = new Set(
+    options.unavailableInteractionTargetIds
+  );
   const canOccupy = (position: readonly [number, number]) =>
     isWorldRuntimeWalkablePosition(position) &&
     (options.canOccupyDynamic?.(position) ?? true);
@@ -75,7 +78,7 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
       findWorldInteractionTarget({
         position: [x, surfaceHeight + jumpOffset, z],
         heading,
-        unavailableTargetIds: options.unavailableInteractionTargetIds
+        unavailableTargetIds: unavailableInteractionTargetIds
       })?.id ?? null;
     return Object.freeze({
       revision,
@@ -118,6 +121,16 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
       Object.assign(movement, { x: 0, y: 0, runRequested: false });
       Object.assign(cameraState, createChaseOrbitCameraState());
       revision += 1;
+    },
+    setInteractionTargetAvailable(targetId: string, available: boolean) {
+      let changed = false;
+      if (available) {
+        changed = unavailableInteractionTargetIds.delete(targetId);
+      } else if (!unavailableInteractionTargetIds.has(targetId)) {
+        unavailableInteractionTargetIds.add(targetId);
+        changed = true;
+      }
+      if (changed) revision += 1;
     },
     advance(deltaSeconds: number, cameraYaw: number) {
       if (!Number.isFinite(deltaSeconds)) return;

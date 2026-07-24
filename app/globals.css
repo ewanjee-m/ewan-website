@@ -524,6 +524,7 @@ a:focus-visible {
 }
 
 .world-fallback {
+  z-index: 10;
   display: grid;
   place-content: center;
   padding: 2rem;
@@ -535,6 +536,17 @@ a:focus-visible {
   max-width: 38rem;
   color: rgba(255, 244, 220, 0.82);
   line-height: 1.7;
+}
+
+.world-fallback button {
+  justify-self: center;
+  margin-top: 1rem;
+  border: 1px solid rgba(255, 244, 220, 0.62);
+  border-radius: 999px;
+  padding: 0.65rem 1.2rem;
+  color: #fff4dc;
+  background: rgba(17, 26, 58, 0.88);
+  cursor: pointer;
 }
 
 .world-controls {

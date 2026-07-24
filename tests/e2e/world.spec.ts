@@ -52,6 +52,135 @@ async function readWorldPosition(page: Page) {
     .map(Number);
 }
 
+async function enterSeamlessWorld(
+  page: Page,
+  character: "male" | "female" = "female"
+) {
+  await page.addInitScript(() => localStorage.clear());
+  await page.goto("/en");
+  await page.getByRole("button", { name: "START" }).click();
+  await page
+    .getByRole("button", {
+      name: `Select ${character} character`
+    })
+    .click();
+  await page.getByRole("button", { name: "ENTER WORLD" }).click();
+  const renderer = page.locator(
+    '.seamless-world-renderer[data-world-ready="true"]'
+  );
+  await expect(renderer).toBeVisible({ timeout: 30_000 });
+  return renderer;
+}
+
+async function expectMoved(page: Page) {
+  const before = await readWorldPosition(page);
+  await page.keyboard.down("ArrowRight");
+  await page.waitForTimeout(500);
+  await page.keyboard.up("ArrowRight");
+  await expect
+    .poll(async () => {
+      const after = await readWorldPosition(page);
+      return Math.hypot(
+        (after[0] ?? 0) - (before[0] ?? 0),
+        (after[2] ?? 0) - (before[2] ?? 0)
+      );
+    })
+    .toBeGreaterThan(0.05);
+}
+
+async function approachAirportInteraction(page: Page) {
+  await page.getByRole("button", { name: "Return to start" }).click();
+  await page.waitForTimeout(100);
+  await page.keyboard.down("ArrowUp");
+  await page.waitForTimeout(1_800);
+  await page.keyboard.up("ArrowUp");
+  await page.keyboard.down("ArrowLeft");
+  await page.waitForTimeout(800);
+  await page.keyboard.up("ArrowLeft");
+  await expect(
+    page.getByRole("button", { name: "Interact" })
+  ).toBeVisible();
+}
+
+test("falls back when the selected player GLB returns 404", async ({
+  page
+}) => {
+  await page.route("**/player-male.glb", (route) =>
+    route.fulfill({ status: 404, body: "" })
+  );
+  const renderer = await enterSeamlessWorld(page, "male");
+
+  await expect(renderer).toHaveAttribute("data-character-fallback", "true");
+  await expectMoved(page);
+});
+
+test("falls back by omitting only one failed NPC", async ({ page }) => {
+  await page.route("**/npc-hanabi-yukata.glb", (route) =>
+    route.fulfill({ status: 404, body: "" })
+  );
+  const renderer = await enterSeamlessWorld(page);
+
+  await expect(renderer).toHaveAttribute(
+    "data-unavailable-npc-ids",
+    "npc-hanabi-yukata"
+  );
+  await expectMoved(page);
+  await approachAirportInteraction(page);
+  await page.getByRole("button", { name: "Interact" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+});
+
+test("falls back by omitting the optional Hanabi decoration", async ({
+  page
+}) => {
+  await page.route("**/hanabi-festival-sign.svg", (route) =>
+    route.fulfill({ status: 404, body: "" })
+  );
+  const renderer = await enterSeamlessWorld(page);
+
+  await expect(renderer).toHaveAttribute(
+    "data-optional-decoration",
+    "omitted"
+  );
+  await expect(renderer).toHaveAttribute("data-hanabi-fireworks", "true");
+  await expectMoved(page);
+  await approachAirportInteraction(page);
+});
+
+test("retries after WebGL support becomes available", async ({ page }) => {
+  await page.addInitScript(() => {
+    const host = window as typeof window & {
+      __ORIGINAL_CANVAS_GET_CONTEXT__:
+        typeof HTMLCanvasElement.prototype.getContext;
+    };
+    host.__ORIGINAL_CANVAS_GET_CONTEXT__ =
+      HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = () => null;
+  });
+  await page.goto("/en");
+  await page.getByRole("button", { name: "START" }).click();
+  await page
+    .getByRole("button", { name: "Select female character" })
+    .click();
+  await page.getByRole("button", { name: "ENTER WORLD" }).click();
+
+  await expect(page.locator(".seamless-world-renderer")).toHaveCount(0);
+  const retry = page.getByRole("button", { name: "Retry" });
+  await expect(retry).toBeVisible();
+  await page.evaluate(() => {
+    const host = window as typeof window & {
+      __ORIGINAL_CANVAS_GET_CONTEXT__:
+        typeof HTMLCanvasElement.prototype.getContext;
+    };
+    HTMLCanvasElement.prototype.getContext =
+      host.__ORIGINAL_CANVAS_GET_CONTEXT__;
+  });
+  await retry.click();
+  await expect(
+    page.locator('.seamless-world-renderer[data-world-ready="true"]')
+  ).toBeVisible({ timeout: 10_000 });
+});
+
 test("enters the seamless WebGL world", async ({ page }) => {
   await page.addInitScript(() => localStorage.clear());
   await page.goto("/en");

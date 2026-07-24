@@ -99,6 +99,7 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
     );
   const [worldMapOpen, setWorldMapOpen] = useState(false);
   const [interactionOpen, setInteractionOpen] = useState(false);
+  const [worldResetKey, setWorldResetKey] = useState(0);
   const [requestedEntryId, setRequestedEntryId] =
     useState<WorldInteractionEntryId | null>(null);
   const sharedNavigation = useMemo(
@@ -117,12 +118,10 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
   const interactionWasOpen = useRef(false);
   const movementPointer = useRef<number | null>(null);
   const movementKnob = useRef<HTMLSpanElement>(null);
-  const readableFallback = (
-    <div className="world-fallback">
-      <p className="start-eyebrow">{labels.loadingWorld}</p>
-      <p>{labels.worldFallback}</p>
-    </div>
-  );
+  const retryWorld = useCallback(() => {
+    input.reset();
+    setWorldResetKey((current) => current + 1);
+  }, [input]);
   const updateNavigation = useCallback(
     (nextNavigation: WorldNavigationSnapshot) =>
       setNavigation((current) =>
@@ -241,14 +240,28 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
         .map((value) => value.toFixed(3))
         .join(",")}
     >
-      <WorldErrorBoundary fallback={readableFallback}>
+      <WorldErrorBoundary
+        resetKey={worldResetKey}
+        onRetry={retryWorld}
+        fallback={({ retry }) => (
+          <div className="world-fallback">
+            <p className="start-eyebrow">{labels.loadingWorld}</p>
+            <p>{labels.worldFallback}</p>
+            <button type="button" onClick={retry}>
+              Retry
+            </button>
+          </div>
+        )}
+      >
         <WorldCanvas
+          key={worldResetKey}
           character={character}
           input={input}
           inputLocked={interactionOpen}
           activeDestinationId={activeRecommendation?.destinationId ?? null}
           onInteractionRequest={requestInteraction}
           onNavigationChange={updateNavigation}
+          onRetry={retryWorld}
         />
       </WorldErrorBoundary>
 

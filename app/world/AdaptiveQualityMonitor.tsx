@@ -2,26 +2,45 @@
 
 import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";
-import { createAdaptiveQuality } from "./AdaptiveQuality";
-import type { SceneQualityLevel } from "./SceneQuality";
+import {
+  createAdaptiveQuality,
+  type RpgQualityDegradationStage
+} from "./AdaptiveQuality";
+import {
+  getSceneQuality,
+  type SceneQualityLevel,
+  type SceneQualitySettings
+} from "./SceneQuality";
 
 export interface AdaptiveQualityMonitorProps {
   initialLevel: SceneQualityLevel;
-  onLevelChange: (level: SceneQualityLevel) => void;
+  reducedMotion: boolean;
+  coarsePointer: boolean;
+  onSettingsChange: (settings: SceneQualitySettings) => void;
 }
 
 export function AdaptiveQualityMonitor({
   initialLevel,
-  onLevelChange
+  reducedMotion,
+  coarsePointer,
+  onSettingsChange
 }: AdaptiveQualityMonitorProps) {
   const adaptive = useRef(createAdaptiveQuality({ initialLevel }));
-  const lastLevel = useRef(initialLevel);
+  const lastStage = useRef<RpgQualityDegradationStage>("full");
 
   useFrame((_, delta) => {
-    const next = adaptive.current.recordFrame(delta);
-    if (next !== lastLevel.current) {
-      lastLevel.current = next;
-      onLevelChange(next);
+    adaptive.current.recordFrame(delta);
+    const nextStage = adaptive.current.getStage();
+    if (nextStage !== lastStage.current) {
+      lastStage.current = nextStage;
+      onSettingsChange(
+        getSceneQuality({
+          level: initialLevel,
+          reducedMotion,
+          degradationStage: nextStage,
+          coarsePointer
+        })
+      );
     }
   });
 

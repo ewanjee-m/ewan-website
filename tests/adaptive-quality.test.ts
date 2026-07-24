@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createAdaptiveQuality } from "../app/world/AdaptiveQuality";
+import {
+  RPG_QUALITY_DEGRADATION_ORDER,
+  createAdaptiveQuality
+} from "../app/world/AdaptiveQuality";
+import type { SceneQualityLevel } from "../app/world/SceneQuality";
 
 function runFrames(
   quality: ReturnType<typeof createAdaptiveQuality>,
@@ -32,5 +36,30 @@ describe("adaptive scene quality", () => {
     runFrames(quality, 60, 20);
 
     expect(quality.getLevel()).toBe("medium");
+  });
+
+  it("degrades through the cumulative stages in the required order", () => {
+    const quality = createAdaptiveQuality({
+      initialLevel: "high",
+      lowSamplesBeforeChange: 1
+    });
+
+    expect(quality.getStage()).toBe(RPG_QUALITY_DEGRADATION_ORDER[0]);
+    for (const stage of RPG_QUALITY_DEGRADATION_ORDER.slice(1)) {
+      runFrames(quality, 30, 2);
+      expect(quality.getStage()).toBe(stage);
+    }
+  });
+
+  it("keeps the legacy quality level return and getter type compatible", () => {
+    const quality = createAdaptiveQuality({
+      initialLevel: "high",
+      lowSamplesBeforeChange: 1
+    });
+    const returned: SceneQualityLevel = quality.recordFrame(1 / 60);
+    const current: SceneQualityLevel = quality.getLevel();
+
+    expect(returned).toBe("high");
+    expect(current).toBe("high");
   });
 });

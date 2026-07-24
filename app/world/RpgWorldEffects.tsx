@@ -8,7 +8,7 @@ import {
   getRpgHanabiRenderBudget
 } from "./RpgHanabiLayout";
 import type { RpgRegionPresentationState } from "./RpgRegionPresentation";
-import { getSceneQuality, type SceneQualityLevel } from "./SceneQuality";
+import type { SceneQualitySettings } from "./SceneQuality";
 
 function createPetalPositions(count: number) {
   const values = new Float32Array(count * 3);
@@ -22,23 +22,28 @@ function createPetalPositions(count: number) {
 }
 
 export const RpgWorldEffects = memo(function RpgWorldEffects({
-  qualityLevel,
+  qualitySettings,
   presentation
 }: {
-  qualityLevel: SceneQualityLevel;
+  qualitySettings: SceneQualitySettings;
   presentation: RefObject<RpgRegionPresentationState>;
 }) {
-  const quality = getSceneQuality({ level: qualityLevel, reducedMotion: false });
-  const petalCount = quality.petals.near + quality.petals.middle + quality.petals.far;
+  const petalCount =
+    qualitySettings.petals.near +
+    qualitySettings.petals.middle +
+    qualitySettings.petals.far;
   const petalPositions = useMemo(() => createPetalPositions(petalCount), [petalCount]);
-  const hanabiBudget = getRpgHanabiRenderBudget(qualityLevel);
+  const hanabiBudget = getRpgHanabiRenderBudget(qualitySettings.level);
   const shells = useMemo(
     () =>
       hanabiBudget.bursts.map((burst, index) => ({
         burst,
-        shell: createRpgHanabiShell(hanabiBudget.particlesPerBurst, index + 1)
+        shell: createRpgHanabiShell(
+          qualitySettings.fireworks.particlesPerBurst,
+          index + 1
+        )
       })),
-    [hanabiBudget]
+    [hanabiBudget, qualitySettings.fireworks.particlesPerBurst]
   );
   const petalMaterial = useRef<PointsMaterial>(null);
   const petalGroup = useRef<Group>(null);
@@ -51,7 +56,8 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
     const hanabiIntensity =
       state.zoneWeights.hanabi *
       state.effectIntensity *
-      (hanabiBudget.particlesPerBurst / 220);
+      (qualitySettings.fireworks.particlesPerBurst /
+        getRpgHanabiRenderBudget("high").particlesPerBurst);
     if (petalMaterial.current) {
       petalMaterial.current.opacity = Math.min(1, sakuraIntensity);
     }
@@ -65,7 +71,12 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
   }, -1);
 
   return (
-    <group name="rpg-world-effects">
+    <group
+      name="rpg-world-effects"
+      userData={{
+        fireworkTrailSeconds: qualitySettings.fireworks.trailSeconds
+      }}
+    >
       <group ref={petalGroup}>
         <points userData={{ effectOwner: "sakura-petals" }}>
           <bufferGeometry>

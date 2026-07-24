@@ -6,6 +6,7 @@ import { RpgAirportBusActor } from "./RpgAirportBusActor";
 import type { RpgBusRuntime } from "./RpgBusRuntime";
 import type { RpgCameraDynamicObstacle } from "./RpgCameraCollision";
 import { RpgNpcCrowd } from "./RpgNpcCrowd";
+import { RpgOptionalDecoration } from "./RpgOptionalDecoration";
 import { RpgRegionAudio } from "./RpgRegionAudio";
 import { createRpgRegionPresentation } from "./RpgRegionPresentation";
 import { markRpgRuntimeDiagnostic } from "./RpgRuntimeDiagnostics";
@@ -15,16 +16,19 @@ import { RpgTownArchitecture } from "./RpgTownArchitecture";
 import { RpgTownDetails } from "./RpgTownDetails";
 import { RpgWorldEffects } from "./RpgWorldEffects";
 import { RpgWorldSurfaces } from "./RpgWorldSurfaces";
-import type { SceneQualityLevel } from "./SceneQuality";
+import type { SceneQualitySettings } from "./SceneQuality";
 import type { WorldNavigationSnapshot } from "./WorldNavigationState";
+import type { WorldRuntime } from "./WorldRuntime";
 
 export interface RpgTownSceneProps {
-  readonly qualityLevel?: SceneQualityLevel;
+  readonly qualitySettings: SceneQualitySettings;
   readonly navigation: RefObject<WorldNavigationSnapshot>;
   readonly playerPosition: RefObject<Vector3>;
   readonly dynamicObstacles: RefObject<Map<string, RpgCameraDynamicObstacle>>;
   readonly busRuntime: RpgBusRuntime;
   readonly reducedMotion: boolean;
+  readonly runtime: WorldRuntime;
+  readonly telemetry: RefObject<HTMLDivElement | null>;
 }
 
 export interface RpgTownSceneRenderContract {
@@ -56,12 +60,14 @@ export function resolveRpgTownSceneRenderContract() {
 }
 
 export const RpgTownScene = memo(function RpgTownScene({
-  qualityLevel = "high",
+  qualitySettings,
   navigation,
   playerPosition,
   dynamicObstacles,
   busRuntime,
-  reducedMotion
+  reducedMotion,
+  runtime,
+  telemetry
 }: RpgTownSceneProps) {
   const presentation = useRef(createRpgRegionPresentation());
   useEffect(() => {
@@ -71,15 +77,18 @@ export const RpgTownScene = memo(function RpgTownScene({
   return (
     <group name="seamless-rpg-town">
       <RpgTownAmbience
-        qualityLevel={qualityLevel}
+        qualitySettings={qualitySettings}
         navigation={navigation}
         presentation={presentation}
       />
       <RpgWorldSurfaces />
-      <RpgTownArchitecture qualityLevel={qualityLevel} />
-      <RpgTownDetails presentation={presentation} />
+      <RpgTownArchitecture qualityLevel={qualitySettings.level} />
+      <RpgTownDetails
+        qualitySettings={qualitySettings}
+        presentation={presentation}
+      />
       <RpgSignatureLandmarks
-        qualityLevel={qualityLevel}
+        qualitySettings={qualitySettings}
         presentation={presentation}
       />
       <RpgAirportBusActor
@@ -91,11 +100,15 @@ export const RpgTownScene = memo(function RpgTownScene({
         playerPosition={playerPosition}
         dynamicObstacles={dynamicObstacles}
         reducedMotion={reducedMotion}
+        npcSecondaryMotion={qualitySettings.npcSecondaryMotion}
+        runtime={runtime}
+        telemetry={telemetry}
       />
       <RpgWorldEffects
-        qualityLevel={qualityLevel}
+        qualitySettings={qualitySettings}
         presentation={presentation}
       />
+      <RpgOptionalDecoration telemetry={telemetry} />
       <RpgRegionAudio presentation={presentation} />
     </group>
   );

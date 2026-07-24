@@ -11,17 +11,17 @@ import {
 } from "three";
 import type { RpgRegionPresentationState } from "./RpgRegionPresentation";
 import { resolveRpgRegionPresentation } from "./RpgRegionPresentation";
-import type { SceneQualityLevel } from "./SceneQuality";
+import type { SceneQualitySettings } from "./SceneQuality";
 import type { WorldNavigationSnapshot } from "./WorldNavigationState";
 
 export interface RpgTownAmbienceProps {
-  readonly qualityLevel: SceneQualityLevel;
+  readonly qualitySettings: SceneQualitySettings;
   readonly navigation: RefObject<WorldNavigationSnapshot>;
   readonly presentation: RefObject<RpgRegionPresentationState>;
 }
 
 export function RpgTownAmbience({
-  qualityLevel,
+  qualitySettings,
   navigation,
   presentation
 }: RpgTownAmbienceProps) {
@@ -29,6 +29,7 @@ export function RpgTownAmbience({
   const fog = useRef<Fog>(null);
   const hemisphere = useRef<HemisphereLight>(null);
   const directional = useRef<DirectionalLight>(null);
+  const shadowFrame = useRef(0);
 
   useFrame((_, delta) => {
     const target = resolveRpgRegionPresentation(
@@ -52,10 +53,21 @@ export function RpgTownAmbience({
       directional.current.color.lerp(target.key, colorAmount);
       directional.current.intensity = MathUtils.damp(
         directional.current.intensity,
-        qualityLevel === "low" ? target.keyIntensity * 0.78 : target.keyIntensity,
+        qualitySettings.level === "low"
+          ? target.keyIntensity * 0.78
+          : target.keyIntensity,
         5,
         delta
       );
+      shadowFrame.current += 1;
+      directional.current.shadow.autoUpdate =
+        qualitySettings.shadowUpdateEveryFrames === 1;
+      if (
+        qualitySettings.shadowUpdateEveryFrames > 1 &&
+        shadowFrame.current % qualitySettings.shadowUpdateEveryFrames === 0
+      ) {
+        directional.current.shadow.needsUpdate = true;
+      }
     }
   }, -3);
 
@@ -74,7 +86,9 @@ export function RpgTownAmbience({
         color="#fff6df"
         intensity={1.25}
         position={[-22, 34, 18]}
-        castShadow={qualityLevel !== "low"}
+        castShadow={qualitySettings.shadowMapSize > 0}
+        shadow-mapSize-width={qualitySettings.shadowMapSize}
+        shadow-mapSize-height={qualitySettings.shadowMapSize}
       />
     </>
   );

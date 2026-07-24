@@ -59,4 +59,55 @@ describe("scene quality", () => {
     expect(getSceneShadowMapSize("medium")).toBe(1024);
     expect(getSceneShadowMapSize("low")).toBe(0);
   });
+
+  it("applies cumulative degradation without removing core world layers", () => {
+    const full = getSceneQuality({
+      level: "high",
+      reducedMotion: false,
+      degradationStage: "full"
+    });
+    const degraded = getSceneQuality({
+      level: "high",
+      reducedMotion: false,
+      degradationStage: "npc-secondary-motion"
+    });
+
+    expect(degraded.coreLayers).toEqual({
+      terrain: true,
+      roads: true,
+      collision: true,
+      landmarks: true,
+      player: true
+    });
+    expect(degraded.maxDpr).toBe(1.25);
+    expect(degraded.shadowMapSize).toBe(1024);
+    expect(degraded.shadowUpdateEveryFrames).toBe(4);
+    expect(degraded.fireworks.particlesPerBurst).toBe(
+      Math.floor(full.fireworks.particlesPerBurst * 0.5)
+    );
+    expect(degraded.fireworks.trailSeconds).toBe(
+      full.fireworks.trailSeconds * 0.5
+    );
+    expect(degraded.farDecorationDistance).toBe(18);
+    expect(degraded.npcSecondaryMotion).toBe(false);
+  });
+
+  it("caps degraded DPR for desktop and coarse pointers", () => {
+    expect(
+      getSceneQuality({
+        level: "high",
+        reducedMotion: false,
+        degradationStage: "pixel-ratio",
+        coarsePointer: false
+      }).maxDpr
+    ).toBe(1.25);
+    expect(
+      getSceneQuality({
+        level: "high",
+        reducedMotion: false,
+        degradationStage: "pixel-ratio",
+        coarsePointer: true
+      }).maxDpr
+    ).toBe(1);
+  });
 });

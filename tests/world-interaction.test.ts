@@ -78,6 +78,16 @@ describe("world interaction", () => {
     ).toBeNull();
   });
 
+  it("keeps the Hanabi child target available when only Yukata fails", () => {
+    expect(
+      findWorldInteractionTarget({
+        position: [21, 0, -22],
+        heading: [0, 0, -1],
+        unavailableTargetIds: new Set(["npc-hanabi-yukata"])
+      })?.id
+    ).toBe("npc-hanabi-child");
+  });
+
   it("publishes the runtime-computed nearby target and honors availability", () => {
     const driveToAirportApproach = (runtime: WorldRuntime) => {
       const approach = [-32.1, 0] as const;
@@ -110,6 +120,52 @@ describe("world interaction", () => {
     });
     driveToAirportApproach(unavailable);
     expect(unavailable.getNavigationSnapshot().nearInteractionId).toBeNull();
+  });
+
+  it("mutates target availability and a fresh runtime restores defaults", () => {
+    const driveToAirportApproach = (runtime: WorldRuntime) => {
+      const approach = [-32.1, 0] as const;
+      for (let frame = 0; frame < 400; frame += 1) {
+        const [x, , z] = runtime.getNavigationSnapshot().position;
+        const dx = approach[0] - x;
+        const dz = approach[1] - z;
+        const distance = Math.hypot(dx, dz);
+        if (distance < 1e-4) break;
+        runtime.setMovement({
+          x: dx / distance,
+          y: dz / distance,
+          runRequested: false
+        });
+        runtime.advance(Math.min(1 / 60, distance / 1.61), 0);
+      }
+      runtime.setMovement({ x: 1, y: 0, runRequested: false });
+      runtime.advance(0.1 / 1.61, 0);
+      runtime.setMovement({ x: 0, y: 0, runRequested: false });
+    };
+    const runtime = createWorldRuntime();
+    driveToAirportApproach(runtime);
+    expect(runtime.getNavigationSnapshot().nearInteractionId).toBe(
+      "airport-terminal-entry"
+    );
+
+    const beforeDisableRevision =
+      runtime.getNavigationSnapshot().revision;
+    runtime.setInteractionTargetAvailable("airport-terminal-entry", false);
+    const disabledRevision = runtime.getNavigationSnapshot().revision;
+    expect(disabledRevision).toBe(beforeDisableRevision + 1);
+    expect(runtime.getNavigationSnapshot().nearInteractionId).toBeNull();
+    runtime.setInteractionTargetAvailable("airport-terminal-entry", false);
+    expect(runtime.getNavigationSnapshot().revision).toBe(disabledRevision);
+    runtime.setInteractionTargetAvailable("airport-terminal-entry", true);
+    expect(runtime.getNavigationSnapshot().nearInteractionId).toBe(
+      "airport-terminal-entry"
+    );
+
+    const freshRuntime = createWorldRuntime();
+    driveToAirportApproach(freshRuntime);
+    expect(freshRuntime.getNavigationSnapshot().nearInteractionId).toBe(
+      "airport-terminal-entry"
+    );
   });
 
   it("renders a prompt only for a target and uses its interaction handler", async () => {

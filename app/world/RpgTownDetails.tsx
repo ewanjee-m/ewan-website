@@ -5,6 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import { memo, type RefObject, useRef } from "react";
 import type { MeshStandardMaterial } from "three";
 import type { RpgRegionPresentationState } from "./RpgRegionPresentation";
+import type { SceneQualitySettings } from "./SceneQuality";
 import {
   RPG_COASTAL_ROCK_DETAILS,
   RPG_GYUKATSU_OUTDOOR_DETAILS,
@@ -19,9 +20,11 @@ const SHORELINE_ROCKS = [
 ];
 
 export const RpgTownDetails = memo(function RpgTownDetails({
-  presentation
+  presentation,
+  qualitySettings
 }: {
   presentation: RefObject<RpgRegionPresentationState>;
+  qualitySettings: SceneQualitySettings;
 }) {
   const tokyoMaterial = useRef<MeshStandardMaterial>(null);
   const gyukatsuMaterials = useRef<Array<MeshStandardMaterial | null>>([]);
@@ -44,7 +47,10 @@ export const RpgTownDetails = memo(function RpgTownDetails({
   return (
     <group
       name="approved-town-concept-details"
-      userData={{ blocksMovement: false }}
+      userData={{
+        blocksMovement: false,
+        farDecorationDistance: qualitySettings.farDecorationDistance
+      }}
     >
       <Instances
         limit={SHORELINE_ROCKS.length}
