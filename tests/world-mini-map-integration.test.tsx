@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getMessages } from "../app/i18n/messages";
 import {
@@ -25,6 +26,13 @@ function renderWorld() {
 describe("world mini-map integration", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("loads SeamlessWorldCanvas instead of FlatWorldCanvas", () => {
+    const source = readFileSync("app/world/WorldView.tsx", "utf8");
+
+    expect(source).toContain('import("./SeamlessWorldCanvas")');
+    expect(source).not.toContain('import("./FlatWorldCanvas")');
   });
 
   it("shows the localized map with the world navigation starting point", () => {

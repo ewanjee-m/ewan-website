@@ -27,9 +27,10 @@ import {
 } from "./WorldNavigationState";
 import { RpgMiniMap, type RpgMiniMapLabels } from "./RpgMiniMap";
 import { RpgWorldMap, type RpgWorldMapLabels } from "./RpgWorldMap";
+import { WorldCameraInput } from "./WorldCameraInput";
 import { WorldErrorBoundary } from "./WorldErrorBoundary";
 
-const WorldCanvas = dynamic(() => import("./FlatWorldCanvas"), {
+const WorldCanvas = dynamic(() => import("./SeamlessWorldCanvas"), {
   ssr: false,
   loading: () => <div className="world-canvas-loading" aria-hidden="true" />
 });
@@ -41,6 +42,7 @@ interface WorldLabels {
   worldLabel: string;
   loadingWorld: string;
   movementControl: string;
+  cameraControl: string;
   resetPosition: string;
   jump: string;
   worldFallback: string;
@@ -203,6 +205,13 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
           onNavigationChange={updateNavigation}
         />
       </WorldErrorBoundary>
+
+      <WorldCameraInput
+        label={labels.cameraControl}
+        onDrag={(deltaX, deltaY, pointerKind) =>
+          input.addCameraDrag(deltaX, deltaY, pointerKind)
+        }
+      />
 
       <PortfolioGuide labels={labels} />
 

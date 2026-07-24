@@ -4,7 +4,8 @@ import {
   resolveRpgCameraCollisionInto,
   resolveRpgCameraOrbitCollisionInto,
   RPG_NPC_CAMERA_CLEARANCE,
-  RPG_CAMERA_MINIMUM_BOOM_DISTANCE
+  RPG_CAMERA_MINIMUM_BOOM_DISTANCE,
+  type RpgCameraDynamicObstacle
 } from "../app/world/RpgCameraCollision";
 import {
   RPG_CAMERA_COLUMN_OBSTACLES,
@@ -15,6 +16,7 @@ import {
   PLAYER_CHARACTER_CAMERA_HIDE_DISTANCE
 } from "../app/world/RpgCharacterCameraVisibility";
 import { createRpgBusMotionPose } from "../app/world/RpgBusMotion";
+import { collectRpgCameraDynamicObstacles } from "../app/world/ChaseOrbitCamera3d";
 import {
   isRpgWalkablePosition,
   RPG_LANDMARKS
@@ -79,6 +81,27 @@ const festivalLantern = RPG_LANDMARKS.find(
 )!;
 
 describe("RPG chase camera obstacle clearance", () => {
+  it("refills the caller-owned dynamic obstacle collection without replacing it", () => {
+    const first: RpgCameraDynamicObstacle = {
+      position: [1, 1, 1],
+      size: [1, 2, 1],
+      yaw: 0
+    };
+    const second: RpgCameraDynamicObstacle = {
+      position: [2, 1, 2],
+      size: [1, 2, 1],
+      yaw: Math.PI / 2
+    };
+    const source = new Map([
+      ["first", first],
+      ["second", second]
+    ]);
+    const target = [second];
+
+    expect(collectRpgCameraDynamicObstacles(source, target)).toBe(target);
+    expect(target).toEqual([first, second]);
+  });
+
   it("keeps the full boom length when the route behind the player is clear", () => {
     expect(
       calculateRpgCameraCollisionRatio({

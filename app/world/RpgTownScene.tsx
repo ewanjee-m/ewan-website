@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, type RefObject, useRef } from "react";
+import { memo, type RefObject, useEffect, useRef } from "react";
 import { Vector3 } from "three";
 import { RpgAirportBusActor } from "./RpgAirportBusActor";
 import type { RpgBusRuntime } from "./RpgBusRuntime";
@@ -8,6 +8,7 @@ import type { RpgCameraDynamicObstacle } from "./RpgCameraCollision";
 import { RpgNpcCrowd } from "./RpgNpcCrowd";
 import { RpgRegionAudio } from "./RpgRegionAudio";
 import { createRpgRegionPresentation } from "./RpgRegionPresentation";
+import { markRpgRuntimeDiagnostic } from "./RpgRuntimeDiagnostics";
 import { RpgSignatureLandmarks } from "./RpgSignatureLandmarks";
 import { RpgTownAmbience } from "./RpgTownAmbience";
 import { RpgTownArchitecture } from "./RpgTownArchitecture";
@@ -63,6 +64,10 @@ export const RpgTownScene = memo(function RpgTownScene({
   reducedMotion
 }: RpgTownSceneProps) {
   const presentation = useRef(createRpgRegionPresentation());
+  useEffect(() => {
+    markRpgRuntimeDiagnostic("sceneMounts");
+  }, []);
+
   return (
     <group name="seamless-rpg-town">
       <RpgTownAmbience

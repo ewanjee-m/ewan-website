@@ -255,7 +255,7 @@ describe("start experience", () => {
     description.remove();
   });
 
-  it("keeps world controls while removing only inactive 3D camera controls", async () => {
+  it("keeps world controls and activates the 3D camera drag area", async () => {
     const user = userEvent.setup();
     render(<ExperienceShell locale="en" />);
 
@@ -273,8 +273,8 @@ describe("start experience", () => {
       screen.getByRole("button", { name: "Open world map (M key)" })
     ).toBeVisible();
     expect(
-      screen.queryByRole("region", { name: "Camera drag area" })
-    ).not.toBeInTheDocument();
+      screen.getByLabelText("Camera drag area")
+    ).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "Reset camera" })
     ).not.toBeInTheDocument();

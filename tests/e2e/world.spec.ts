@@ -52,6 +52,37 @@ async function readWorldPosition(page: Page) {
     .map(Number);
 }
 
+test("enters the seamless WebGL world", async ({ page }) => {
+  await page.addInitScript(() => localStorage.clear());
+  await page.goto("/en");
+  await page.getByRole("button", { name: "START" }).click();
+  await page
+    .getByRole("button", { name: "Select female character" })
+    .click();
+  await page.getByRole("button", { name: "ENTER WORLD" }).click();
+
+  const renderer = page.locator(
+    '.seamless-world-renderer[data-renderer-technology="webgl3d"][data-world-ready="true"]'
+  );
+  await expect(renderer).toBeVisible({ timeout: 30_000 });
+  await expect(renderer).toHaveAttribute("data-camera-diagnostic", "ok");
+  await expect
+    .poll(async () => Number(await renderer.getAttribute("data-camera-boom")))
+    .toBeGreaterThanOrEqual(2.6);
+  await expect
+    .poll(async () =>
+      Number(await renderer.getAttribute("data-camera-safe-violation-ms"))
+    )
+    .toBeLessThanOrEqual(250);
+  expect(
+    await page.evaluate(() => window.__RPG_RUNTIME_DIAGNOSTICS__)
+  ).toEqual({
+    canvasMounts: 1,
+    runtimeCreates: 1,
+    sceneMounts: 1
+  });
+});
+
 test.describe("pre-world responsive flow", () => {
   for (const scenario of [
     {

@@ -498,12 +498,14 @@ a:focus-visible {
 }
 
 .flat-world-renderer,
+.seamless-world-renderer,
 .flat-world-vignette {
   position: absolute;
   inset: 0;
 }
 
-.flat-world-renderer {
+.flat-world-renderer,
+.seamless-world-renderer {
   overflow: hidden;
   background: #07152e;
 }

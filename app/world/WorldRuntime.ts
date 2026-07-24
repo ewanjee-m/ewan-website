@@ -14,6 +14,7 @@ import {
   freezeWorldNavigationRegion,
   type WorldNavigationSnapshot
 } from "./WorldNavigationState";
+import { createChaseOrbitCameraState } from "./ChaseOrbitCamera";
 
 export const WORLD_WALK_SPEED = 1.61;
 export const WORLD_RUN_SPEED = 1.9;
@@ -48,6 +49,7 @@ export function isWorldRuntimeWalkablePosition(
 
 export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
   const movement: WorldMovementIntent = { x: 0, y: 0, runRequested: false };
+  const cameraState = createChaseOrbitCameraState();
   let x = RPG_WORLD_SPAWN[0];
   let z = RPG_WORLD_SPAWN[2];
   let heading: WorldPoint3 = [1, 0, 0];
@@ -111,6 +113,7 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
       jumpOffset = 0;
       jumpVelocity = 0;
       Object.assign(movement, { x: 0, y: 0, runRequested: false });
+      Object.assign(cameraState, createChaseOrbitCameraState());
       revision += 1;
     },
     advance(deltaSeconds: number, cameraYaw: number) {
@@ -160,7 +163,10 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
         revision += 1;
       }
     },
-    getNavigationSnapshot: snapshot
+    getNavigationSnapshot: snapshot,
+    getCameraState() {
+      return cameraState;
+    }
   };
 }
 

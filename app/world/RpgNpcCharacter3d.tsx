@@ -26,6 +26,10 @@ import {
   shouldRenderRpgCharacter
 } from "./RpgCharacterCameraVisibility";
 import {
+  advanceRpgCameraOcclusion,
+  createRpgCameraOcclusionState
+} from "./RpgCameraOcclusion";
+import {
   createRpgNpcRigAdapter,
   type RpgNpcRigAdapter
 } from "./RpgNpcRigAdapter";
@@ -83,6 +87,7 @@ const RpgNpcCharacter3dBase = forwardRef<
   const root = useRef<Group>(null);
   const worldPosition = useRef(new Vector3());
   const wasBlockingSightLine = useRef(false);
+  const sightLineOcclusion = useRef(createRpgCameraOcclusionState());
   const modelScale = modelDefinition.visibleHeight / modelDefinition.nativeHeight;
 
   useImperativeHandle(
@@ -112,7 +117,7 @@ const RpgNpcCharacter3dBase = forwardRef<
     [modelScale, rigAdapter]
   );
 
-  useFrame(({ camera }) => {
+  useFrame(({ camera }, delta) => {
     const activeRoot = root.current;
     if (!activeRoot) return;
     activeRoot.getWorldPosition(worldPosition.current);
@@ -132,11 +137,17 @@ const RpgNpcCharacter3dBase = forwardRef<
           )
         : false;
     wasBlockingSightLine.current = blocking;
+    advanceRpgCameraOcclusion(
+      sightLineOcclusion.current,
+      blocking,
+      delta,
+      npcId
+    );
     model.visible =
       shouldRenderRpgCharacter(
         cameraDistance,
         NPC_CHARACTER_CAMERA_HIDE_DISTANCE
-      ) && !blocking;
+      ) && sightLineOcclusion.current.opacity > 0.15;
     const outlineVisible = cameraDistance <= NPC_OUTLINE_MAX_DISTANCE;
     for (const outline of prepared.outlines) {
       outline.visible = outlineVisible;
