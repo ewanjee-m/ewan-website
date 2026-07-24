@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode
 } from "react";
+import { DefaultLoadingManager } from "three";
 
 interface RpgAssetBoundaryProps {
   readonly assetId: string;
@@ -32,30 +33,85 @@ type AssetAvailability =
   | { readonly available: true }
   | { readonly available: false; readonly errorName: string };
 
-const assetAvailabilityCache = new Map<
-  string,
-  Promise<AssetAvailability>
->();
+interface AssetResource {
+  readonly controller: AbortController;
+  promise: Promise<AssetAvailability>;
+  subscribers: number;
+  settled: boolean;
+  objectUrl: string | null;
+}
 
-function checkAssetAvailability(src: string) {
-  const cached = assetAvailabilityCache.get(src);
-  if (cached) return cached;
-  const request = fetch(src, { cache: "force-cache" })
-    .then<AssetAvailability>((response) =>
-      response.ok
-        ? { available: true }
-        : { available: false, errorName: "AssetHttpError" }
-    )
+const assetResources = new Map<string, AssetResource>();
+const resolvedAssetUrls = new Map<string, string>();
+
+DefaultLoadingManager.setURLModifier(
+  (url) => resolvedAssetUrls.get(url) ?? url
+);
+
+function createAssetResource(src: string): AssetResource {
+  const controller = new AbortController();
+  const resource: AssetResource = {
+    controller,
+    subscribers: 0,
+    settled: false,
+    objectUrl: null,
+    promise: Promise.resolve({ available: false, errorName: "AssetNetworkError" })
+  };
+  resource.promise = fetch(src, {
+    cache: "force-cache",
+    signal: controller.signal
+  })
+    .then(async (response): Promise<AssetAvailability> => {
+      if (!response.ok) {
+        return { available: false, errorName: "AssetHttpError" };
+      }
+      const objectUrl = URL.createObjectURL(await response.blob());
+      resource.objectUrl = objectUrl;
+      resolvedAssetUrls.set(src, objectUrl);
+      return { available: true };
+    })
     .catch((error: unknown): AssetAvailability => ({
       available: false,
       errorName: error instanceof Error ? error.name : "AssetNetworkError"
-    }));
-  assetAvailabilityCache.set(src, request);
-  return request;
+    }))
+    .then((result) => {
+      resource.settled = true;
+      if (!result.available && assetResources.get(src) === resource) {
+        assetResources.delete(src);
+      }
+      return result;
+    });
+  assetResources.set(src, resource);
+  return resource;
+}
+
+function subscribeToAsset(src: string) {
+  const resource = assetResources.get(src) ?? createAssetResource(src);
+  resource.subscribers += 1;
+  let released = false;
+  return {
+    promise: resource.promise,
+    release() {
+      if (released) return;
+      released = true;
+      resource.subscribers -= 1;
+      if (resource.subscribers === 0 && !resource.settled) {
+        if (assetResources.get(src) === resource) {
+          assetResources.delete(src);
+        }
+        resource.controller.abort();
+      }
+    }
+  };
 }
 
 export function clearRpgAssetAvailabilityCacheForTests() {
-  assetAvailabilityCache.clear();
+  for (const resource of assetResources.values()) {
+    if (!resource.settled) resource.controller.abort();
+    if (resource.objectUrl) URL.revokeObjectURL(resource.objectUrl);
+  }
+  assetResources.clear();
+  resolvedAssetUrls.clear();
 }
 
 export function RpgAssetAvailabilityGate({
@@ -78,7 +134,8 @@ export function RpgAssetAvailabilityGate({
 
   useEffect(() => {
     let active = true;
-    void checkAssetAvailability(src).then((result) => {
+    const subscription = subscribeToAsset(src);
+    void subscription.promise.then((result) => {
       if (!active) return;
       setAvailability(result);
       if (result.available) {
@@ -92,6 +149,7 @@ export function RpgAssetAvailabilityGate({
     });
     return () => {
       active = false;
+      subscription.release();
     };
   }, [assetId, src]);
 

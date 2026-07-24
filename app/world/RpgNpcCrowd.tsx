@@ -109,6 +109,13 @@ function RpgNpcActor({
   };
 
   useEffect(() => {
+    runtime?.setInteractionTargetAvailable(
+      landmark.id,
+      assetAvailable && !assetFailed.current
+    );
+  }, [assetAvailable, landmark.id, runtime]);
+
+  useEffect(() => {
     const obstacles = dynamicObstacles.current;
     if (!assetAvailable || assetFailed.current) {
       obstacles.delete(landmark.id);

@@ -216,13 +216,4 @@ const RpgNpcCharacter3dBase = forwardRef<
   );
 });
 
-useGLTF.preload(
-  "/assets/models/characters/npc-airport-traveler.glb",
-  false,
-  false
-);
-useGLTF.preload("/assets/models/characters/npc-gyukatsu-chef.glb", false, false);
-useGLTF.preload("/assets/models/characters/npc-hanabi-yukata.glb", false, false);
-useGLTF.preload("/assets/models/characters/npc-sakura-visitor.glb", false, false);
-
 export const RpgNpcCharacter3d = memo(RpgNpcCharacter3dBase);

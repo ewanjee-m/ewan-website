@@ -128,21 +128,26 @@ test("falls back when the selected player GLB returns 404", async ({
   page
 }) => {
   const evidence = captureAssetFailureEvidence(page);
-  await page.route("**/player-male.glb", (route) =>
-    route.fulfill({ status: 404, body: "" })
-  );
+  let originalRequests = 0;
+  await page.route("**/player-male.glb", (route) => {
+    originalRequests += 1;
+    return route.fulfill({ status: 404, body: "" });
+  });
   const renderer = await enterSeamlessWorld(page, "male");
 
   await expect(renderer).toHaveAttribute("data-character-fallback", "true");
   await expectMoved(page);
   expectRedactedAssetFailure(evidence, "player-male.glb");
+  expect(originalRequests).toBe(1);
 });
 
 test("falls back by omitting only one failed NPC", async ({ page }) => {
   const evidence = captureAssetFailureEvidence(page);
-  await page.route("**/npc-hanabi-yukata.glb", (route) =>
-    route.fulfill({ status: 404, body: "" })
-  );
+  let originalRequests = 0;
+  await page.route("**/npc-hanabi-yukata.glb", (route) => {
+    originalRequests += 1;
+    return route.fulfill({ status: 404, body: "" });
+  });
   const renderer = await enterSeamlessWorld(page);
 
   await expect(renderer).toHaveAttribute(
@@ -154,15 +159,18 @@ test("falls back by omitting only one failed NPC", async ({ page }) => {
   await page.getByRole("button", { name: "Interact" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   expectRedactedAssetFailure(evidence, "npc-hanabi-yukata.glb");
+  expect(originalRequests).toBe(1);
 });
 
 test("falls back by omitting the optional Hanabi decoration", async ({
   page
 }) => {
   const evidence = captureAssetFailureEvidence(page);
-  await page.route("**/hanabi-festival-sign.svg", (route) =>
-    route.fulfill({ status: 404, body: "" })
-  );
+  let originalRequests = 0;
+  await page.route("**/hanabi-festival-sign.svg", (route) => {
+    originalRequests += 1;
+    return route.fulfill({ status: 404, body: "" });
+  });
   const renderer = await enterSeamlessWorld(page);
 
   await expect(renderer).toHaveAttribute(
@@ -173,6 +181,37 @@ test("falls back by omitting the optional Hanabi decoration", async ({
   await expectMoved(page);
   await approachAirportInteraction(page);
   expectRedactedAssetFailure(evidence, "hanabi-festival-sign.svg");
+  expect(originalRequests).toBe(1);
+});
+
+test("requests each original RPG asset once before loading its cached object URL", async ({
+  page
+}) => {
+  const expectedAssets = [
+    "player-female.glb",
+    "npc-airport-traveler.glb",
+    "npc-gyukatsu-chef.glb",
+    "npc-hanabi-yukata.glb",
+    "npc-sakura-visitor.glb",
+    "hanabi-festival-sign.svg"
+  ];
+  const requestCounts = new Map<string, number>();
+  page.on("request", (request) => {
+    const filename = new URL(request.url()).pathname.split("/").at(-1);
+    if (filename && expectedAssets.includes(filename)) {
+      requestCounts.set(filename, (requestCounts.get(filename) ?? 0) + 1);
+    }
+  });
+
+  const renderer = await enterSeamlessWorld(page);
+  await expect(renderer).toHaveAttribute(
+    "data-optional-decoration",
+    "available"
+  );
+  await expect.poll(() =>
+    expectedAssets.map((asset) => requestCounts.get(asset) ?? 0)
+  ).toEqual(expectedAssets.map(() => 1));
+  expect(requestCounts.get("player-male.glb") ?? 0).toBe(0);
 });
 
 test("retries after WebGL support becomes available", async ({ page }) => {

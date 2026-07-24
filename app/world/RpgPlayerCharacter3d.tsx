@@ -141,7 +141,4 @@ const RpgPlayerCharacter3dBase = forwardRef<
   );
 });
 
-useGLTF.preload("/assets/models/characters/player-male.glb", false, false);
-useGLTF.preload("/assets/models/characters/player-female.glb", false, false);
-
 export const RpgPlayerCharacter3d = memo(RpgPlayerCharacter3dBase);

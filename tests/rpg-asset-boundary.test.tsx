@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { forwardRef } from "react";
-import { Vector3 } from "three";
-import { describe, expect, it, vi } from "vitest";
+import { DefaultLoadingManager, Vector3 } from "three";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RpgCameraDynamicObstacle } from "../app/world/RpgCameraCollision";
 import {
   RpgAssetAvailabilityGate,
@@ -33,7 +33,119 @@ function BrokenAsset(): never {
   throw new TypeError("asset failed");
 }
 
+afterEach(() => {
+  clearRpgAssetAvailabilityCacheForTests();
+  vi.unstubAllGlobals();
+});
+
 describe("RPG asset recovery", () => {
+  it("maps one original request to one cached object URL for the loader", async () => {
+    const src = "/assets/models/characters/player-male.glb";
+    const fetchMock = vi.fn(async () =>
+      new Response(new Blob(["glb"]), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:rpg-player"),
+      revokeObjectURL: vi.fn()
+    });
+
+    render(
+      <RpgAssetAvailabilityGate
+        assetId="player-male"
+        src={src}
+        fallback={<p>Loading</p>}
+      >
+        <p>Loaded</p>
+      </RpgAssetAvailabilityGate>
+    );
+
+    expect(await screen.findByText("Loaded")).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(DefaultLoadingManager.resolveURL(src)).toBe("blob:rpg-player");
+  });
+
+  it("evicts a failed request so a remount can recover", async () => {
+    const src = "/assets/world/recoverable.svg";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("", { status: 404 }))
+      .mockResolvedValueOnce(new Response(new Blob(["svg"]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:recovered"),
+      revokeObjectURL: vi.fn()
+    });
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    const first = render(
+      <RpgAssetAvailabilityGate
+        assetId="recoverable"
+        src={src}
+        fallback={<p>Fallback</p>}
+      >
+        <p>Loaded</p>
+      </RpgAssetAvailabilityGate>
+    );
+    await waitFor(() => expect(consoleError).toHaveBeenCalledOnce());
+    first.unmount();
+
+    render(
+      <RpgAssetAvailabilityGate
+        assetId="recoverable"
+        src={src}
+        fallback={<p>Fallback</p>}
+      >
+        <p>Recovered</p>
+      </RpgAssetAvailabilityGate>
+    );
+
+    expect(await screen.findByText("Recovered")).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    consoleError.mockRestore();
+  });
+
+  it("aborts an in-flight request when its last subscriber unmounts", async () => {
+    let signal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_src: string, init?: RequestInit) => {
+        signal = init?.signal ?? undefined;
+        return new Promise<Response>(() => undefined);
+      })
+    );
+
+    const first = render(
+      <RpgAssetAvailabilityGate
+        assetId="pending"
+        src="/assets/pending.glb"
+        fallback={null}
+      >
+        <p>Loaded</p>
+      </RpgAssetAvailabilityGate>
+    );
+    const second = render(
+      <RpgAssetAvailabilityGate
+        assetId="pending-copy"
+        src="/assets/pending.glb"
+        fallback={null}
+      >
+        <p>Loaded copy</p>
+      </RpgAssetAvailabilityGate>
+    );
+    await waitFor(() => expect(signal).toBeDefined());
+    first.unmount();
+    expect(signal?.aborted).toBe(false);
+    second.unmount();
+
+    expect(signal?.aborted).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("handles an expected network failure before mounting the throwing loader", async () => {
     clearRpgAssetAvailabilityCacheForTests();
     const loader = vi.fn(() => <p>GLTF loader mounted</p>);
@@ -106,6 +218,11 @@ describe("RPG asset recovery", () => {
       "fetch",
       vi.fn(async () => new Response("", { status: 200 }))
     );
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:npc"),
+      revokeObjectURL: vi.fn()
+    });
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);

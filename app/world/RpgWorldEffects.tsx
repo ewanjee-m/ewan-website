@@ -5,7 +5,8 @@ import { memo, type RefObject, useMemo, useRef } from "react";
 import type { Group, PointsMaterial } from "three";
 import {
   createRpgHanabiShell,
-  getRpgHanabiRenderBudget
+  getRpgHanabiRenderBudget,
+  type RpgHanabiBurst
 } from "./RpgHanabiLayout";
 import type { RpgRegionPresentationState } from "./RpgRegionPresentation";
 import type { SceneQualitySettings } from "./SceneQuality";
@@ -19,6 +20,31 @@ function createPetalPositions(count: number) {
     values[index * 3 + 2] = -24 + Math.sin(angle) * (2 + (index % 7) * 0.42);
   }
   return values;
+}
+
+export function calculateActiveRpgFireworkFrame({
+  elapsedSeconds,
+  burst,
+  intensity,
+  trailSeconds
+}: {
+  elapsedSeconds: number;
+  burst: RpgHanabiBurst;
+  intensity: number;
+  trailSeconds: number;
+}) {
+  const elapsed = elapsedSeconds - burst.delay;
+  if (elapsed < 0 || intensity <= 0) {
+    return { visible: false, opacity: 0 } as const;
+  }
+  const localTime = elapsed % burst.cycle;
+  const lifetime = Math.min(burst.cycle * 0.9, 0.3 + trailSeconds);
+  if (localTime >= lifetime) {
+    return { visible: false, opacity: 0 } as const;
+  }
+  const fade = Math.max(0, 1 - localTime / lifetime);
+  const opacity = Math.min(1, Math.max(0, intensity) * fade);
+  return { visible: opacity > 0.01, opacity } as const;
 }
 
 export const RpgWorldEffects = memo(function RpgWorldEffects({
@@ -47,6 +73,7 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
   );
   const petalMaterial = useRef<PointsMaterial>(null);
   const petalGroup = useRef<Group>(null);
+  const fireworkGroups = useRef<Array<{ visible: boolean } | null>>([]);
   const fireworkMaterials = useRef<Array<PointsMaterial | null>>([]);
 
   useFrame(({ clock }, delta) => {
@@ -65,8 +92,17 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
       petalGroup.current.rotation.y += delta * 0.08;
       petalGroup.current.position.y = Math.sin(clock.elapsedTime * 0.5) * 0.18;
     }
-    for (const material of fireworkMaterials.current) {
-      if (material) material.opacity = Math.min(1, hanabiIntensity);
+    for (let index = 0; index < shells.length; index += 1) {
+      const frame = calculateActiveRpgFireworkFrame({
+        elapsedSeconds: clock.elapsedTime,
+        burst: shells[index].burst,
+        intensity: hanabiIntensity,
+        trailSeconds: qualitySettings.fireworks.trailSeconds
+      });
+      const group = fireworkGroups.current[index];
+      const material = fireworkMaterials.current[index];
+      if (group) group.visible = frame.visible;
+      if (material) material.opacity = frame.opacity;
     }
   }, -1);
 
@@ -93,6 +129,9 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
       </group>
       {shells.map(({ burst, shell }, index) => (
         <points
+          ref={(group) => {
+            fireworkGroups.current[index] = group;
+          }}
           key={burst.id}
           position={burst.position}
           scale={burst.radius}
