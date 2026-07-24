@@ -24,7 +24,7 @@ const ROUTE_HALF_TURN_LENGTH = Math.PI * ROUTE_TURN_RADIUS;
 
 export const RPG_BUS_ROUTE_LENGTH =
   ROUTE_STRAIGHT_LENGTH * 2 + ROUTE_HALF_TURN_LENGTH * 2;
-export const RPG_BUS_WHEEL_RADIUS = 0.32;
+export const RPG_BUS_WHEEL_RADIUS = 0.43;
 export const RPG_BUS_ACTOR_CLEARANCE = 0.3;
 export const RPG_BUS_DEFAULT_SIZE: RpgBusSize = [6, 2.15, 2.2];
 export const RPG_BUS_ROUTE_BOUNDS = {

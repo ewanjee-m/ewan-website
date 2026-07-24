@@ -47,6 +47,6 @@ describe("rigged toon GLB NPC renderer", () => {
     expect(crowdSource).toContain("componentDidCatch");
     expect(crowdSource).toContain("removeObstacle");
     expect(crowdSource).toContain("delete(landmark.id)");
-    expect(crowdSource).not.toContain("assetFailed");
+    expect(crowdSource).toContain("assetFailed.current = true");
   });
 });

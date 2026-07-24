@@ -88,7 +88,9 @@ function RpgNpcActor({
     clearance: RPG_NPC_CAMERA_CLEARANCE
   });
   const removeObstacle = useRef<() => void>(() => undefined);
+  const assetFailed = useRef(false);
   const handleAssetError = useCallback(() => {
+    assetFailed.current = true;
     removeObstacle.current();
   }, []);
 
@@ -98,7 +100,9 @@ function RpgNpcActor({
       obstacles.delete(landmark.id);
     };
     removeObstacle.current = remove;
-    obstacles.set(landmark.id, obstacle.current);
+    if (!assetFailed.current) {
+      obstacles.set(landmark.id, obstacle.current);
+    }
     return remove;
   }, [dynamicObstacles, landmark.id]);
 

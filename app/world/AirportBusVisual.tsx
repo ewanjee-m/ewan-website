@@ -4,6 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import * as React from "react";
 import * as THREE from "three";
 import { createAirportBus, createAirportBusSnapshot } from "./AirportBus";
+import { RPG_BUS_WHEEL_RADIUS } from "./RpgBusMotion";
 import {
   AIRPORT_BUS_STATION_ROUTE_PROGRESS,
   BUS_LANE_CENTER_OFFSET,
@@ -68,9 +69,16 @@ function BusWheel({
   wheelRef?: (wheel: THREE.Group | null) => void;
 }) {
   return (
-    <group ref={wheelRef} position={[x, 0.43, z]}>
+    <group ref={wheelRef} position={[x, RPG_BUS_WHEEL_RADIUS, z]}>
       <mesh rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.43, 0.43, 0.24, 10]} />
+        <cylinderGeometry
+          args={[
+            RPG_BUS_WHEEL_RADIUS,
+            RPG_BUS_WHEEL_RADIUS,
+            0.24,
+            10
+          ]}
+        />
         <meshStandardMaterial color="#182331" roughness={0.98} flatShading />
       </mesh>
       <mesh

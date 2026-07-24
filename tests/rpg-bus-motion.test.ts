@@ -47,11 +47,29 @@ describe("RPG airport bus route motion", () => {
     expect(actorSource).not.toContain("createAirportBus(");
     expect(visualSource).toContain("wheelRefs");
     expect(visualSource).toContain("AIRPORT_BUS_DOOR_CLOSED_POSITION");
-    expect(visualSource).toContain("position={[x, 0.43, z]}");
+    expect(visualSource).toContain("RPG_BUS_WHEEL_RADIUS");
+    expect(visualSource).toContain("position={[x, RPG_BUS_WHEEL_RADIUS, z]}");
     expect(visualSource).toContain(
-      "<cylinderGeometry args={[0.43, 0.43, 0.24, 10]}"
+      "<cylinderGeometry"
+    );
+    expect(visualSource).toMatch(
+      /args=\{\[\s*RPG_BUS_WHEEL_RADIUS,\s*RPG_BUS_WHEEL_RADIUS,\s*0\.24,\s*10\s*\]\}/
     );
     expect(visualSource).toContain("<AirportBusModel leftDoor={leftDoor} />");
+  });
+
+  it("rotates the rendered 0.43-radius wheels by distance over radius", () => {
+    const distance = RPG_BUS_WHEEL_RADIUS * 2.5;
+    const pose = evaluateRpgBusMotionInto(
+      {
+        routeProgress: distance / RPG_BUS_ROUTE_LENGTH,
+        completedLoops: 0
+      },
+      createRpgBusMotionPose()
+    );
+
+    expect(RPG_BUS_WHEEL_RADIUS).toBe(0.43);
+    expect(pose.wheelRotation).toBeCloseTo(-2.5, 10);
   });
 
   it("advances one shared runtime for rendering, player collision, and camera collision", () => {
