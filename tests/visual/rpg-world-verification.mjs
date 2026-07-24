@@ -26,6 +26,7 @@ import {
   RPG_VISUAL_CAMERA_FIXTURES,
   resolveRpgVisualCameraYaw
 } from "../fixtures/rpg-visual-camera-fixtures.ts";
+import { getRegionCameraProfile } from "../../app/world/ChaseOrbitCamera.ts";
 import {
   analyzePngCrop,
   encodeSolidColorPng
@@ -1086,9 +1087,11 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
       viewportName === "mobile"
         ? CAMERA_FIXTURES.hanabi.mobileDistance
         : CAMERA_FIXTURES.hanabi.desktopDistance;
+    const hanabiTravelPitchDegrees =
+      getRegionCameraProfile("hanabi", viewportName).pitchDegrees;
     await waitForCameraFixture(
       page,
-      CAMERA_FIXTURES.hanabi.pitchDegrees,
+      hanabiTravelPitchDegrees,
       hanabiCaptureDistance
     );
     await driveTo(page, [21, -26.1], {
@@ -1096,7 +1099,7 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
     });
     await waitForCameraFixture(
       page,
-      CAMERA_FIXTURES.hanabi.pitchDegrees,
+      hanabiTravelPitchDegrees,
       hanabiCaptureDistance
     );
     await driveForwardToPoint(page, [21, -26], 0, {

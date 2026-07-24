@@ -56,6 +56,23 @@ describe("RPG visual capture execution contract", () => {
     );
   });
 
+  it("keeps Hanabi travel pitch separate from the final scenic pitch", () => {
+    expect(source).toContain(
+      'getRegionCameraProfile("hanabi", viewportName).pitchDegrees'
+    );
+    expect(source).toContain("hanabiTravelPitchDegrees");
+    expect(
+      source.match(
+        /await waitForCameraFixture\(\s*page,\s*hanabiTravelPitchDegrees,/g
+      )
+    ).toHaveLength(2);
+    expect(
+      source.match(
+        /await waitForCameraFixture\(\s*page,\s*CAMERA_FIXTURES\.hanabi\.pitchDegrees,/g
+      )
+    ).toHaveLength(1);
+  });
+
   it("aims the airport proof at the live moving coach", () => {
     expect(source).toContain("busPosition");
     expect(source).toContain('id === "airport"');
