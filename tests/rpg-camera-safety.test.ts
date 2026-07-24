@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { Vector3 } from "three";
 import {
+  advanceRpgCameraSafetyOffset,
   advanceRpgCameraSafetyViolation,
   calculateRpgCameraSafetyCorrection,
   getRpgCameraSafeArea
@@ -135,5 +137,45 @@ describe("RPG camera screen safety", () => {
         1 / 60
       )
     ).toBe(0);
+  });
+
+  it("clamps the world-space safety target to 2.2 and smooths with a 0.08s half-life", () => {
+    const current = new Vector3();
+    const target = new Vector3();
+
+    advanceRpgCameraSafetyOffset({
+      distance: 8,
+      correction: { x: 1, y: 1 },
+      cameraRight: new Vector3(1, 0, 0),
+      cameraUp: new Vector3(0, 1, 0),
+      currentOffset: current,
+      targetOffset: target,
+      deltaSeconds: 0.08
+    });
+
+    expect(target.length()).toBeCloseTo(2.2);
+    expect(target.x).toBeCloseTo(1.76);
+    expect(target.y).toBeCloseTo(-1.32);
+    expect(current.length()).toBeCloseTo(1.1);
+    expect(current.x).toBeCloseTo(0.88);
+    expect(current.y).toBeCloseTo(-0.66);
+  });
+
+  it("decays the current safety offset toward zero when the body is safe", () => {
+    const current = new Vector3(1.6, -0.8, 0.4);
+    const target = new Vector3(9, 9, 9);
+
+    advanceRpgCameraSafetyOffset({
+      distance: 4,
+      correction: { x: 0, y: 0 },
+      cameraRight: new Vector3(1, 0, 0),
+      cameraUp: new Vector3(0, 1, 0),
+      currentOffset: current,
+      targetOffset: target,
+      deltaSeconds: 0.08
+    });
+
+    expect(target.toArray()).toEqual([0, 0, 0]);
+    expect(current.toArray()).toEqual([0.8, -0.4, 0.2]);
   });
 });

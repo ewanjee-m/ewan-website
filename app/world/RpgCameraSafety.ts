@@ -1,3 +1,5 @@
+import type { Vector3 } from "three";
+
 export interface RpgCameraContentRect {
   x: number;
   y: number;
@@ -28,6 +30,39 @@ export interface RpgCameraSafetyCorrection {
 
 function stableMetric(value: number) {
   return Number(value.toFixed(12));
+}
+
+export function advanceRpgCameraSafetyOffset({
+  distance,
+  correction,
+  cameraRight,
+  cameraUp,
+  currentOffset,
+  targetOffset,
+  deltaSeconds
+}: {
+  distance: number;
+  correction: Readonly<RpgCameraSafetyCorrection>;
+  cameraRight: Readonly<Vector3>;
+  cameraUp: Readonly<Vector3>;
+  currentOffset: Vector3;
+  targetOffset: Vector3;
+  deltaSeconds: number;
+}) {
+  const horizontalShift = Math.min(distance * 0.35, 2);
+  const verticalShift = Math.min(distance * 0.25, 1.5);
+  targetOffset
+    .copy(cameraRight)
+    .multiplyScalar(correction.x * horizontalShift)
+    .addScaledVector(cameraUp, -correction.y * verticalShift);
+  if (targetOffset.length() > 2.2) {
+    targetOffset.setLength(2.2);
+  }
+  currentOffset.lerp(
+    targetOffset,
+    1 - Math.pow(0.5, deltaSeconds / 0.08)
+  );
+  return currentOffset;
 }
 
 export function advanceRpgCameraSafetyViolation(

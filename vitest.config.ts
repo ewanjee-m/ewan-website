@@ -16,13 +16,17 @@ export const RETIRED_UNIT_SUITES = [
   "tests/rpg-town-street-life.test.ts"
 ] as const;
 
+export const ACTIVE_UNIT_EXCLUDES = RETIRED_UNIT_SUITES.filter(
+  (path) => path !== "tests/rpg-camera-collision.test.ts"
+);
+
 export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
     setupFiles: ["./tests/setup.ts"],
     include: [...CURRENT_UNIT_INCLUDE],
-    exclude: [...configDefaults.exclude, ...RETIRED_UNIT_SUITES],
+    exclude: [...configDefaults.exclude, ...ACTIVE_UNIT_EXCLUDES],
     restoreMocks: true,
     clearMocks: true
   }

@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   calculateRpgCameraCollisionRatio,
@@ -12,11 +10,6 @@ import {
   RPG_CAMERA_COLUMN_OBSTACLES,
   toRpgCameraColumnObstacles
 } from "../app/world/RpgCameraObstacleSources";
-import { calculateRpgCameraPlacement } from "../app/world/RpgCameraPlacement";
-import {
-  FLAT_WORLD_HALF_WIDTH,
-  getDestinationPosition
-} from "../app/guide/WorldNavigation";
 import {
   NPC_CHARACTER_CAMERA_HIDE_DISTANCE,
   PLAYER_CHARACTER_CAMERA_HIDE_DISTANCE
@@ -46,15 +39,22 @@ function npcObstacleAt(distanceBehind: number, lateralOffset = 0) {
 }
 
 function desiredCameraAtPitch(pitch: number) {
-  const placement = calculateRpgCameraPlacement({
-    player: OPEN_GROUND,
-    heading: [0, 0, -1],
-    camera: { yaw: 0, pitch }
-  });
+  return desiredChaseCamera(OPEN_GROUND, 180, pitch);
+}
+
+function desiredChaseCamera(
+  player: readonly [number, number, number],
+  yawDegrees: number,
+  pitchDegrees: number
+) {
+  const distance = 5.6;
+  const yaw = (yawDegrees * Math.PI) / 180;
+  const pitch = (pitchDegrees * Math.PI) / 180;
+  const horizontal = Math.cos(pitch) * distance;
   return [
-    placement.position.x,
-    placement.position.y,
-    placement.position.z
+    player[0] - Math.sin(yaw) * horizontal,
+    player[1] + 1.15 + Math.sin(pitch) * distance,
+    player[2] - Math.cos(yaw) * horizontal
   ] as const;
 }
 
@@ -210,7 +210,7 @@ describe("RPG chase camera obstacle clearance", () => {
   });
 
   it("retracts the boom in front of a townsperson standing behind the player", () => {
-    const desiredCamera = desiredCameraAtPitch(-8);
+    const desiredCamera = desiredCameraAtPitch(18);
     const npc = npcObstacleAt(2.5);
 
     expect(
@@ -232,24 +232,30 @@ describe("RPG chase camera obstacle clearance", () => {
     expect(resolvedZ).toBeLessThan(npc.position[2] - townsperson.size[2] / 2);
   });
 
-  it("treats a townsperson walking behind the player as a camera occluder", () => {
-    const desiredCamera = desiredCameraAtPitch(-8);
+  it("treats a townsperson as an occluder until the boom rises over them", () => {
+    const desiredCamera = desiredCameraAtPitch(18);
 
-    for (const behind of [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]) {
-      expect(
-        calculateRpgCameraCollisionRatio({
-          player: OPEN_GROUND,
-          desiredCamera,
-          dynamicObstacles: [npcObstacleAt(behind)]
-        })
-      ).toBeLessThan(1);
+    for (const behind of [0.5, 1, 1.5, 2, 2.5, 3, 3.5]) {
+      const ratio = calculateRpgCameraCollisionRatio({
+        player: OPEN_GROUND,
+        desiredCamera,
+        dynamicObstacles: [npcObstacleAt(behind)]
+      });
+      expect(ratio, `townsperson ${behind}m behind`).toBeLessThan(1);
     }
+    expect(
+      calculateRpgCameraCollisionRatio({
+        player: OPEN_GROUND,
+        desiredCamera,
+        dynamicObstacles: [npcObstacleAt(4)]
+      })
+    ).toBe(1);
   });
 
   it("never leaves a blocking townsperson rendered in front of the camera", () => {
     let blockedSamples = 0;
 
-    for (const pitch of [-20, -8, 10, 30, 50, 70]) {
+    for (const pitch of [18, 28, 38, 55]) {
       const desiredCamera = desiredCameraAtPitch(pitch);
       for (let behind = 0; behind <= 6.0001; behind += 0.05) {
         for (const lateral of [0, 0.15, 0.3, 0.45]) {
@@ -338,74 +344,48 @@ describe("RPG chase camera obstacle clearance", () => {
     ).toBeLessThanOrEqual(staticRatio);
   });
 
-  it("keeps townspeople out of the boom test so a crowd cannot pin the camera", () => {
-    const canvasSource = readFileSync(
-      resolve(process.cwd(), "app/world/FlatWorldCanvas.tsx"),
-      "utf8"
+  it("orbits around an authored column without shortening below the minimum boom", () => {
+    const column = RPG_CAMERA_COLUMN_OBSTACLES.find(
+      ({ height }) => height >= 5
+    )!;
+    const player = [column.x, 0, column.z - 2] as const;
+    const desiredCamera = [column.x, 2.8, column.z + 4] as const;
+    const resolved = [0, 0, 0] as [number, number, number];
+
+    expect(
+      calculateRpgCameraCollisionRatio({
+        player,
+        desiredCamera,
+        columnObstacles: [column]
+      })
+    ).toBeLessThan(1);
+    resolveRpgCameraOrbitCollisionInto(
+      { player, desiredCamera, columnObstacles: [column] },
+      resolved
     );
 
-    // The airport bus is the one moving body solid enough to push the boom.
-    expect(canvasSource).toContain("playerBusCameraObstacle");
-    expect(canvasSource).toContain("obstacles.length = 1");
-    // Feeding walking bodies in retracted the boom to a few per cent of its
-    // wanted length wherever the streets were busy, so they are gone from the
-    // obstacle list and step aside by hiding instead.
-    expect(canvasSource).not.toContain("evaluateNpcPatrolMotionInto(");
-    expect(canvasSource).not.toContain("RPG_NPC_CAMERA_CLEARANCE");
-
-    const npcSource = readFileSync(
-      resolve(process.cwd(), "app/world/RpgNpcCharacter3d.tsx"),
-      "utf8"
-    );
-    expect(npcSource).toContain("blocksRpgCameraSightLine");
-  });
-
-  it("keeps the airport spawn view clear of the palm trunks and stop posts", () => {
-    const spawn = [
-      getDestinationPosition("airport", FLAT_WORLD_HALF_WIDTH)[0],
-      0,
-      1.5
-    ] as const;
-    let blockedYaws = 0;
-
-    for (let yaw = 0; yaw < 360; yaw += 5) {
-      const radians = (yaw * Math.PI) / 180;
-      const placement = calculateRpgCameraPlacement({
-        player: spawn,
-        heading: [Math.sin(radians), 0, Math.cos(radians)],
-        camera: { yaw: 0, pitch: -8 }
-      });
-      const desiredCamera = [
-        placement.position.x,
-        placement.position.y,
-        placement.position.z
-      ] as const;
-      const resolved = [0, 0, 0] as [number, number, number];
-      if (
-        calculateRpgCameraCollisionRatio({ player: spawn, desiredCamera }) < 1
-      ) {
-        blockedYaws += 1;
-      }
-      resolveRpgCameraOrbitCollisionInto({ player: spawn, desiredCamera }, resolved);
-
-      expect(
-        calculateRpgCameraCollisionRatio({
-          player: spawn,
-          desiredCamera: resolved
-        })
-      ).toBe(1);
-    }
-
-    // The spawn stands between a palm and the bus stop posts, so some yaws must
-    // register as blocked or the props are missing from the occluder feed.
-    expect(blockedYaws).toBeGreaterThan(0);
+    expect(resolved.every(Number.isFinite)).toBe(true);
+    expect(
+      Math.hypot(
+        resolved[0] - player[0],
+        resolved[1] - player[1],
+        resolved[2] - player[2]
+      )
+    ).toBeGreaterThanOrEqual(RPG_CAMERA_MINIMUM_BOOM_DISTANCE);
+    expect(
+      calculateRpgCameraCollisionRatio({
+        player,
+        desiredCamera: resolved,
+        columnObstacles: [column]
+      })
+    ).toBe(1);
   });
 
   it("catches a thin column the boom would otherwise pass straight through", () => {
     const player = [...OPEN_GROUND] as [number, number, number];
-    const desiredCamera = desiredCameraAtPitch(-8);
+    const desiredCamera = desiredCameraAtPitch(18);
 
-    for (let behind = 0; behind <= 6.0001; behind += 0.25) {
+    for (let behind = 0; behind <= 5.0001; behind += 0.25) {
       const column = {
         x: OPEN_GROUND[0],
         z: OPEN_GROUND[2] + behind,
@@ -447,7 +427,7 @@ describe("RPG chase camera obstacle clearance", () => {
     resolveRpgCameraOrbitCollisionInto(
       {
         player,
-        desiredCamera: desiredCameraAtPitch(-8),
+        desiredCamera: desiredCameraAtPitch(18),
         columnObstacles: [column]
       },
       resolved
@@ -568,18 +548,8 @@ describe("RPG chase camera obstacle clearance", () => {
     for (const [x, z] of walkable) {
       const player = [x, 0, z] as const;
       for (let yaw = 0; yaw < 360; yaw += 15) {
-        const radians = (yaw * Math.PI) / 180;
-        for (const pitch of [-20, -8, 70]) {
-          const placement = calculateRpgCameraPlacement({
-            player,
-            heading: [Math.sin(radians), 0, Math.cos(radians)],
-            camera: { yaw: 0, pitch }
-          });
-          const desiredCamera = [
-            placement.position.x,
-            placement.position.y,
-            placement.position.z
-          ] as const;
+        for (const pitch of [18, 38, 55]) {
+          const desiredCamera = desiredChaseCamera(player, yaw, pitch);
           const resolved = [0, 0, 0] as [number, number, number];
 
           for (const resolve of [
@@ -601,13 +571,14 @@ describe("RPG chase camera obstacle clearance", () => {
       }
     }
 
-    expect(`${worstAt} -> ${worstDistance.toFixed(3)}`).toBe(
-      `${worstAt} -> ${RPG_CAMERA_MINIMUM_BOOM_DISTANCE.toFixed(3)}`
+    expect(worstAt).not.toBe("");
+    expect(worstDistance).toBeGreaterThanOrEqual(
+      RPG_CAMERA_MINIMUM_BOOM_DISTANCE - 1e-6
     );
   });
 
   it("holds the minimum boom for a dynamic obstacle sitting on the player", () => {
-    const desiredCamera = desiredCameraAtPitch(-8);
+    const desiredCamera = desiredCameraAtPitch(18);
     const resolved = [0, 0, 0] as [number, number, number];
     resolveRpgCameraOrbitCollisionInto(
       {

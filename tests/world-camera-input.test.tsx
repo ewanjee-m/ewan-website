@@ -5,6 +5,78 @@ import { describe, expect, it, vi } from "vitest";
 import { WorldCameraInput } from "../app/world/WorldCameraInput";
 
 describe("world camera pointer input", () => {
+  const blockedOrigins = [
+    {
+      name: "data-world-input-block",
+      create: () => {
+        const element = document.createElement("div");
+        element.dataset.worldInputBlock = "true";
+        return element;
+      }
+    },
+    {
+      name: "button",
+      create: () => document.createElement("button")
+    },
+    {
+      name: "link",
+      create: () => document.createElement("a")
+    },
+    {
+      name: "dialog",
+      create: () => {
+        const element = document.createElement("div");
+        element.setAttribute("role", "dialog");
+        return element;
+      }
+    },
+    {
+      name: "map",
+      create: () => {
+        const element = document.createElement("div");
+        element.className = "rpg-world-map";
+        return element;
+      }
+    },
+    {
+      name: "joystick",
+      create: () => {
+        const element = document.createElement("div");
+        element.className = "mobile-move-zone";
+        return element;
+      }
+    }
+  ] as const;
+
+  it.each(blockedOrigins)(
+    "rejects a primary pointer start from a $name descendant in the production handler",
+    ({ create }) => {
+      const onDrag = vi.fn();
+      render(<WorldCameraInput label="Rotate camera" onDrag={onDrag} />);
+      const layer = screen.getByLabelText("Rotate camera");
+      const blocked = create();
+      const descendant = document.createElement("span");
+      blocked.append(descendant);
+      layer.append(blocked);
+
+      fireEvent.pointerDown(descendant, {
+        pointerId: 19,
+        pointerType: "touch",
+        isPrimary: true,
+        clientX: 50,
+        clientY: 50
+      });
+      fireEvent.pointerMove(layer, {
+        pointerId: 19,
+        pointerType: "touch",
+        clientX: 80,
+        clientY: 70
+      });
+
+      expect(onDrag).not.toHaveBeenCalled();
+    }
+  );
+
   it("accepts one primary world drag and rejects UI or second-touch starts", () => {
     const onDrag = vi.fn();
     const { container } = render(

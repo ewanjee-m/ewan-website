@@ -3,6 +3,16 @@
 import { useRef, type PointerEvent } from "react";
 import type { WorldPointerKind } from "./WorldInput";
 
+const WORLD_CAMERA_INPUT_BLOCK_SELECTOR = [
+  "[data-world-input-block]",
+  "button",
+  "a",
+  "[role='dialog']",
+  ".rpg-world-map",
+  ".rpg-mini-map",
+  ".mobile-move-zone"
+].join(",");
+
 export interface WorldCameraInputProps {
   label: string;
   onDrag: (
@@ -42,7 +52,15 @@ export function WorldCameraInput({ label, onDrag }: WorldCameraInputProps) {
       className="world-camera-input"
       aria-label={label}
       onPointerDown={(event) => {
-        if (!event.isPrimary || active.current !== null) return;
+        const target = event.target;
+        if (
+          !event.isPrimary ||
+          active.current !== null ||
+          (target instanceof Element &&
+            target.closest(WORLD_CAMERA_INPUT_BLOCK_SELECTOR) !== null)
+        ) {
+          return;
+        }
         active.current = event.pointerId;
         last.current = { x: event.clientX, y: event.clientY };
         event.currentTarget.setPointerCapture?.(event.pointerId);
