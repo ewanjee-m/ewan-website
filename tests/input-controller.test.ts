@@ -70,4 +70,81 @@ describe("RPG input controller", () => {
     expect(input.readMovement(movement)).toBe(movement);
     expect(movement).toEqual({ x: -1, y: 0, runRequested: false });
   });
+
+  it("releases letter movement regardless of keyup casing", () => {
+    const input = createInputController();
+    const movement = { x: 0, y: 0, runRequested: false };
+
+    input.pressKey("w");
+    input.releaseKey("W");
+
+    expect(input.readMovement(movement)).toEqual({
+      x: 0,
+      y: 0,
+      runRequested: false
+    });
+  });
+
+  it("does not requeue held Space and rearms after release", () => {
+    const input = createInputController();
+
+    input.pressKey(" ");
+    expect(input.consumeJump()).toBe(true);
+    expect(input.consumeJump()).toBe(false);
+
+    input.pressKey(" ");
+    expect(input.consumeJump()).toBe(false);
+
+    input.releaseKey(" ");
+    input.pressKey(" ");
+    expect(input.consumeJump()).toBe(true);
+    expect(input.consumeJump()).toBe(false);
+  });
+
+  it("consumes queued mobile actions once", () => {
+    const input = createInputController();
+
+    input.queueJump();
+    input.queueReset();
+    input.queueInteraction();
+
+    expect(input.consumeJump()).toBe(true);
+    expect(input.consumeJump()).toBe(false);
+    expect(input.consumeReset()).toBe(true);
+    expect(input.consumeReset()).toBe(false);
+    expect(input.consumeInteraction()).toBe(true);
+    expect(input.consumeInteraction()).toBe(false);
+  });
+
+  it("reset clears held, touch, discrete, and camera input", () => {
+    const input = createInputController();
+    const movement = { x: 0, y: 0, runRequested: false };
+    const drag = { deltaX: 0, deltaY: 0, pointerKind: "mouse" as const };
+
+    input.pressKey("w");
+    input.pressKey("Shift");
+    input.setTouchMovement({ x: 0.5, y: -0.25, runRequested: true });
+    input.pressKey(" ");
+    input.pressKey("e");
+    input.pressKey("r");
+    input.addCameraDrag(4, -2, "touch");
+
+    input.reset();
+
+    expect(input.readMovement(movement)).toEqual({
+      x: 0,
+      y: 0,
+      runRequested: false
+    });
+    expect(input.consumeJump()).toBe(false);
+    expect(input.consumeReset()).toBe(false);
+    expect(input.consumeInteraction()).toBe(false);
+    expect(input.consumeCameraDrag(drag)).toMatchObject({
+      deltaX: 0,
+      deltaY: 0
+    });
+
+    input.pressKey(" ");
+    expect(input.consumeJump()).toBe(true);
+  });
 });

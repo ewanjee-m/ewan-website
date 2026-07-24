@@ -7,17 +7,17 @@ import type {
 const movementKeys: ReadonlyMap<string, readonly [number, number]> = new Map([
   ["ArrowUp", [0, 1]],
   ["w", [0, 1]],
-  ["W", [0, 1]],
   ["ArrowDown", [0, -1]],
   ["s", [0, -1]],
-  ["S", [0, -1]],
   ["ArrowLeft", [-1, 0]],
   ["a", [-1, 0]],
-  ["A", [-1, 0]],
   ["ArrowRight", [1, 0]],
-  ["d", [1, 0]],
-  ["D", [1, 0]]
+  ["d", [1, 0]]
 ] as const);
+
+function normalizeKey(key: string) {
+  return key.length === 1 ? key.toLowerCase() : key;
+}
 
 export function createInputController() {
   const pressed = new Set<string>();
@@ -34,19 +34,23 @@ export function createInputController() {
 
   return {
     pressKey(key: string) {
-      if (movementKeys.has(key) || key === "Shift") pressed.add(key);
-      if (key === " " && !jumpHeld) {
+      const normalizedKey = normalizeKey(key);
+      if (movementKeys.has(normalizedKey) || normalizedKey === "Shift") {
+        pressed.add(normalizedKey);
+      }
+      if (normalizedKey === " " && !jumpHeld) {
         jumpHeld = true;
         jumpQueued = true;
       }
-      if (key === "e" || key === "E" || key === "Enter") {
+      if (normalizedKey === "e" || normalizedKey === "Enter") {
         interactionQueued = true;
       }
-      if (key === "r" || key === "R") resetQueued = true;
+      if (normalizedKey === "r") resetQueued = true;
     },
     releaseKey(key: string) {
-      pressed.delete(key);
-      if (key === " ") jumpHeld = false;
+      const normalizedKey = normalizeKey(key);
+      pressed.delete(normalizedKey);
+      if (normalizedKey === " ") jumpHeld = false;
     },
     reset() {
       pressed.clear();
