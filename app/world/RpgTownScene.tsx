@@ -75,42 +75,44 @@ export const RpgTownScene = memo(function RpgTownScene({
   }, []);
 
   return (
-    <group name="seamless-rpg-town">
+    <>
       <RpgTownAmbience
         qualitySettings={qualitySettings}
         navigation={navigation}
         presentation={presentation}
       />
-      <RpgWorldSurfaces />
-      <RpgTownArchitecture qualityLevel={qualitySettings.level} />
-      <RpgTownDetails
-        qualitySettings={qualitySettings}
-        presentation={presentation}
-        playerPosition={playerPosition}
-      />
-      <RpgSignatureLandmarks
-        qualitySettings={qualitySettings}
-        presentation={presentation}
-      />
-      <RpgAirportBusActor
-        runtime={busRuntime}
-        dynamicObstacles={dynamicObstacles}
-        reducedMotion={reducedMotion}
-      />
-      <RpgNpcCrowd
-        playerPosition={playerPosition}
-        dynamicObstacles={dynamicObstacles}
-        reducedMotion={reducedMotion}
-        npcSecondaryMotion={qualitySettings.npcSecondaryMotion}
-        runtime={runtime}
-        telemetry={telemetry}
-      />
-      <RpgWorldEffects
-        qualitySettings={qualitySettings}
-        presentation={presentation}
-      />
-      <RpgOptionalDecoration telemetry={telemetry} />
-      <RpgRegionAudio presentation={presentation} />
-    </group>
+      <group name="seamless-rpg-town">
+        <RpgWorldSurfaces />
+        <RpgTownArchitecture qualityLevel={qualitySettings.level} />
+        <RpgTownDetails
+          qualitySettings={qualitySettings}
+          presentation={presentation}
+          playerPosition={playerPosition}
+        />
+        <RpgSignatureLandmarks
+          qualitySettings={qualitySettings}
+          presentation={presentation}
+        />
+        <RpgAirportBusActor
+          runtime={busRuntime}
+          dynamicObstacles={dynamicObstacles}
+          reducedMotion={reducedMotion}
+        />
+        <RpgNpcCrowd
+          playerPosition={playerPosition}
+          dynamicObstacles={dynamicObstacles}
+          reducedMotion={reducedMotion}
+          npcSecondaryMotion={qualitySettings.npcSecondaryMotion}
+          runtime={runtime}
+          telemetry={telemetry}
+        />
+        <RpgWorldEffects
+          qualitySettings={qualitySettings}
+          presentation={presentation}
+        />
+        <RpgOptionalDecoration telemetry={telemetry} />
+        <RpgRegionAudio presentation={presentation} />
+      </group>
+    </>
   );
 });

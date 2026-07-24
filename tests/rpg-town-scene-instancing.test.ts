@@ -12,6 +12,14 @@ const read = (name: string) =>
   readFileSync(resolve(process.cwd(), `app/world/${name}`), "utf8");
 
 describe("RPG town scene static ownership", () => {
+  it("attaches sky and fog ambience directly to the scene before the town group", () => {
+    const source = read("RpgTownScene.tsx");
+
+    expect(source).toMatch(
+      /return \(\s*<>\s*<RpgTownAmbience[\s\S]*?\/>\s*<group name="seamless-rpg-town">/
+    );
+  });
+
   it("owns surfaces and rich landmarks in dedicated modules", () => {
     expect(read("RpgWorldSurfaces.tsx")).toContain("RPG_RENDERED_SURFACE_GROUPS");
     expect(read("RpgWorldSurfaces.tsx")).toContain("createRpgBridgeDeckSegments");

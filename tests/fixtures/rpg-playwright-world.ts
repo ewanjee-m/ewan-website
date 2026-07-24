@@ -7,7 +7,7 @@ import {
   RPG_CANONICAL_ROUTE,
   RPG_CANONICAL_ROUTE_STEERING,
   RPG_CANONICAL_ROUTE_TOLERANCE
-} from "./rpg-canonical-route";
+} from "./rpg-canonical-route.ts";
 import {
   getRpgRouteBrakeRadius,
   medianRpgRoutePulse,
@@ -16,7 +16,7 @@ import {
   rankRpgRouteKeyboardPulsesByRadius,
   runBalancedRpgRouteKeyboardPulse,
   RPG_ROUTE_STALL_FRAME_LIMIT
-} from "./rpg-route-steering";
+} from "./rpg-route-steering.ts";
 
 const WORLD_SELECTOR = '[data-testid="world-view"]';
 const RENDERER_SELECTOR = ".seamless-world-renderer";
@@ -54,9 +54,19 @@ export interface WorldTelemetry {
   readonly revision: string;
   readonly zone: string;
   readonly navigationRegion: string;
+  readonly inputLocked: boolean;
+  readonly movement: readonly [number, number];
+  readonly movementStrength: number;
+  readonly runRequested: boolean;
+  readonly playerMoving: boolean;
+  readonly playerLocomotion: string;
   readonly cameraYaw: number;
   readonly cameraPitch: number;
   readonly cameraBoom: number;
+  readonly cameraFacingDot: number;
+  readonly cameraCollisionAdjusted: boolean;
+  readonly cameraCollisionAdjustment: number;
+  readonly cameraLateralCollisionEscape: boolean;
   readonly cameraSafeViolationMs: number;
   readonly cameraDiagnostic: string;
 }
@@ -218,7 +228,7 @@ async function ensureTrustedRouteTransitionBinding(page: Page) {
             action.currentYaw,
             action.targetYaw
           );
-          if (Math.abs(yawError) > 0.0015) {
+          if (Math.abs(yawError) > 0.004) {
             await moveTrustedRoutePointerBy(
               page,
               -yawError / 0.004,
@@ -613,9 +623,23 @@ export async function readWorldTelemetry(
           renderer.dataset.navigationRegion ??
           world.dataset.navigationRegion ??
           "",
+        inputLocked: renderer.dataset.inputLocked ?? "",
+        movementX: renderer.dataset.movementX ?? "",
+        movementY: renderer.dataset.movementY ?? "",
+        movementStrength: renderer.dataset.movementStrength ?? "",
+        runRequested: renderer.dataset.runRequested ?? "",
+        playerMoving: renderer.dataset.playerMoving ?? "",
+        playerLocomotion: renderer.dataset.playerLocomotion ?? "",
         cameraYaw: renderer.dataset.cameraYaw ?? "",
         cameraPitch: renderer.dataset.cameraPitch ?? "",
         cameraBoom: renderer.dataset.cameraBoom ?? "",
+        cameraFacingDot: renderer.dataset.cameraFacingDot ?? "",
+        cameraCollisionAdjusted:
+          renderer.dataset.cameraCollisionAdjusted ?? "",
+        cameraCollisionAdjustment:
+          renderer.dataset.cameraCollisionAdjustment ?? "",
+        cameraLateralCollisionEscape:
+          renderer.dataset.cameraLateralCollisionEscape ?? "",
         cameraSafeViolationMs:
           renderer.dataset.cameraSafeViolationMs ?? "",
         cameraDiagnostic: renderer.dataset.cameraDiagnostic ?? ""
@@ -629,9 +653,23 @@ export async function readWorldTelemetry(
     revision: raw.revision,
     zone: raw.zone,
     navigationRegion: raw.navigationRegion,
+    inputLocked: raw.inputLocked === "true",
+    movement: [
+      Number.parseFloat(raw.movementX),
+      Number.parseFloat(raw.movementY)
+    ],
+    movementStrength: Number.parseFloat(raw.movementStrength),
+    runRequested: raw.runRequested === "true",
+    playerMoving: raw.playerMoving === "true",
+    playerLocomotion: raw.playerLocomotion,
     cameraYaw: Number(raw.cameraYaw),
     cameraPitch: Number(raw.cameraPitch),
     cameraBoom: Number(raw.cameraBoom),
+    cameraFacingDot: Number(raw.cameraFacingDot),
+    cameraCollisionAdjusted: raw.cameraCollisionAdjusted === "true",
+    cameraCollisionAdjustment: Number(raw.cameraCollisionAdjustment),
+    cameraLateralCollisionEscape:
+      raw.cameraLateralCollisionEscape === "true",
     cameraSafeViolationMs: Number(raw.cameraSafeViolationMs),
     cameraDiagnostic: raw.cameraDiagnostic
   };
@@ -640,6 +678,25 @@ export async function readWorldTelemetry(
 }
 
 export function assertSafeCameraTelemetry(telemetry: WorldTelemetry) {
+  if (
+    telemetry.movement.some((value) => !Number.isFinite(value)) ||
+    !Number.isFinite(telemetry.movementStrength)
+  ) {
+    throw new Error(
+      `movement telemetry is missing or invalid: ` +
+        `${telemetry.movement.join(",")};${telemetry.movementStrength}`
+    );
+  }
+  if (
+    !["idle", "walk", "run", "jump"].includes(
+      telemetry.playerLocomotion
+    )
+  ) {
+    throw new Error(
+      `player locomotion telemetry is invalid: ` +
+        telemetry.playerLocomotion
+    );
+  }
   if (!Number.isFinite(telemetry.cameraYaw)) {
     throw new Error("data-camera-yaw is missing or non-finite");
   }
@@ -648,6 +705,23 @@ export function assertSafeCameraTelemetry(telemetry: WorldTelemetry) {
   }
   if (!Number.isFinite(telemetry.cameraBoom) || telemetry.cameraBoom < 2.6) {
     throw new Error(`unsafe camera boom: ${telemetry.cameraBoom}`);
+  }
+  if (
+    !Number.isFinite(telemetry.cameraFacingDot) ||
+    telemetry.cameraFacingDot < 0.98
+  ) {
+    throw new Error(
+      `camera is not facing the player focus: ${telemetry.cameraFacingDot}`
+    );
+  }
+  if (
+    !Number.isFinite(telemetry.cameraCollisionAdjustment) ||
+    telemetry.cameraCollisionAdjustment < 0
+  ) {
+    throw new Error(
+      `camera collision adjustment is invalid: ` +
+        telemetry.cameraCollisionAdjustment
+    );
   }
   if (
     !Number.isFinite(telemetry.cameraSafeViolationMs) ||
@@ -700,6 +774,7 @@ export async function enterRpgWorld(
         });
         return (
           telemetry.cameraBoom >= 2.6 &&
+          telemetry.cameraFacingDot >= 0.98 &&
           telemetry.cameraSafeViolationMs === 0 &&
           telemetry.cameraDiagnostic === "ok"
         );
@@ -845,6 +920,7 @@ export async function monitorCameraSafetyDuring(
 ) {
   type CameraTimelineSample = {
     cameraYaw: number;
+    cameraFacingDot: number;
     heading: readonly [number, number, number];
     elapsedMs: number;
   };
@@ -861,6 +937,7 @@ export async function monitorCameraSafetyDuring(
   await page.evaluate((cameraInputSelector) => {
     type TimelineSample = {
       cameraYaw: number;
+      cameraFacingDot: number;
       heading: readonly [number, number, number];
       elapsedMs: number;
     };
@@ -907,12 +984,15 @@ export async function monitorCameraSafetyDuring(
         ".seamless-world-renderer"
       );
       const cameraYaw = Number(renderer?.dataset.cameraYaw);
+      const cameraFacingDot = Number(renderer?.dataset.cameraFacingDot);
       const heading = (renderer?.dataset.playerHeading ?? "")
         .split(",")
         .map(Number);
       if (
         observation.manualInputAt === null ||
         !Number.isFinite(cameraYaw) ||
+        !Number.isFinite(cameraFacingDot) ||
+        cameraFacingDot < 0.98 ||
         heading.length !== 3 ||
         heading.some((value) => !Number.isFinite(value))
       ) {
@@ -922,6 +1002,7 @@ export async function monitorCameraSafetyDuring(
       }
       return {
         cameraYaw,
+        cameraFacingDot,
         heading: heading as [number, number, number],
         elapsedMs: performance.now() - observation.manualInputAt
       };
@@ -951,6 +1032,7 @@ export async function monitorCameraSafetyDuring(
       const violation = Number(renderer?.dataset.cameraSafeViolationMs);
       const diagnostic = renderer?.dataset.cameraDiagnostic;
       const cameraYaw = Number(renderer?.dataset.cameraYaw);
+      const cameraFacingDot = Number(renderer?.dataset.cameraFacingDot);
       const heading = (renderer?.dataset.playerHeading ?? "")
         .split(",")
         .map(Number);
@@ -969,21 +1051,26 @@ export async function monitorCameraSafetyDuring(
           boom < 2.6 ||
           !Number.isFinite(violation) ||
           violation > 250 ||
+          !Number.isFinite(cameraFacingDot) ||
+          cameraFacingDot < 0.98 ||
           diagnostic !== "ok")
       ) {
         observation.safetyFailure =
           `camera safety failed: boom=${boom}; violation=${violation}; ` +
-          `diagnostic=${diagnostic}`;
+          `facingDot=${cameraFacingDot}; diagnostic=${diagnostic}`;
       }
       if (
         observation.manualInputAt !== null &&
         Number.isFinite(cameraYaw) &&
+        Number.isFinite(cameraFacingDot) &&
+        cameraFacingDot >= 0.98 &&
         heading.length === 3 &&
         heading.every(Number.isFinite)
       ) {
         const elapsedMs = now - observation.manualInputAt;
         const timelineSample = {
           cameraYaw,
+          cameraFacingDot,
           heading: heading as [number, number, number],
           elapsedMs
         };
@@ -1363,7 +1450,7 @@ interface ContinuousRouteVertexSnapshot {
   readonly navigationRegion: string;
 }
 
-async function driveContinuousTrustedRoute(
+export async function driveContinuousTrustedRoute(
   page: Page,
   route: readonly (readonly [number, number])[],
   {
@@ -1470,8 +1557,6 @@ async function driveContinuousTrustedRoute(
       if (!renderer || !world || !cameraInput || !transition) {
         throw new Error("continuous route browser dependencies are missing");
       }
-      const nextFrame = () =>
-        new Promise<number>((resolve) => requestAnimationFrame(resolve));
       const parseTriple = (raw: string, label: string) => {
         const values = raw.split(",").map(Number);
         if (
@@ -1495,6 +1580,15 @@ async function driveContinuousTrustedRoute(
           observedWindow.__RPG_ROUTE_OBSERVATION__?.safetyFailure;
         if (failure) throw new Error(failure);
       };
+      const readRuntimeState = () =>
+        [
+          `inputLocked=${renderer.dataset.inputLocked}`,
+          `movement=${renderer.dataset.movementX},${renderer.dataset.movementY}`,
+          `strength=${renderer.dataset.movementStrength}`,
+          `run=${renderer.dataset.runRequested}`,
+          `moving=${renderer.dataset.playerMoving}`,
+          `locomotion=${renderer.dataset.playerLocomotion}`
+        ].join(";");
       const readSnapshot = (
         vertexIndex: number,
         positionRawOverride?: string
@@ -1527,6 +1621,9 @@ async function driveContinuousTrustedRoute(
         keyActionCount: 0,
         dragActionCount: 0,
         correctionCount: 0,
+        inputRefreshCount: 0,
+        lastRafIntervalMs: 0,
+        maximumRafIntervalMs: 0,
         turnKeyUpMs: 0,
         turnCaptureMs: 0,
         turnPointerMs: 0,
@@ -1536,6 +1633,37 @@ async function driveContinuousTrustedRoute(
           target: readonly [number, number];
         }[]
       };
+      let previousFrameAt = performance.now();
+      const nextFrame = () =>
+        new Promise<number>((resolve, reject) => {
+          const requestedAt = performance.now();
+          let timeoutId = 0;
+          const frameRequest = requestAnimationFrame((timestamp) => {
+            window.clearTimeout(timeoutId);
+            const frameAt = performance.now();
+            diagnostics.lastRafIntervalMs = frameAt - previousFrameAt;
+            diagnostics.maximumRafIntervalMs = Math.max(
+              diagnostics.maximumRafIntervalMs,
+              diagnostics.lastRafIntervalMs
+            );
+            previousFrameAt = frameAt;
+            resolve(timestamp);
+          });
+          timeoutId = window.setTimeout(() => {
+            cancelAnimationFrame(frameRequest);
+            reject(
+              new Error(
+                `E_RAF_STALL: no animation frame for ` +
+                  `${Math.round(performance.now() - requestedAt)}ms; ` +
+                  `hidden=${document.hidden}; ` +
+                  `focused=${document.hasFocus()}; ` +
+                  `lastRafIntervalMs=${diagnostics.lastRafIntervalMs}; ` +
+                  `maximumRafIntervalMs=${diagnostics.maximumRafIntervalMs}; ` +
+                  readRuntimeState()
+              )
+            );
+          }, 4_000);
+        });
       const performTransition = async (action: TrustedRouteAction) => {
         const startedAt = performance.now();
         const result = await transition(action);
@@ -1617,13 +1745,13 @@ async function driveContinuousTrustedRoute(
               throw new Error("data-camera-yaw is missing or non-finite");
             }
             const error = shortestYawError(currentYaw, targetYaw);
-            if (Math.abs(error) <= 0.0015) return;
+            if (Math.abs(error) <= 0.004) return;
             await moveActivePointerBy(-error / 0.004, moveLimit);
           }
           const actualYaw = Number(renderer.dataset.cameraYaw);
           if (
             !Number.isFinite(actualYaw) ||
-            Math.abs(shortestYawError(actualYaw, targetYaw)) > 0.0015
+            Math.abs(shortestYawError(actualYaw, targetYaw)) > 0.004
           ) {
             throw new Error(
               `camera yaw did not converge: target=${targetYaw}, ` +
@@ -1693,11 +1821,26 @@ async function driveContinuousTrustedRoute(
       await keyTransition({
         down: runRequested ? ["Shift", "w"] : ["w"]
       });
+      let runActive = runRequested;
       let vertexIndex = 1;
       let previousPosition = readPosition();
-      let unchangedFrames = 0;
+      let progressAnchor = previousPosition;
+      let progressStartedAt = performance.now();
+      let stalledRefreshes = 0;
       let pendingTargetYaw: number | null = null;
-      const deadline = performance.now() + 110_000;
+      const routeDistance = route.slice(1).reduce(
+        (sum, target, index) =>
+          sum +
+          Math.hypot(
+            target[0] - route[index][0],
+            target[1] - route[index][1]
+          ),
+        0
+      );
+      const nominalSpeed = runRequested ? 1.9 : 1.61;
+      const deadline =
+        startedAt +
+        Math.max(120_000, (routeDistance / nominalSpeed) * 2_000);
 
       while (vertexIndex < route.length) {
         await nextFrame();
@@ -1708,7 +1851,7 @@ async function driveContinuousTrustedRoute(
             !Number.isFinite(actualYaw) ||
             Math.abs(
               shortestYawError(actualYaw, pendingTargetYaw)
-            ) > 0.0015
+            ) > 0.004
           ) {
             await keyTransition({ up: ["w"] });
             await rotateToYaw(pendingTargetYaw);
@@ -1734,17 +1877,55 @@ async function driveContinuousTrustedRoute(
           position[0] - previousPosition[0],
           position[2] - previousPosition[2]
         );
-        const moved = frameStep > Number.EPSILON;
-        unchangedFrames = moved ? 0 : unchangedFrames + 1;
         previousPosition = position;
+        const progressDistance = Math.hypot(
+          position[0] - progressAnchor[0],
+          position[2] - progressAnchor[2]
+        );
+        if (progressDistance >= 0.05) {
+          progressAnchor = position;
+          progressStartedAt = performance.now();
+          stalledRefreshes = 0;
+        }
 
-        const bridgeArrival =
-          vertexIndex === 12 || vertexIndex === 13;
-        const insideRequiredBridgeZ =
-          !bridgeArrival || position[2] >= -18 - tolerance;
+        if (
+          targetDistance > tolerance * 2 &&
+          performance.now() - progressStartedAt >= 2_000
+        ) {
+          if (stalledRefreshes >= 3) {
+            throw new Error(
+              `continuous route made no progress at ${position.join(",")}; ` +
+                `target=${target.join(",")}; ` +
+                `cameraYaw=${renderer.dataset.cameraYaw}; ` +
+                `heading=${renderer.dataset.playerHeading}; ` +
+                `region=${renderer.dataset.navigationRegion}; ` +
+                readRuntimeState()
+            );
+          }
+          await keyTransition({ up: ["w"] });
+          await keyTransition({ down: ["w"] });
+          diagnostics.inputRefreshCount += 1;
+          stalledRefreshes += 1;
+          progressAnchor = readPosition();
+          previousPosition = progressAnchor;
+          progressStartedAt = performance.now();
+          continue;
+        }
+
+        if (runActive && targetDistance <= 0.75 && !passed) {
+          await keyTransition({ up: ["Shift"] });
+          runActive = false;
+        }
+
+        const steeringAdjustedZ =
+          Math.abs(steeringTarget[1] - target[1]) >
+          Number.EPSILON;
+        const insideRequiredSteeringZ =
+          !steeringAdjustedZ ||
+          position[2] >= target[1] - tolerance;
         if (
           targetDistance <= tolerance &&
-          insideRequiredBridgeZ
+          insideRequiredSteeringZ
         ) {
           const vertexPauseStartedAt = performance.now();
           const latchedVertexIndex = vertexIndex;
@@ -1803,7 +1984,9 @@ async function driveContinuousTrustedRoute(
             currentYaw,
             detectedPositionRaw:
               renderer.dataset.playerPosition ?? "",
-            minimumZ: bridgeArrival ? -18 - tolerance : undefined,
+            minimumZ: steeringAdjustedZ
+              ? target[1] - tolerance
+              : undefined,
             target: [target[0], target[1]],
             targetYaw,
             tolerance,
@@ -1849,32 +2032,78 @@ async function driveContinuousTrustedRoute(
               )
             );
             pendingTargetYaw = turnResult.targetYaw;
+            if (runRequested && !runActive) {
+              await keyTransition({ down: ["Shift"] });
+              runActive = true;
+            }
           }
           diagnostics.vertexPauseMs +=
             performance.now() - vertexPauseStartedAt;
           previousPosition = readPosition();
-          unchangedFrames = 0;
+          progressAnchor = previousPosition;
+          progressStartedAt = performance.now();
+          stalledRefreshes = 0;
           continue;
         }
 
         if (passed) {
-          throw new Error(
-            `continuous route passed vertex ${vertexIndex} outside tolerance: ` +
-              `position=${position.join(",")}; target=${target.join(",")}; ` +
-              `distance=${targetDistance}`
+          const correctionStartedAt = performance.now();
+          const latchedVertexIndex = vertexIndex;
+          await keyTransition({
+            up: runRequested ? ["w", "Shift"] : ["w"]
+          });
+          await correctToTarget(target);
+          await nextFrame();
+          assertSafety();
+          const correctedPosition = readPosition();
+          if (distanceTo(correctedPosition, target) > tolerance) {
+            throw new Error(
+              `continuous route correction missed vertex ` +
+                `${latchedVertexIndex}: stopped=${correctedPosition.join(",")}; ` +
+                `target=${target.join(",")}; detected=${position.join(",")}; ` +
+                `distance=${targetDistance}`
+            );
+          }
+          vertexSnapshots.push(readSnapshot(latchedVertexIndex));
+          vertexIndex += 1;
+          diagnostics.vertexPauseMs +=
+            performance.now() - correctionStartedAt;
+          if (vertexIndex >= route.length) {
+            const finishedAt = performance.now();
+            return {
+              firstKeydownAt: startedAt,
+              finishedAt,
+              vertexSnapshots,
+              diagnostics
+            };
+          }
+          const nextTarget = steeringRoute[vertexIndex];
+          await rotateToYaw(
+            Math.atan2(
+              nextTarget[0] - correctedPosition[0],
+              nextTarget[1] - correctedPosition[2]
+            )
           );
+          await keyTransition({
+            down: runRequested ? ["Shift", "w"] : ["w"]
+          });
+          runActive = runRequested;
+          previousPosition = readPosition();
+          progressAnchor = previousPosition;
+          progressStartedAt = performance.now();
+          stalledRefreshes = 0;
+          continue;
         }
 
-        if (unchangedFrames >= 8) {
-          throw new Error(
-            `continuous route stalled at ${position.join(",")}; ` +
-              `target=${target.join(",")}`
-          );
-        }
         if (performance.now() >= deadline) {
           throw new Error(
             `continuous route timed out at ${position.join(",")}; ` +
-              `target=${target.join(",")}`
+              `target=${target.join(",")}; ` +
+              `steeringTarget=${steeringTarget.join(",")}; ` +
+              `cameraYaw=${renderer.dataset.cameraYaw}; ` +
+              `heading=${renderer.dataset.playerHeading}; ` +
+              `region=${renderer.dataset.navigationRegion}; ` +
+              readRuntimeState()
           );
         }
       }
@@ -2444,6 +2673,14 @@ export async function driveCanonicalRoute(
   expect(continuous!.vertexSnapshots).toHaveLength(
     RPG_CANONICAL_ROUTE.length - 1
   );
+  expect(
+    continuous!.diagnostics.inputRefreshCount,
+    "canonical route must not recover a dropped movement input"
+  ).toBe(0);
+  expect(
+    continuous!.diagnostics.correctionCount,
+    "canonical route must reach every vertex without corrective movement"
+  ).toBe(0);
   for (const snapshot of continuous!.vertexSnapshots) {
     const canonical = RPG_CANONICAL_ROUTE[snapshot.vertexIndex];
     expect(

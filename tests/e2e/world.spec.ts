@@ -50,25 +50,81 @@ async function exactNavigationState(page: Page) {
   };
 }
 
-test("selected male and female GLBs appear in the seamless WebGL renderer", async ({
-  page
-}) => {
-  const requested = new Set<string>();
-  page.on("request", (request) => {
-    const filename = new URL(request.url()).pathname.split("/").at(-1);
-    if (filename) requested.add(filename);
+async function readScreenshotBlackPixelRatio(page: Page) {
+  const screenshot = await page.screenshot();
+  return page.evaluate(async (encoded) => {
+    const binary = atob(encoded);
+    const bytes = Uint8Array.from(binary, (character) =>
+      character.charCodeAt(0)
+    );
+    const bitmap = await createImageBitmap(
+      new Blob([bytes.buffer as ArrayBuffer], { type: "image/png" })
+    );
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new Error("2D screenshot context is unavailable");
+    context.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    const pixels = context.getImageData(
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    ).data;
+    let black = 0;
+    let sampled = 0;
+    for (let y = 0; y < canvas.height; y += 4) {
+      for (let x = 0; x < canvas.width; x += 4) {
+        const index = (y * canvas.width + x) * 4;
+        if (
+          pixels[index] < 12 &&
+          pixels[index + 1] < 12 &&
+          pixels[index + 2] < 12 &&
+          pixels[index + 3] > 240
+        ) {
+          black += 1;
+        }
+        sampled += 1;
+      }
+    }
+    return black / sampled;
+  }, screenshot.toString("base64"));
+}
+
+test.describe("desktop fine-pointer rendering", () => {
+  test.use({
+    viewport: { width: 768, height: 858 },
+    deviceScaleFactor: 1,
+    hasTouch: false,
+    isMobile: false
   });
 
-  for (const character of ["male", "female"] as const) {
-    const renderer = await enterRpgWorld(page, character);
-    await expect(renderer).toHaveAttribute("data-character-fallback", "false");
-    await expect(page.locator(WORLD)).toHaveAttribute(
-      "data-character",
-      character
-    );
-    expect(requested.has(`player-${character}.glb`)).toBe(true);
-    await page.reload();
-  }
+  test("selected male and female GLBs appear in the seamless WebGL renderer", async ({
+    page
+  }) => {
+    const requested = new Set<string>();
+    page.on("request", (request) => {
+      const filename = new URL(request.url()).pathname.split("/").at(-1);
+      if (filename) requested.add(filename);
+    });
+
+    for (const character of ["male", "female"] as const) {
+      const renderer = await enterRpgWorld(page, character);
+      await expect(renderer).toHaveAttribute(
+        "data-character-fallback",
+        "false"
+      );
+      await expect(page.locator(WORLD)).toHaveAttribute(
+        "data-character",
+        character
+      );
+      expect(requested.has(`player-${character}.glb`)).toBe(true);
+      expect(await readScreenshotBlackPixelRatio(page)).toBeLessThan(0.35);
+      await page.reload();
+    }
+  });
 });
 
 test("the active Canvas and maps do not initiate the concept image", async ({
@@ -140,10 +196,19 @@ test("walks the canonical route in 75.8 seconds and only reset returns to the ai
   withinFivePercent(result.traversalMs, 75_800);
   await expect(page.locator(WORLD)).toHaveAttribute("data-current-zone", "hanabi");
   await page.getByRole("button", { name: "Return to start" }).click();
-  await expect.poll(() => readWorldTelemetry(page)).toEqual(
+  await expect.poll(async () => {
+    const telemetry = await readWorldTelemetry(page, {
+      assertSafe: false
+    });
+    return {
+      ...telemetry,
+      cameraFacingReady: telemetry.cameraFacingDot >= 0.98
+    };
+  }).toEqual(
     expect.objectContaining({
       zone: "airport",
-      position: RPG_WORLD_SPAWN
+      position: RPG_WORLD_SPAWN,
+      cameraFacingReady: true
     })
   );
 });
@@ -326,6 +391,7 @@ test("camera telemetry includes live pitch and recenters after the grace period"
     180 /
     Math.PI;
   expect(errorDegrees).toBeLessThanOrEqual(5);
+  expect(afterRecentering.cameraFacingDot).toBeGreaterThanOrEqual(0.98);
   await expect(renderer).toHaveAttribute("data-camera-diagnostic", "ok");
 });
 

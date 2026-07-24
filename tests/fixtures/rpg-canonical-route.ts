@@ -19,10 +19,24 @@ export const RPG_CANONICAL_ROUTE = [
 export const RPG_CANONICAL_ROUTE_TOLERANCE = 0.05;
 
 const BRIDGE_STEERING_Z = -17.98;
+const AIRPORT_NORTH_STEERING_X = -28.97;
+const TOKYO_WEST_STEERING_Z = 19.97;
+const TOKYO_SOUTH_STEERING_X = -7.97;
 
 export const RPG_CANONICAL_ROUTE_STEERING =
   RPG_CANONICAL_ROUTE.map((point, index) =>
-    index === 12 || index === 13
-      ? ([point[0], BRIDGE_STEERING_Z] as const)
-      : point
+    index === 2
+      ? ([AIRPORT_NORTH_STEERING_X, point[1]] as const)
+      : index === 3
+        ? ([
+            AIRPORT_NORTH_STEERING_X,
+            TOKYO_WEST_STEERING_Z
+          ] as const)
+        : index === 4
+          ? ([point[0], TOKYO_WEST_STEERING_Z] as const)
+          : index === 7 || index === 8
+            ? ([TOKYO_SOUTH_STEERING_X, point[1]] as const)
+            : index === 12 || index === 13
+              ? ([point[0], BRIDGE_STEERING_Z] as const)
+              : point
   );

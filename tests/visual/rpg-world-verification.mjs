@@ -12,11 +12,28 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  driveContinuousTrustedRoute,
+  driveForwardToPoint,
+  driveWithKeyboardToPoint,
+  enterRpgWorld
+} from "../fixtures/rpg-playwright-world.ts";
+import {
+  RPG_CANONICAL_ROUTE,
+  RPG_CANONICAL_ROUTE_STEERING
+} from "../fixtures/rpg-canonical-route.ts";
+import {
+  analyzePngCrop,
+  encodeSolidColorPng
+} from "../fixtures/rpg-png-evidence.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const OUTPUT_ROOT = path.join(ROOT, "test-results/visual-fidelity");
 const PRODUCER_ID = "rpg-world-verification.mjs";
 const REVIEW_PROTOCOL = "rpg-visual-review";
+const CAPTURE_PROTOCOL = "rpg-world-capture";
+const MAX_RENDER_BLACK_PIXEL_RATIO = 0.35;
+const RENDER_SAMPLE_STEP = 4;
 const CAPTURE_IDS = [
   "airport",
   "tokyo",
@@ -50,29 +67,14 @@ const CAMERA_FIXTURES = {
   sakura: { yawOffsetDegrees: 25, pitchDegrees: 32, desktopDistance: 6.8, mobileDistance: 5.984 },
   hanabi: { yawOffsetDegrees: -30, pitchDegrees: 28, desktopDistance: 8, mobileDistance: 7.04 }
 };
-const ROUTE = [
-  [-26.304534009865293, -2.973191261452298],
-  [-27, -2.973191261452298],
-  [-29, -2.973191261452298],
-  [-29, 20],
-  [-8, 20],
-  [-7, 20],
-  [-7, 9],
-  [-8, 9],
-  [-8, 0],
-  [8, 0],
-  [8, -11],
-  [9, -20],
-  [14.3, -18],
-  [18.9, -18],
-  [26, -18]
+const ROUTE = RPG_CANONICAL_ROUTE;
+const ROUTE_STEERING = RPG_CANONICAL_ROUTE_STEERING;
+const ARRIVAL_PREFIXES = [
+  { end: 4, id: "tokyo" },
+  { end: 9, id: "gyukatsu" },
+  { end: 11, id: "sakura" },
+  { end: 14, id: "hanabi" }
 ];
-const ARRIVAL_BY_POINT = new Map([
-  ["-8,20", "tokyo"],
-  ["8,0", "gyukatsu"],
-  ["9,-20", "sakura"],
-  ["26,-18", "hanabi"]
-]);
 const LANDMARKS = {
   airport: ["airport-limousine-bus"],
   tokyo: ["tokyo-blue-tower"],
@@ -108,6 +110,20 @@ function expectedIds() {
   return Object.keys(VIEWPORTS).flatMap((viewport) =>
     CAPTURE_IDS.map((id) => `${viewport}/${id}`)
   );
+}
+
+function assertCaptureWorktreeStatus(statusOutput) {
+  const disallowed = String(statusOutput)
+    .split("\0")
+    .filter(Boolean)
+    .filter((record) => !record.startsWith("?? docs/assets/"));
+  if (disallowed.length > 0) {
+    fail(
+      "E_SOURCE_DIRTY",
+      "capture requires a committed source tree; only untracked docs/assets/ " +
+        `is allowed (${disallowed.join(", ")})`
+    );
+  }
 }
 
 function sha256(buffer) {
@@ -199,6 +215,161 @@ function referenceAssetsMatch(actual, expected) {
   });
 }
 
+function resolveCapturePath(evidenceDirectory, row) {
+  if (row.path !== `${row.id}.png`) {
+    fail("E_ROW_SCHEMA", `capture ${row.id} path does not match its ID`);
+  }
+  const root = path.resolve(evidenceDirectory);
+  const filename = path.resolve(root, row.path);
+  if (!filename.startsWith(`${root}${path.sep}`)) {
+    fail("E_ROW_PATH", `capture ${row.id} escapes the evidence directory`);
+  }
+  return filename;
+}
+
+function assertFiniteTuple(value, label) {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 3 ||
+    value.some((entry) => !Number.isFinite(entry))
+  ) {
+    fail("E_ROW_SCHEMA", `${label} must be a finite three-number tuple`);
+  }
+}
+
+function assertManifestRow(row, evidenceDirectory) {
+  if (!row || typeof row !== "object") {
+    fail("E_ROW_SCHEMA", "capture manifest row must be an object");
+  }
+  const [viewportName, captureId, ...extra] = String(row.id ?? "").split("/");
+  const expectedViewport = VIEWPORTS[viewportName];
+  if (!expectedViewport || !CAPTURE_IDS.includes(captureId) || extra.length > 0) {
+    fail("E_ROW_SCHEMA", `capture ID is invalid: ${row.id}`);
+  }
+  resolveCapturePath(evidenceDirectory, row);
+  if (!/^[0-9a-f]{64}$/.test(String(row.sha256 ?? ""))) {
+    fail("E_ROW_SCHEMA", `capture ${row.id} sha256 is invalid`);
+  }
+  if (
+    row.viewport?.width !== expectedViewport.viewport.width ||
+    row.viewport?.height !== expectedViewport.viewport.height ||
+    row.viewport?.deviceScaleFactor !== expectedViewport.deviceScaleFactor
+  ) {
+    fail("E_ROW_SCHEMA", `capture ${row.id} viewport is invalid`);
+  }
+  const expectedCharacter =
+    captureId === "npc-interaction" ? "female" : "male";
+  if (row.selectedCharacter !== expectedCharacter) {
+    fail("E_ROW_SCHEMA", `capture ${row.id} character is invalid`);
+  }
+  assertFiniteTuple(row.playerPosition, `${row.id} playerPosition`);
+  assertFiniteTuple(row.playerHeading, `${row.id} playerHeading`);
+  if (
+    !row.camera ||
+    ![
+      row.camera.yaw,
+      row.camera.pitch,
+      row.camera.boom,
+      row.camera.collisionAdjustment
+    ].every(Number.isFinite) ||
+    row.camera.collisionAdjustment < 0 ||
+    typeof row.camera.collisionAdjusted !== "boolean" ||
+    typeof row.camera.lateralCollisionEscape !== "boolean"
+  ) {
+    fail("E_ROW_SCHEMA", `capture ${row.id} camera is invalid`);
+  }
+  if (
+    typeof row.navigationRevision !== "string" ||
+    row.navigationRevision.length === 0 ||
+    typeof row.navigationZone !== "string" ||
+    row.navigationZone.length === 0 ||
+    JSON.stringify(row.requiredLandmarks) !==
+      JSON.stringify(LANDMARKS[captureId])
+  ) {
+    fail("E_ROW_SCHEMA", `capture ${row.id} navigation data is invalid`);
+  }
+  const evidence = row.renderEvidence;
+  const crop = evidence?.pixelCrop;
+  if (
+    !evidence ||
+    !Number.isInteger(evidence.imageWidth) ||
+    !Number.isInteger(evidence.imageHeight) ||
+    evidence.imageWidth <= 0 ||
+    evidence.imageHeight <= 0 ||
+    evidence.sampleStep !== RENDER_SAMPLE_STEP ||
+    evidence.maxBlackPixelRatio !== MAX_RENDER_BLACK_PIXEL_RATIO ||
+    !Number.isFinite(evidence.blackPixelRatio) ||
+    evidence.blackPixelRatio < 0 ||
+    evidence.blackPixelRatio >= MAX_RENDER_BLACK_PIXEL_RATIO ||
+    !Number.isInteger(evidence.sampledPixels) ||
+    evidence.sampledPixels <= 0 ||
+    !crop ||
+    ![crop.x, crop.y, crop.width, crop.height].every(Number.isInteger) ||
+    crop.x < 0 ||
+    crop.y < 0 ||
+    crop.width <= 0 ||
+    crop.height <= 0
+  ) {
+    fail("E_ROW_SCHEMA", `capture ${row.id} render evidence is invalid`);
+  }
+  if (
+    !Array.isArray(row.characterReferenceAssets) ||
+    JSON.stringify(row.characterReferenceAssets) !==
+      JSON.stringify(
+        captureId === "airport"
+          ? [REFERENCES.male.front, REFERENCES.male.back]
+          : captureId === "npc-interaction"
+            ? [REFERENCES.female.front, REFERENCES.female.back]
+            : []
+      )
+  ) {
+    fail("E_ROW_SCHEMA", `capture ${row.id} reference assets are invalid`);
+  }
+}
+
+async function validatePngEvidence(evidenceDirectory, row) {
+  const filename = resolveCapturePath(evidenceDirectory, row);
+  const bytes = await readFile(filename);
+  const actualHash = sha256(bytes);
+  if (actualHash !== row.sha256) {
+    fail("E_PNG_HASH", `capture hash changed: ${row.id}`);
+  }
+  let analysis;
+  try {
+    analysis = analyzePngCrop(bytes, {
+      ...row.renderEvidence.pixelCrop,
+      sampleStep: row.renderEvidence.sampleStep
+    });
+  } catch (error) {
+    fail(
+      "E_PNG_FORMAT",
+      `capture ${row.id} is not a valid supported PNG: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+  if (
+    analysis.width !== row.renderEvidence.imageWidth ||
+    analysis.height !== row.renderEvidence.imageHeight ||
+    analysis.sampledPixels !== row.renderEvidence.sampledPixels
+  ) {
+    fail("E_PNG_EVIDENCE", `capture ${row.id} render evidence changed`);
+  }
+  if (analysis.blackPixelRatio >= MAX_RENDER_BLACK_PIXEL_RATIO) {
+    fail(
+      "E_BLACK_RENDER",
+      `capture ${row.id} renderer is mostly black: ${analysis.blackPixelRatio}`
+    );
+  }
+  if (
+    Math.abs(
+      analysis.blackPixelRatio - row.renderEvidence.blackPixelRatio
+    ) > Number.EPSILON
+  ) {
+    fail("E_PNG_EVIDENCE", `capture ${row.id} render evidence changed`);
+  }
+}
+
 async function validateFinalize(evidenceDirectory) {
   const manifestPath = path.join(evidenceDirectory, "capture-manifest.json");
   const reviewPath = path.join(evidenceDirectory, "visual-review.json");
@@ -211,6 +382,15 @@ async function validateFinalize(evidenceDirectory) {
   const manifest = JSON.parse(manifestBytes.toString("utf8"));
   assertExactIds(manifest.rows, "capture manifest");
   assertExactIds(review.rows, "visual review");
+  if (
+    manifest.protocol !== CAPTURE_PROTOCOL ||
+    !/^[0-9a-f]{40}$/.test(String(manifest.commitSha ?? ""))
+  ) {
+    fail("E_MANIFEST", "capture manifest protocol or commit SHA is invalid");
+  }
+  for (const row of manifest.rows) {
+    assertManifestRow(row, evidenceDirectory);
+  }
   if (manifest.phase !== "AWAITING_VISUAL_REVIEW") {
     fail("E_PHASE", "capture manifest is not awaiting visual review");
   }
@@ -258,10 +438,7 @@ async function validateFinalize(evidenceDirectory) {
     fail("E_REFERENCE_HASH", "character reference paths or hashes changed");
   }
   for (const row of manifest.rows) {
-    const actual = await sha256File(path.join(evidenceDirectory, row.path));
-    if (actual !== row.sha256) {
-      fail("E_PNG_HASH", `capture hash changed: ${row.id}`);
-    }
+    await validatePngEvidence(evidenceDirectory, row);
   }
   if (
     !Array.isArray(browserErrors) ||
@@ -378,6 +555,16 @@ async function telemetry(page) {
       yaw: renderer.getAttribute("data-camera-yaw"),
       pitch: renderer.getAttribute("data-camera-pitch"),
       boom: renderer.getAttribute("data-camera-boom"),
+      facingDot: renderer.getAttribute("data-camera-facing-dot"),
+      collisionAdjusted: renderer.getAttribute(
+        "data-camera-collision-adjusted"
+      ),
+      collisionAdjustment: renderer.getAttribute(
+        "data-camera-collision-adjustment"
+      ),
+      lateralCollisionEscape: renderer.getAttribute(
+        "data-camera-lateral-collision-escape"
+      ),
       safe: renderer.getAttribute("data-camera-safe"),
       safeViolationMs: renderer.getAttribute("data-camera-safe-violation-ms"),
       diagnostic: renderer.getAttribute("data-camera-diagnostic"),
@@ -392,6 +579,10 @@ async function telemetry(page) {
     cameraYaw: Number(data.yaw),
     cameraPitch: Number(data.pitch),
     cameraBoom: Number(data.boom),
+    cameraFacingDot: Number(data.facingDot),
+    cameraCollisionAdjusted: data.collisionAdjusted,
+    cameraCollisionAdjustment: Number(data.collisionAdjustment),
+    cameraLateralCollisionEscape: data.lateralCollisionEscape,
     cameraSafe: data.safe,
     cameraSafeViolationMs: Number(data.safeViolationMs),
     cameraDiagnostic: data.diagnostic,
@@ -400,8 +591,16 @@ async function telemetry(page) {
     navigationRegion: data.navigationRegion
   };
   if (
-    ![parsed.cameraYaw, parsed.cameraPitch, parsed.cameraBoom, parsed.cameraSafeViolationMs].every(Number.isFinite) ||
+    ![
+      parsed.cameraYaw,
+      parsed.cameraPitch,
+      parsed.cameraBoom,
+      parsed.cameraFacingDot,
+      parsed.cameraCollisionAdjustment,
+      parsed.cameraSafeViolationMs
+    ].every(Number.isFinite) ||
     parsed.cameraBoom < 2.6 ||
+    parsed.cameraFacingDot < 0.98 ||
     parsed.cameraSafeViolationMs > 250 ||
     parsed.cameraDiagnostic !== "ok"
   ) {
@@ -441,49 +640,90 @@ async function setCamera(page, targetYaw, targetPitchDegrees) {
   fail("E_CAMERA_FIXTURE", "camera fixture did not converge");
 }
 
-async function driveTo(page, target, { run = true, tolerance = 0.05 } = {}) {
-  const before = await telemetry(page);
-  const yaw = Math.atan2(
-    target[0] - before.position[0],
-    target[1] - before.position[2]
-  );
-  await setCamera(page, yaw, before.cameraPitch * 180 / Math.PI);
-  if (run) await page.keyboard.down("Shift");
-  await page.keyboard.down("w");
-  try {
-    const started = performance.now();
-    while (performance.now() - started < 40_000) {
-      const current = await telemetry(page);
-      if (
-        Math.hypot(
-          current.position[0] - target[0],
-          current.position[2] - target[1]
-        ) <= tolerance
-      ) {
-        return current;
-      }
-      await page.waitForTimeout(4);
+async function waitForCameraFixture(
+  page,
+  targetPitchDegrees,
+  targetDistance
+) {
+  const deadline = performance.now() + 5_000;
+  let current = await telemetry(page);
+  let previousBoom = current.cameraBoom;
+  let stableSamples = 0;
+  while (performance.now() < deadline) {
+    const pitchMatches =
+      Math.abs(
+        current.cameraPitch * 180 / Math.PI - targetPitchDegrees
+      ) <= 0.5;
+    const boomResolved =
+      current.cameraBoom >= 2.6 &&
+      current.cameraBoom <= targetDistance + 0.25;
+    if (
+      pitchMatches &&
+      boomResolved &&
+      Math.abs(current.cameraBoom - previousBoom) <= 0.005
+    ) {
+      stableSamples += 1;
+    } else {
+      stableSamples = 0;
     }
-    fail("E_ROUTE", `could not reach ${target.join(",")}`);
-  } finally {
-    await page.keyboard.up("w");
-    if (run) await page.keyboard.up("Shift");
+    if (stableSamples >= 4) {
+      return current;
+    }
+    previousBoom = current.cameraBoom;
+    await page.waitForTimeout(25);
+    current = await telemetry(page);
   }
+  fail(
+    "E_CAMERA_FIXTURE",
+    `camera fixture telemetry differs: ` +
+      `targetPitch=${targetPitchDegrees}; actualPitch=${
+        current.cameraPitch * 180 / Math.PI
+      }; targetBoom=${targetDistance}; actualBoom=${current.cameraBoom}`
+  );
+}
+
+async function driveTo(page, target, { run = true, tolerance = 0.05 } = {}) {
+  return driveWithKeyboardToPoint(page, target, {
+    runRequested: run,
+    tolerance,
+    timeoutMs: 40_000
+  });
+}
+
+function assertUninterruptedRoute(result, label) {
+  if (
+    result.diagnostics.inputRefreshCount !== 0 ||
+    result.diagnostics.correctionCount !== 0
+  ) {
+    fail(
+      "E_ROUTE_RECOVERY",
+      `${label} required hidden route recovery: ` +
+        `inputRefreshCount=${result.diagnostics.inputRefreshCount}; ` +
+        `correctionCount=${result.diagnostics.correctionCount}`
+    );
+  }
+  return result;
+}
+
+async function driveRoutePrefix(page, end) {
+  return assertUninterruptedRoute(
+    await driveContinuousTrustedRoute(
+      page,
+      ROUTE.slice(0, end + 1),
+      {
+        runRequested: false,
+        steeringRoute: ROUTE_STEERING.slice(0, end + 1),
+        tolerance: 0.05
+      }
+    ),
+    `arrival prefix ${end}`
+  );
 }
 
 async function enterWorld(page, character) {
   await page.addInitScript(() => localStorage.clear());
   await page.goto("http://127.0.0.1:4173/en");
-  await page.getByRole("button", { name: "START" }).click();
-  await page.getByRole("button", { name: `Select ${character} character` }).click();
-  await page.getByRole("button", { name: "ENTER WORLD" }).click();
-  await page
-    .locator(
-      '.seamless-world-renderer[data-world-ready="true"]' +
-      '[data-world-renderer="seamless-rpg"]' +
-      '[data-renderer-technology="webgl3d"]'
-    )
-    .waitFor({ state: "visible", timeout: 30_000 });
+  await enterRpgWorld(page, character, { navigate: false });
   await telemetry(page);
 }
 
@@ -508,19 +748,72 @@ async function captureRow({
       viewportName === "mobile"
         ? fixture.mobileDistance
         : fixture.desktopDistance;
-    const stable = await telemetry(page);
-    if (
-      Math.abs(stable.cameraPitch * 180 / Math.PI - fixture.pitchDegrees) > 0.5 ||
-      Math.abs(stable.cameraBoom - requestedDistance) > 0.25
-    ) {
-      fail("E_CAMERA_FIXTURE", `${viewportName}/${id} fixture telemetry differs`);
-    }
+    await waitForCameraFixture(
+      page,
+      fixture.pitchDegrees,
+      requestedDistance
+    );
   }
   const stable = await telemetry(page);
   const relativePath = `${viewportName}/${id}.png`;
   const absolutePath = path.join(evidenceDirectory, relativePath);
   await mkdir(path.dirname(absolutePath), { recursive: true });
-  await page.screenshot({ path: absolutePath, fullPage: true });
+  const rendererBounds = await page
+    .locator(".seamless-world-renderer")
+    .boundingBox();
+  if (!rendererBounds) {
+    fail("E_RENDER_BOUNDS", `${viewportName}/${id} renderer is unavailable`);
+  }
+  const deviceScaleFactor = VIEWPORTS[viewportName].deviceScaleFactor;
+  const screenshot = await page.screenshot({
+    path: absolutePath,
+    fullPage: false,
+    scale: "device"
+  });
+  const imageWidth =
+    VIEWPORTS[viewportName].viewport.width * deviceScaleFactor;
+  const imageHeight =
+    VIEWPORTS[viewportName].viewport.height * deviceScaleFactor;
+  const pixelCrop = {
+    x: Math.max(0, Math.floor(rendererBounds.x * deviceScaleFactor)),
+    y: Math.max(0, Math.floor(rendererBounds.y * deviceScaleFactor)),
+    width: Math.max(
+      1,
+      Math.min(
+        imageWidth -
+          Math.max(0, Math.floor(rendererBounds.x * deviceScaleFactor)),
+        Math.ceil(rendererBounds.width * deviceScaleFactor)
+      )
+    ),
+    height: Math.max(
+      1,
+      Math.min(
+        imageHeight -
+          Math.max(0, Math.floor(rendererBounds.y * deviceScaleFactor)),
+        Math.ceil(rendererBounds.height * deviceScaleFactor)
+      )
+    )
+  };
+  const renderAnalysis = analyzePngCrop(screenshot, {
+    ...pixelCrop,
+    sampleStep: RENDER_SAMPLE_STEP
+  });
+  if (
+    renderAnalysis.width !== imageWidth ||
+    renderAnalysis.height !== imageHeight
+  ) {
+    fail(
+      "E_PNG_DIMENSIONS",
+      `${viewportName}/${id} screenshot dimensions differ`
+    );
+  }
+  if (renderAnalysis.blackPixelRatio >= MAX_RENDER_BLACK_PIXEL_RATIO) {
+    fail(
+      "E_BLACK_RENDER",
+      `${viewportName}/${id} renderer is mostly black: ` +
+        renderAnalysis.blackPixelRatio
+    );
+  }
   const characterReferenceAssets =
     id === "airport"
       ? [REFERENCES.male.front, REFERENCES.male.back]
@@ -541,52 +834,85 @@ async function captureRow({
     camera: {
       yaw: stable.cameraYaw,
       pitch: stable.cameraPitch,
-      boom: stable.cameraBoom
+      boom: stable.cameraBoom,
+      collisionAdjusted: stable.cameraCollisionAdjusted === "true",
+      collisionAdjustment: stable.cameraCollisionAdjustment,
+      lateralCollisionEscape:
+        stable.cameraLateralCollisionEscape === "true"
     },
     navigationRevision: stable.navigationRevision,
     navigationZone: stable.zone,
     requiredLandmarks: LANDMARKS[id],
-    characterReferenceAssets
+    characterReferenceAssets,
+    renderEvidence: {
+      imageWidth: renderAnalysis.width,
+      imageHeight: renderAnalysis.height,
+      pixelCrop,
+      sampleStep: RENDER_SAMPLE_STEP,
+      sampledPixels: renderAnalysis.sampledPixels,
+      blackPixelRatio: renderAnalysis.blackPixelRatio,
+      maxBlackPixelRatio: MAX_RENDER_BLACK_PIXEL_RATIO
+    }
   });
+  process.stderr.write(
+    `[visual] captured ${viewportName}/${id} ` +
+      `(black=${renderAnalysis.blackPixelRatio.toFixed(4)})\n`
+  );
 }
 
 async function captureViewport(browser, evidenceDirectory, viewportName, rows, performanceRows, errors) {
-  const context = await browser.newContext({
-    ...VIEWPORTS[viewportName],
-    locale: "en-US",
-    timezoneId: "Asia/Seoul",
-    reducedMotion: "reduce"
-  });
-  const page = await context.newPage();
-  page.on("pageerror", (error) =>
-    errors.browser.push({ viewport: viewportName, type: "pageerror", message: error.message })
-  );
-  page.on("console", (message) => {
-    if (message.type() === "error") {
-      errors.browser.push({ viewport: viewportName, type: "console", message: message.text() });
-    }
-  });
-  page.on("requestfailed", (request) =>
-    errors.network.push({
-      viewport: viewportName,
-      type: "requestfailed",
-      url: request.url(),
-      message: request.failure()?.errorText ?? "unknown"
-    })
-  );
-  page.on("response", (response) => {
-    if (response.status() >= 400) {
+  let context;
+  let page;
+  let primaryViewportError;
+  const openFreshPage = async () => {
+    await context?.close();
+    context = await browser.newContext({
+      ...VIEWPORTS[viewportName],
+      locale: "en-US",
+      timezoneId: "Asia/Seoul",
+      reducedMotion: "reduce"
+    });
+    page = await context.newPage();
+    page.on("pageerror", (error) =>
+      errors.browser.push({
+        viewport: viewportName,
+        type: "pageerror",
+        message: error.message
+      })
+    );
+    page.on("console", (message) => {
+      if (message.type() === "error") {
+        errors.browser.push({
+          viewport: viewportName,
+          type: "console",
+          message: message.text()
+        });
+      }
+    });
+    page.on("requestfailed", (request) =>
       errors.network.push({
         viewport: viewportName,
-        type: "response",
-        url: response.url(),
-        status: response.status()
-      });
-    }
-  });
+        type: "requestfailed",
+        url: request.url(),
+        message: request.failure()?.errorText ?? "unknown"
+      })
+    );
+    page.on("response", (response) => {
+      if (response.status() >= 400) {
+        errors.network.push({
+          viewport: viewportName,
+          type: "response",
+          url: response.url(),
+          status: response.status()
+        });
+      }
+    });
+    return page;
+  };
 
   const startedAt = Date.now();
   try {
+    page = await openFreshPage();
     await enterWorld(page, "male");
     await captureRow({
       page, evidenceDirectory, viewportName, id: "airport", selectedCharacter: "male", rows
@@ -606,18 +932,22 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
     });
     await page.keyboard.press("Escape");
 
-    for (let index = 1; index < ROUTE.length; index += 1) {
-      const target = ROUTE[index];
-      await driveTo(page, target);
-      const id = ARRIVAL_BY_POINT.get(target.join(","));
-      if (id) {
-        await captureRow({
-          page, evidenceDirectory, viewportName, id, selectedCharacter: "male", rows
-        });
-      }
+    for (const { end, id } of ARRIVAL_PREFIXES) {
+      page = await openFreshPage();
+      await enterWorld(page, "male");
+      await driveRoutePrefix(page, end);
+      await captureRow({
+        page, evidenceDirectory, viewportName, id, selectedCharacter: "male", rows
+      });
       if (id === "gyukatsu") {
-        await driveTo(page, [5.05, 7]);
-        await driveTo(page, [5, 7], { run: false, tolerance: 0.02 });
+        assertUninterruptedRoute(
+          await driveContinuousTrustedRoute(
+            page,
+            [[8, 0], [5, 7]],
+            { runRequested: false, tolerance: 0.05 }
+          ),
+          "gyukatsu narrow-camera route"
+        );
         const narrow = await telemetry(page);
         if (
           Math.hypot(narrow.position[0] - 5, narrow.position[2] - 7) > 0.05 ||
@@ -636,9 +966,7 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
           page, evidenceDirectory, viewportName, id: "narrow-camera", selectedCharacter: "male", rows
         });
 
-        await driveTo(page, [4.95, 7], { run: false, tolerance: 0.02 });
-        await driveTo(page, [5, 7], { run: false, tolerance: 0.02 });
-        await setCamera(page, 0, 38);
+        await setCamera(page, Math.PI / 2, 38);
         const obstacle = await telemetry(page);
         const requestedDistance =
           viewportName === "mobile"
@@ -646,25 +974,43 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
             : CAMERA_FIXTURES.gyukatsu.desktopDistance;
         if (
           obstacle.cameraBoom < 2.6 ||
-          obstacle.cameraBoom > requestedDistance - 0.1 ||
+          obstacle.cameraBoom > requestedDistance + 0.1 ||
+          obstacle.cameraCollisionAdjusted !== "true" ||
+          obstacle.cameraCollisionAdjustment <= 0.1 ||
           obstacle.cameraSafeViolationMs > 250 ||
           obstacle.cameraDiagnostic !== "ok"
         ) {
-          fail("E_OBSTACLE_CAMERA", "obstacle-camera predicate failed");
+          fail(
+            "E_OBSTACLE_CAMERA",
+            `obstacle-camera predicate failed: ` +
+              `boom=${obstacle.cameraBoom}; requested=${requestedDistance}; ` +
+              `adjusted=${obstacle.cameraCollisionAdjusted}; ` +
+              `adjustment=${obstacle.cameraCollisionAdjustment}; ` +
+              `lateral=${obstacle.cameraLateralCollisionEscape}; ` +
+              `violation=${obstacle.cameraSafeViolationMs}; ` +
+              `diagnostic=${obstacle.cameraDiagnostic}`
+          );
         }
         await captureRow({
           page, evidenceDirectory, viewportName, id: "obstacle-camera", selectedCharacter: "male", rows
         });
-        await driveTo(page, [8, 0]);
       }
     }
 
+    page = await openFreshPage();
     await enterWorld(page, "female");
-    for (let index = 1; index < ROUTE.length; index += 1) {
-      await driveTo(page, ROUTE[index]);
-    }
+    assertUninterruptedRoute(
+      await driveContinuousTrustedRoute(page, ROUTE, {
+        runRequested: false,
+        steeringRoute: ROUTE_STEERING,
+        tolerance: 0.05
+      }),
+      "female Hanabi route"
+    );
     await driveTo(page, [21, -21.9]);
-    await driveTo(page, [21, -22], { run: false, tolerance: 0.02 });
+    await driveForwardToPoint(page, [21, -22], Math.PI, {
+      tolerance: 0.05
+    });
     const prompt = page.locator(
       'button.world-interaction-prompt[data-target-id="npc-hanabi-child"]'
     );
@@ -674,16 +1020,30 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
     await captureRow({
       page, evidenceDirectory, viewportName, id: "npc-interaction", selectedCharacter: "female", rows
     });
+  } catch (error) {
+    primaryViewportError = error;
+    throw error;
   } finally {
     performanceRows.push({
       viewport: viewportName,
       captureDurationMs: Date.now() - startedAt
     });
-    await context.close();
+    try {
+      await context?.close();
+    } catch (error) {
+      if (!primaryViewportError) throw error;
+    }
   }
 }
 
 async function capture() {
+  const status = await run("git", [
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--untracked-files=all"
+  ]);
+  assertCaptureWorktreeStatus(status.stdout);
   const stamp = new Date().toISOString().replace(/[-:.]/g, "");
   const evidenceDirectory = path.join(
     OUTPUT_ROOT,
@@ -692,10 +1052,11 @@ async function capture() {
   await mkdir(evidenceDirectory, { recursive: true });
   const server = await startCaptureServer();
   const { chromium } = await import("@playwright/test");
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ channel: "chromium" });
   const rows = [];
   const performanceRows = [];
   const errors = { browser: [], network: [] };
+  let primaryCaptureError;
   try {
     for (const viewportName of Object.keys(VIEWPORTS)) {
       await captureViewport(
@@ -707,14 +1068,22 @@ async function capture() {
         errors
       );
     }
+  } catch (error) {
+    primaryCaptureError = error;
+    throw error;
   } finally {
-    await browser.close();
-    server.stop();
+    try {
+      await browser.close();
+    } catch (error) {
+      if (!primaryCaptureError) throw error;
+    } finally {
+      server.stop();
+    }
   }
   assertExactIds(rows, "capture manifest");
   const commitSha = (await run("git", ["rev-parse", "HEAD"])).stdout.trim();
   const manifest = {
-    protocol: "rpg-world-capture",
+    protocol: CAPTURE_PROTOCOL,
     phase: "AWAITING_VISUAL_REVIEW",
     commitSha,
     captureProducer: {
@@ -754,15 +1123,64 @@ async function buildSelfTestFixture(root) {
     const relative = `${id}.png`;
     const absolute = path.join(root, relative);
     await mkdir(path.dirname(absolute), { recursive: true });
-    await writeFile(absolute, `png:${id}`);
+    const png = encodeSolidColorPng({
+      width: 24,
+      height: 16,
+      color: [114, 183, 219, 255]
+    });
+    await writeFile(absolute, png);
+    const renderAnalysis = analyzePngCrop(png, {
+      x: 0,
+      y: 0,
+      width: 24,
+      height: 16,
+      sampleStep: RENDER_SAMPLE_STEP
+    });
+    const [viewportName, captureId] = id.split("/");
+    const expectedViewport = VIEWPORTS[viewportName];
+    const characterReferenceAssets =
+      captureId === "airport"
+        ? [REFERENCES.male.front, REFERENCES.male.back]
+        : captureId === "npc-interaction"
+          ? [REFERENCES.female.front, REFERENCES.female.back]
+          : [];
     rows.push({
       id,
       path: relative,
-      sha256: await sha256File(absolute)
+      sha256: sha256(png),
+      viewport: {
+        ...expectedViewport.viewport,
+        deviceScaleFactor: expectedViewport.deviceScaleFactor
+      },
+      selectedCharacter:
+        captureId === "npc-interaction" ? "female" : "male",
+      playerPosition: [0, 0, 0],
+      playerHeading: [0, 0, 1],
+      camera: {
+        yaw: 0,
+        pitch: 0.5,
+        boom: 6,
+        collisionAdjusted: false,
+        collisionAdjustment: 0,
+        lateralCollisionEscape: false
+      },
+      navigationRevision: "self-test",
+      navigationZone: "airport",
+      requiredLandmarks: LANDMARKS[captureId],
+      characterReferenceAssets,
+      renderEvidence: {
+        imageWidth: renderAnalysis.width,
+        imageHeight: renderAnalysis.height,
+        pixelCrop: { x: 0, y: 0, width: 24, height: 16 },
+        sampleStep: RENDER_SAMPLE_STEP,
+        sampledPixels: renderAnalysis.sampledPixels,
+        blackPixelRatio: renderAnalysis.blackPixelRatio,
+        maxBlackPixelRatio: MAX_RENDER_BLACK_PIXEL_RATIO
+      }
     });
   }
   const manifest = {
-    protocol: "rpg-world-capture",
+    protocol: CAPTURE_PROTOCOL,
     phase: "AWAITING_VISUAL_REVIEW",
     commitSha: "a".repeat(40),
     captureProducer: {
@@ -813,9 +1231,32 @@ async function expectSelfTestFailure(root, mutate, code) {
   fail("E_SELF_TEST", `expected ${code}`);
 }
 
+async function updateSelfTestManifest(root, mutate) {
+  const manifestPath = path.join(root, "capture-manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  await mutate(manifest);
+  const manifestBytes = Buffer.from(
+    `${JSON.stringify(manifest, null, 2)}\n`
+  );
+  await writeFile(manifestPath, manifestBytes);
+  const reviewPath = path.join(root, "visual-review.json");
+  const review = JSON.parse(await readFile(reviewPath, "utf8"));
+  review.commitSha = manifest.commitSha;
+  review.captureManifestSha256 = sha256(manifestBytes);
+  await writeFile(reviewPath, `${JSON.stringify(review, null, 2)}\n`);
+}
+
 async function selfTest() {
   const parent = await mkdtemp(path.join(os.tmpdir(), "rpg-visual-self-test-"));
   try {
+    assertCaptureWorktreeStatus("");
+    assertCaptureWorktreeStatus("?? docs/assets/reference.png\0");
+    try {
+      assertCaptureWorktreeStatus(" M app/world/RpgTownScene.tsx\0");
+      fail("E_SELF_TEST", "dirty source tree should fail capture preflight");
+    } catch (error) {
+      if (error?.code !== "E_SOURCE_DIRTY") throw error;
+    }
     const positive = path.join(parent, "positive");
     await mkdir(positive);
     await buildSelfTestFixture(positive);
@@ -845,6 +1286,27 @@ async function selfTest() {
     await validateFinalize(reordered);
     const cases = [
       {
+        code: "E_ROW_SET",
+        mutate: (root) =>
+          updateSelfTestManifest(root, (manifest) => {
+            manifest.rows.pop();
+          })
+      },
+      {
+        code: "E_PHASE",
+        mutate: (root) =>
+          updateSelfTestManifest(root, (manifest) => {
+            manifest.phase = "finalize_complete";
+          })
+      },
+      {
+        code: "E_MANIFEST",
+        mutate: (root) =>
+          updateSelfTestManifest(root, (manifest) => {
+            manifest.protocol = "wrong";
+          })
+      },
+      {
         code: "E_DUPLICATE_ROW",
         mutate: async (root) => {
           const filename = path.join(root, "visual-review.json");
@@ -859,6 +1321,33 @@ async function selfTest() {
           const filename = path.join(root, "visual-review.json");
           const value = JSON.parse(await readFile(filename, "utf8"));
           value.reviewer.id = PRODUCER_ID;
+          await writeFile(filename, `${JSON.stringify(value, null, 2)}\n`);
+        }
+      },
+      {
+        code: "E_REVIEW_BINDING",
+        mutate: async (root) => {
+          const filename = path.join(root, "visual-review.json");
+          const value = JSON.parse(await readFile(filename, "utf8"));
+          value.commitSha = "b".repeat(40);
+          await writeFile(filename, `${JSON.stringify(value, null, 2)}\n`);
+        }
+      },
+      {
+        code: "E_REVIEW_DECISION",
+        mutate: async (root) => {
+          const filename = path.join(root, "visual-review.json");
+          const value = JSON.parse(await readFile(filename, "utf8"));
+          value.rows[0].decision = "REJECT";
+          await writeFile(filename, `${JSON.stringify(value, null, 2)}\n`);
+        }
+      },
+      {
+        code: "E_REFERENCE_HASH",
+        mutate: async (root) => {
+          const filename = path.join(root, "visual-review.json");
+          const value = JSON.parse(await readFile(filename, "utf8"));
+          value.referenceAssets[0].frontSha256 = "0".repeat(64);
           await writeFile(filename, `${JSON.stringify(value, null, 2)}\n`);
         }
       },
@@ -893,10 +1382,54 @@ async function selfTest() {
         }
       },
       {
+        code: "E_RUNTIME_ERRORS",
+        mutate: async (root) => {
+          await writeFile(
+            path.join(root, "network-errors.json"),
+            `${JSON.stringify([{ url: "https://example.invalid" }])}\n`
+          );
+        }
+      },
+      {
         code: "E_PNG_HASH",
         mutate: async (root) => {
           await writeFile(path.join(root, `${expectedIds()[0]}.png`), "changed");
         }
+      },
+      {
+        code: "E_PNG_FORMAT",
+        mutate: async (root) => {
+          const id = expectedIds()[0];
+          const bytes = Buffer.from("not-a-png");
+          await writeFile(path.join(root, `${id}.png`), bytes);
+          await updateSelfTestManifest(root, (manifest) => {
+            manifest.rows.find((row) => row.id === id).sha256 =
+              sha256(bytes);
+          });
+        }
+      },
+      {
+        code: "E_BLACK_RENDER",
+        mutate: async (root) => {
+          const id = expectedIds()[0];
+          const png = encodeSolidColorPng({
+            width: 24,
+            height: 16,
+            color: [0, 0, 0, 255]
+          });
+          await writeFile(path.join(root, `${id}.png`), png);
+          await updateSelfTestManifest(root, (manifest) => {
+            manifest.rows.find((row) => row.id === id).sha256 =
+              sha256(png);
+          });
+        }
+      },
+      {
+        code: "E_ROW_SCHEMA",
+        mutate: (root) =>
+          updateSelfTestManifest(root, (manifest) => {
+            manifest.rows[0].path = "../escape.png";
+          })
       }
     ];
     for (let index = 0; index < cases.length; index += 1) {
@@ -906,7 +1439,7 @@ async function selfTest() {
     }
     return {
       status: "PASS",
-      checks: 2 + cases.length,
+      checks: 3 + cases.length,
       captureIds: expectedIds().length
     };
   } finally {
@@ -918,6 +1451,7 @@ export {
   CAPTURE_IDS,
   PRODUCER_ID,
   expectedIds,
+  assertCaptureWorktreeStatus,
   parseArguments,
   validateFinalize,
   finalize,

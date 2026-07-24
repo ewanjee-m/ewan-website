@@ -45,11 +45,14 @@ export function RpgSceneRuntime({
   useFrame(({ clock }, delta) => {
     if (!inputLocked && input.consumeReset()) runtime.reset();
     if (!inputLocked && input.consumeJump()) runtime.jump();
-    runtime.setMovement(
-      inputLocked
-        ? { x: 0, y: 0, runRequested: false }
-        : input.readMovement(movement.current)
-    );
+    const effectiveMovement = inputLocked
+      ? Object.assign(movement.current, {
+          x: 0,
+          y: 0,
+          runRequested: false
+        })
+      : input.readMovement(movement.current);
+    runtime.setMovement(effectiveMovement);
     if (!inputLocked) {
       runtime.advance(delta, runtime.getCameraState().yaw);
     }
@@ -65,6 +68,17 @@ export function RpgSceneRuntime({
       telemetryNode.dataset.playerPosition = next.position.join(",");
       telemetryNode.dataset.navigationRevision = String(next.revision);
       telemetryNode.dataset.navigationRegion = next.navigationRegionId;
+      telemetryNode.dataset.inputLocked = String(inputLocked);
+      telemetryNode.dataset.movementX = String(effectiveMovement.x);
+      telemetryNode.dataset.movementY = String(effectiveMovement.y);
+      telemetryNode.dataset.movementStrength = String(
+        Math.hypot(effectiveMovement.x, effectiveMovement.y)
+      );
+      telemetryNode.dataset.runRequested = String(
+        effectiveMovement.runRequested
+      );
+      telemetryNode.dataset.playerMoving = String(next.moving);
+      telemetryNode.dataset.playerLocomotion = next.locomotion;
     }
     publisher.offer(clock.elapsedTime, next);
   }, -1);

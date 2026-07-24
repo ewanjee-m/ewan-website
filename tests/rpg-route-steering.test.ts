@@ -31,7 +31,7 @@ function resultingDistance(
 }
 
 describe("RPG route closed-loop steering", () => {
-  it("keeps bridge steering inside the deck while preserving every canonical vertex", () => {
+  it("keeps constrained steering inside safe corridors while preserving every canonical vertex", () => {
     expect(RPG_CANONICAL_ROUTE_STEERING).toHaveLength(
       RPG_CANONICAL_ROUTE.length
     );
@@ -44,6 +44,12 @@ describe("RPG route closed-loop steering", () => {
         )
       ).toBeLessThanOrEqual(RPG_CANONICAL_ROUTE_TOLERANCE);
     }
+    expect(RPG_CANONICAL_ROUTE_STEERING[2][0]).toBeGreaterThan(-29);
+    expect(RPG_CANONICAL_ROUTE_STEERING[3][0]).toBeGreaterThan(-29);
+    expect(RPG_CANONICAL_ROUTE_STEERING[3][1]).toBeLessThan(20);
+    expect(RPG_CANONICAL_ROUTE_STEERING[4][1]).toBeLessThan(20);
+    expect(RPG_CANONICAL_ROUTE_STEERING[7][0]).toBeGreaterThan(-8);
+    expect(RPG_CANONICAL_ROUTE_STEERING[8][0]).toBeGreaterThan(-8);
     expect(RPG_CANONICAL_ROUTE_STEERING[12][1]).toBeGreaterThan(-18);
     expect(RPG_CANONICAL_ROUTE_STEERING[13][1]).toBeGreaterThan(-18);
   });

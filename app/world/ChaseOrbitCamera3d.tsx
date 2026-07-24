@@ -4,10 +4,12 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef, type RefObject } from "react";
 import {
   InstancedMesh,
+  Matrix4,
   Material,
   Mesh,
   Object3D,
   PerspectiveCamera,
+  Quaternion,
   Raycaster,
   Vector3,
   type Intersection
@@ -52,6 +54,17 @@ export function getRpgCameraLookSlerpAlpha(deltaSeconds: number) {
       Math.max(0, deltaSeconds) /
         RPG_CAMERA_LOOK_HALFLIFE_SECONDS
     );
+}
+
+export function resolveRpgCameraLookQuaternionInto(
+  position: Vector3,
+  focus: Vector3,
+  up: Vector3,
+  target: Quaternion,
+  matrix: Matrix4
+) {
+  matrix.lookAt(position, focus, up);
+  return target.setFromRotationMatrix(matrix);
 }
 
 export interface ChaseOrbitCamera3dProps {
@@ -140,7 +153,8 @@ export function ChaseOrbitCamera3d({
   const collisionPlayer = useRef<[number, number, number]>([0, 0, 0]);
   const collisionDesired = useRef<[number, number, number]>([0, 0, 0]);
   const collisionObstacles = useRef<RpgCameraDynamicObstacle[]>([]);
-  const lookTarget = useRef(new Object3D());
+  const lookMatrix = useRef(new Matrix4());
+  const lookQuaternion = useRef(new Quaternion());
   const foot = useRef(new Vector3());
   const head = useRef(new Vector3());
   const cameraRight = useRef(new Vector3());
@@ -158,6 +172,7 @@ export function ChaseOrbitCamera3d({
   const safetyViolationSeconds = useRef(0);
   const batchedOcclusionSeconds = useRef(0);
   const collisionIsFinite = useRef(true);
+  const placementInitialized = useRef(false);
   const mobile = useRef(
     typeof window !== "undefined" &&
       window.matchMedia("(pointer: coarse)").matches
@@ -220,7 +235,7 @@ export function ChaseOrbitCamera3d({
     collisionDesired.current[0] = desired.current.x;
     collisionDesired.current[1] = desired.current.y;
     collisionDesired.current[2] = desired.current.z;
-    resolveRpgCameraOrbitCollisionInto(
+    const usedLateralCollisionEscape = resolveRpgCameraOrbitCollisionInto(
       {
         player: collisionPlayer.current,
         desiredCamera: collisionDesired.current,
@@ -231,24 +246,45 @@ export function ChaseOrbitCamera3d({
       },
       resolved.current
     );
+    const collisionAdjustment = Math.hypot(
+      resolved.current[0] - collisionDesired.current[0],
+      resolved.current[1] - collisionDesired.current[1],
+      resolved.current[2] - collisionDesired.current[2]
+    );
 
     collisionIsFinite.current = resolved.current.every(Number.isFinite);
+    const initializePlacement =
+      collisionIsFinite.current && !placementInitialized.current;
     if (collisionIsFinite.current) {
       safePosition.current.fromArray(resolved.current);
     }
-    basePosition.current.lerp(
-      safePosition.current,
-      1 - Math.pow(0.5, delta / 0.12)
-    );
+    if (initializePlacement) {
+      basePosition.current.copy(safePosition.current);
+      placementInitialized.current = true;
+    } else {
+      basePosition.current.lerp(
+        safePosition.current,
+        1 - Math.pow(0.5, delta / 0.12)
+      );
+    }
     activeCamera.position
       .copy(basePosition.current)
       .add(safetyOffset.current);
-    lookTarget.current.position.copy(activeCamera.position);
-    lookTarget.current.lookAt(focus.current);
-    activeCamera.quaternion.slerp(
-      lookTarget.current.quaternion,
-      getRpgCameraLookSlerpAlpha(delta)
+    resolveRpgCameraLookQuaternionInto(
+      activeCamera.position,
+      focus.current,
+      activeCamera.up,
+      lookQuaternion.current,
+      lookMatrix.current
     );
+    if (initializePlacement) {
+      activeCamera.quaternion.copy(lookQuaternion.current);
+    } else {
+      activeCamera.quaternion.slerp(
+        lookQuaternion.current,
+        getRpgCameraLookSlerpAlpha(delta)
+      );
+    }
     activeCamera.updateMatrixWorld();
 
     foot.current
@@ -330,12 +366,21 @@ export function ChaseOrbitCamera3d({
         .copy(focus.current)
         .add(boomDirection.current);
     }
-    lookTarget.current.position.copy(activeCamera.position);
-    lookTarget.current.lookAt(focus.current);
-    activeCamera.quaternion.slerp(
-      lookTarget.current.quaternion,
-      getRpgCameraLookSlerpAlpha(delta)
+    resolveRpgCameraLookQuaternionInto(
+      activeCamera.position,
+      focus.current,
+      activeCamera.up,
+      lookQuaternion.current,
+      lookMatrix.current
     );
+    if (initializePlacement) {
+      activeCamera.quaternion.copy(lookQuaternion.current);
+    } else {
+      activeCamera.quaternion.slerp(
+        lookQuaternion.current,
+        getRpgCameraLookSlerpAlpha(delta)
+      );
+    }
     activeCamera.updateMatrixWorld();
 
     rayDirection.current
@@ -408,11 +453,25 @@ export function ChaseOrbitCamera3d({
 
     const headingYaw = Math.atan2(snapshot.heading[0], snapshot.heading[2]);
     const boom = activeCamera.position.distanceTo(focus.current);
+    const cameraFacingDot = -cameraRight.current
+      .set(0, 0, -1)
+      .applyQuaternion(activeCamera.quaternion)
+      .dot(rayDirection.current);
     const telemetryNode = telemetryRef.current;
     if (telemetryNode) {
       telemetryNode.dataset.cameraYaw = String(state.yaw);
       telemetryNode.dataset.cameraPitch = String(state.pitch);
       telemetryNode.dataset.cameraBoom = String(boom);
+      telemetryNode.dataset.cameraFacingDot = String(cameraFacingDot);
+      telemetryNode.dataset.cameraCollisionAdjusted = String(
+        collisionAdjustment > 0.001
+      );
+      telemetryNode.dataset.cameraCollisionAdjustment = String(
+        collisionAdjustment
+      );
+      telemetryNode.dataset.cameraLateralCollisionEscape = String(
+        usedLateralCollisionEscape
+      );
       telemetryNode.dataset.playerHeading = snapshot.heading.join(",");
       const mapAnchor = projectRpgReferenceMapPoint(snapshot.position);
       telemetryNode.dataset.mapAnchorReference = `${mapAnchor.x},${mapAnchor.y}`;

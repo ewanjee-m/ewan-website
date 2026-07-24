@@ -229,6 +229,48 @@ function createRuntimeHarness(target: WorldInteractionTarget | null) {
 }
 
 describe("RPG scene interaction runtime", () => {
+  it("publishes the effective movement input and locomotion state", () => {
+    const runtime = createWorldRuntime();
+    const input = createInputController();
+    input.pressKey("w");
+    input.pressKey("Shift");
+    const navigation = { current: runtime.getNavigationSnapshot() };
+    const telemetryNode = document.createElement("div");
+    const props = {
+      runtime,
+      input,
+      navigation,
+      onNavigationChange: vi.fn(),
+      telemetry: { current: telemetryNode },
+      inputLocked: false,
+      onInteractionRequest: vi.fn()
+    };
+    const view = render(createElement(RpgSceneRuntime, props));
+    const movingFrame = vi.mocked(useFrame).mock.calls.at(-1)?.[0];
+
+    movingFrame!({ clock: { elapsedTime: 1 / 60 } } as never, 1 / 60);
+
+    expect(telemetryNode.dataset.inputLocked).toBe("false");
+    expect(telemetryNode.dataset.movementX).toBe("0");
+    expect(telemetryNode.dataset.movementY).toBe("1");
+    expect(telemetryNode.dataset.movementStrength).toBe("1");
+    expect(telemetryNode.dataset.runRequested).toBe("true");
+    expect(telemetryNode.dataset.playerMoving).toBe("true");
+    expect(telemetryNode.dataset.playerLocomotion).toBe("run");
+
+    view.rerender(
+      createElement(RpgSceneRuntime, { ...props, inputLocked: true })
+    );
+    const lockedFrame = vi.mocked(useFrame).mock.calls.at(-1)?.[0];
+    lockedFrame!({ clock: { elapsedTime: 2 / 60 } } as never, 1 / 60);
+
+    expect(telemetryNode.dataset.inputLocked).toBe("true");
+    expect(telemetryNode.dataset.movementStrength).toBe("0");
+    expect(telemetryNode.dataset.runRequested).toBe("false");
+    expect(telemetryNode.dataset.playerMoving).toBe("false");
+    expect(telemetryNode.dataset.playerLocomotion).toBe("idle");
+  });
+
   it("does not consume movement pressed before readiness and clears it before unlock", () => {
     const runtime = createWorldRuntime();
     const input = createInputController();

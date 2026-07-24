@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Object3D } from "three";
+import { Matrix4, Object3D, Quaternion, Vector3 } from "three";
 import {
   calculateRpgCameraCollisionRatio,
   resolveRpgCameraCollisionInto,
@@ -21,7 +21,8 @@ import { createRpgBusMotionPose } from "../app/world/RpgBusMotion";
 import {
   collectRpgCameraDynamicObstacles,
   collectRpgCameraOcclusionRoots,
-  getRpgCameraLookSlerpAlpha
+  getRpgCameraLookSlerpAlpha,
+  resolveRpgCameraLookQuaternionInto
 } from "../app/world/ChaseOrbitCamera3d";
 import {
   isRpgWalkablePosition,
@@ -87,6 +88,26 @@ const festivalLantern = RPG_LANDMARKS.find(
 )!;
 
 describe("RPG chase camera obstacle clearance", () => {
+  it("aims the camera negative-Z axis at the player focus", () => {
+    const cameraPosition = new Vector3(-32.5, 4.8, -5.9);
+    const focus = new Vector3(-26.3, 1.15, -2.97);
+    const quaternion = new Quaternion();
+
+    resolveRpgCameraLookQuaternionInto(
+      cameraPosition,
+      focus,
+      new Vector3(0, 1, 0),
+      quaternion,
+      new Matrix4()
+    );
+
+    const cameraForward = new Vector3(0, 0, -1)
+      .applyQuaternion(quaternion)
+      .normalize();
+    const expectedForward = focus.clone().sub(cameraPosition).normalize();
+    expect(cameraForward.dot(expectedForward)).toBeCloseTo(1, 10);
+  });
+
   it("converges the camera look target within the 250ms safe-frame budget", () => {
     const frameSeconds = 1 / 60;
     const alpha = getRpgCameraLookSlerpAlpha(frameSeconds);
