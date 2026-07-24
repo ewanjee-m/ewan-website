@@ -1275,13 +1275,14 @@ git push fork HEAD:agent/visual-fidelity-map-alignment
 - Create: `tests/world-camera-input.test.tsx`
 - Modify: `app/world/RpgCameraCollision.ts`
 - Modify: `app/globals.css`
+- Modify: `vitest.config.ts`
 - Test: `tests/rpg-camera-collision.test.ts`
 - Test: `tests/rpg-character-camera-visibility.test.ts`
 
 **Interfaces:**
 - Consumes: `WorldCameraDragIntent`, `WorldNavigationSnapshot`.
 - Produces: `createChaseOrbitCameraState`, `advanceChaseOrbitCamera`, `getRegionCameraProfile`, `shortestCameraYawError`.
-- Produces: `advanceRpgCameraOcclusion`, `getRpgCameraSafeArea`, `calculateRpgCameraSafetyCorrection`.
+- Produces: `advanceRpgCameraOcclusion`, `getRpgCameraSafeArea`, `calculateRpgCameraSafetyCorrection`, `advanceRpgCameraSafetyOffset`.
 - Produces: `WorldCameraInputProps.onDrag`.
 
 - [ ] **Step 1: Write camera timing, clamp, and collision tests**
@@ -1617,6 +1618,8 @@ export function WorldCameraInput({
 
 The optional pointer-capture calls are required because jsdom does not implement them; real browsers still capture and release the pointer. CSS must place `.world-camera-input` over the Canvas, under buttons and dialogs, restrict coarse pointers to the right `55%`, and set `touch-action: none` on the world interaction surface. Capture only one primary pointer; while one pointer is active, ignore additional pointer IDs so pinch/zoom cannot become camera input. Pointer starts on `[data-world-input-block]`, buttons, links, dialogs, the map, or the joystick must never reach `WorldCameraInput`. Component tests cover each blocked origin, a two-touch attempt, and `lostpointercapture`.
 
+Exercise the real `onPointerDown` handler for blocked origins: append representative blocked descendants to the rendered camera layer, dispatch pointer starts from each descendant so the event bubbles through the production handler, then prove subsequent pointer moves emit no drag. A sibling-only click is insufficient because it cannot reach the component regardless of its guard.
+
 - [ ] **Step 5: Add occlusion timing and screen-safe-area calculations**
 
 `RpgCameraOcclusion.ts` is a pure state machine with these exact assertions:
@@ -1637,7 +1640,7 @@ It waits `250ms`, fades a marked blocker to opacity `0.15` within `100ms`, and r
 
 `RpgCameraSafety.ts` returns the exact safe rectangle for desktop `1440x900` (`x 15%..85%`, `y 10%..92%`) and mobile `390x844` content rect `(0,64,390,780)` (`x 10%..90%`, `y 8%..94%`). `calculateRpgCameraSafetyCorrection` returns zero while the projected foot/head bounds are inside; outside it returns signed overflow divided by the safe rectangle's width/height and clamps each axis to `[-1, 1]`.
 
-`ChaseOrbitCamera3d` converts that normalized correction into a world-space focus offset with this exact rule:
+`RpgCameraSafety.ts` exports a pure `advanceRpgCameraSafetyOffset` helper in this task. It accepts the current camera distance, normalized correction, camera-right/camera-up vectors, mutable current/target offsets, and `deltaSeconds`, and applies this exact world-space rule:
 
 ```ts
 const horizontalShift = Math.min(state.distance * 0.35, 2);
@@ -1653,9 +1656,22 @@ safetyOffset.lerp(
 );
 ```
 
-Unit tests cover every edge, the `2.2` clamp, decay back to zero, and a continuous `250ms` violation. The active E2E in Task 10 asserts that `data-camera-safe` never becomes `false`, `data-camera-boom` never drops below `2.6`, and `data-camera-diagnostic` never reports a non-finite result.
+Task 7's `ChaseOrbitCamera3d` consumes this helper instead of duplicating the formula. Unit tests cover every edge, the `2.2` clamp, `0.08s` half-life smoothing, decay back to zero, and a continuous `250ms` violation. The active E2E in Task 10 asserts that `data-camera-safe` never becomes `false`, `data-camera-boom` never drops below `2.6`, and `data-camera-diagnostic` never reports a non-finite result.
 
 - [ ] **Step 6: Run camera tests**
+
+Keep `RETIRED_UNIT_SUITES` byte-for-byte as the historical ten-path G007 contract. Introduce `ACTIVE_UNIT_EXCLUDES` now and make Vitest spread it instead of `RETIRED_UNIT_SUITES`. Reactivate the collision suite in this task by excluding only the other nine historical suites:
+
+```ts
+export const ACTIVE_UNIT_EXCLUDES = RETIRED_UNIT_SUITES.filter(
+  (path) => path !== "tests/rpg-camera-collision.test.ts"
+);
+
+// Vitest config
+exclude: [...configDefaults.exclude, ...ACTIVE_UNIT_EXCLUDES]
+```
+
+Repair `tests/rpg-camera-collision.test.ts` against the current world/camera contracts without weakening the minimum-boom, static/dynamic obstacle, thin-column, invalid-coordinate, and character-visibility assertions. Remove obsolete source assertions tied only to the retired `FlatWorldCanvas` composition. The exact focused command below must collect the collision file and pass; a skipped/excluded file is a failure.
 
 Run:
 
@@ -1668,7 +1684,7 @@ Expected: PASS; pitch, sensitivity, recenter timing, profiles and boom minimum a
 - [ ] **Step 7: Commit and push**
 
 ```bash
-git add app/world/ChaseOrbitCamera.ts app/world/RpgCameraOcclusion.ts app/world/RpgCameraSafety.ts app/world/WorldCameraInput.tsx app/world/RpgCameraCollision.ts app/globals.css tests/chase-orbit-camera.test.ts tests/rpg-camera-collision.test.ts tests/rpg-character-camera-visibility.test.ts tests/rpg-camera-occlusion.test.ts tests/rpg-camera-safety.test.ts tests/world-camera-input.test.tsx
+git add app/world/ChaseOrbitCamera.ts app/world/RpgCameraOcclusion.ts app/world/RpgCameraSafety.ts app/world/WorldCameraInput.tsx app/world/RpgCameraCollision.ts app/globals.css vitest.config.ts tests/chase-orbit-camera.test.ts tests/rpg-camera-collision.test.ts tests/rpg-character-camera-visibility.test.ts tests/rpg-camera-occlusion.test.ts tests/rpg-camera-safety.test.ts tests/world-camera-input.test.tsx
 git commit -m "Add the RPG chase orbit camera" \
   -m "Generated with Codex" \
   -m "Co-Authored-By: OpenAI Codex <noreply@openai.com>"
@@ -1982,14 +1998,13 @@ Do not import `RpgWorldBackdrop`, create an `<image>`, create another Canvas, or
 
 - [ ] **Step 6: Re-enable the scene suites without rewriting G007 history**
 
-Keep `RETIRED_UNIT_SUITES` byte-for-byte as the historical ten-path G007 contract because `tests/visual/g007-verification.test.ts` still verifies it. Introduce `ACTIVE_UNIT_EXCLUDES` and make Vitest spread that array, not `RETIRED_UNIT_SUITES`, into `test.exclude`. After this task, `ACTIVE_UNIT_EXCLUDES` contains only the four suites whose replacement behavior is not implemented yet:
+Keep `RETIRED_UNIT_SUITES` byte-for-byte as the historical ten-path G007 contract because `tests/visual/g007-verification.test.ts` still verifies it. Task 4 already introduced `ACTIVE_UNIT_EXCLUDES` and reactivated camera collision. Reduce the active array after this task to only the three actor/motion suites whose replacement behavior is not implemented yet:
 
 ```ts
 export const ACTIVE_UNIT_EXCLUDES = [
   "tests/rpg-npc-glb-renderer.test.ts",
   "tests/npc-patrol-motion.test.ts",
-  "tests/rpg-bus-motion.test.ts",
-  "tests/rpg-camera-collision.test.ts"
+  "tests/rpg-bus-motion.test.ts"
 ] as const;
 
 // Vitest config
@@ -2458,6 +2473,8 @@ Remove these paths from `ACTIVE_UNIT_EXCLUDES`; do not mutate historical `RETIRE
 "tests/npc-patrol-motion.test.ts",
 "tests/rpg-bus-motion.test.ts"
 ```
+
+After removing those three paths, `ACTIVE_UNIT_EXCLUDES` is empty. Keep it exported for the G007-preserving active/historical separation.
 
 - [ ] **Step 6: Run actor and model tests**
 
@@ -2968,9 +2985,9 @@ const WorldCanvas = dynamic(() => import("./SeamlessWorldCanvas"), {
 
 The mobile joystick must send `runRequested: magnitude >= 0.85`.
 
-- [ ] **Step 8: Re-enable camera collision and run the active slice**
+- [ ] **Step 8: Verify camera collision in the active slice**
 
-Remove `"tests/rpg-camera-collision.test.ts"` from `ACTIVE_UNIT_EXCLUDES`; do not mutate historical `RETIRED_UNIT_SUITES`. The active exclusion array is now empty.
+Task 4 already reactivated camera collision and Task 6 left `ACTIVE_UNIT_EXCLUDES` empty. Do not mutate historical `RETIRED_UNIT_SUITES`; verify the collision suite still passes after Three camera integration.
 
 Run:
 
