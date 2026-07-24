@@ -107,26 +107,22 @@ export function classifyRpgReferenceFrameUpdate({
   return "ordinary";
 }
 
-const MAX_NAVIGATION_PUBLICATION_DELAY_MS = 100;
-
-export function shouldPublishFlatWorldNavigation({
-  navigationRevision,
+export function publishFlatWorldNavigationFrame({
+  navigation,
   lastNavigationRevision,
-  now,
-  lastNavigationUpdate,
-  discreteReason
+  onNavigationChange
 }: {
-  readonly navigationRevision: number;
+  readonly navigation: FlatWorldNavigationSnapshot;
   readonly lastNavigationRevision: number;
-  readonly now: number;
-  readonly lastNavigationUpdate: number;
-  readonly discreteReason: "reset" | null;
+  readonly onNavigationChange: (
+    navigation: WorldNavigationSnapshot
+  ) => void;
 }) {
-  return (
-    navigationRevision !== lastNavigationRevision &&
-    (discreteReason !== null ||
-      now - lastNavigationUpdate >= MAX_NAVIGATION_PUBLICATION_DELAY_MS)
-  );
+  if (navigation.revision === lastNavigationRevision) {
+    return lastNavigationRevision;
+  }
+  onNavigationChange(adaptFlatWorldNavigationSnapshot(navigation));
+  return navigation.revision;
 }
 
 export function applyRpgReferenceNavigationFrameInput({
@@ -340,7 +336,6 @@ function FlatWorldCanvas(props: FlatWorldCanvasProps) {
   const worldMovementRef = useRef(createRpgMovementBuffer());
   const movementTelemetryRef = useRef(createRpgScreenMovementTelemetry());
   const lastNavigationRevisionRef = useRef(-1);
-  const lastNavigationUpdateRef = useRef(0);
   const [viewport, setViewport] = useState<FlatWorldViewport>({
     width: 0,
     height: 0,
@@ -842,17 +837,11 @@ function FlatWorldCanvas(props: FlatWorldCanvasProps) {
       };
       lastProfileRef.current = profileId;
       recoveryPendingRef.current = false;
-      if (shouldPublishFlatWorldNavigation({
-        navigationRevision: navigation.revision,
+      lastNavigationRevisionRef.current = publishFlatWorldNavigationFrame({
+        navigation,
         lastNavigationRevision: lastNavigationRevisionRef.current,
-        now,
-        lastNavigationUpdate: lastNavigationUpdateRef.current,
-        discreteReason
-      })) {
-        lastNavigationRevisionRef.current = navigation.revision;
-        lastNavigationUpdateRef.current = now;
-        onNavigationChange(adaptFlatWorldNavigationSnapshot(navigation));
-      }
+        onNavigationChange
+      });
       animationFrame = requestAnimationFrame(tick);
     };
     animationFrame = requestAnimationFrame(tick);

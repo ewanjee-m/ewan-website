@@ -9,8 +9,8 @@ import {
   applyRpgReferenceNavigationFrameInput,
   classifyRpgReferenceFrameUpdate,
   createFlatWorldPlayerSpriteFrameInput,
-  resolveFlatWorldViewportProfile,
-  shouldPublishFlatWorldNavigation
+  publishFlatWorldNavigationFrame,
+  resolveFlatWorldViewportProfile
 } from "../app/world/FlatWorldCanvas";
 import { calculateRpgReferenceCameraPlacement } from "../app/world/RpgCameraPlacement";
 import {
@@ -181,34 +181,48 @@ function expectAtomicReferencePublication({
 }
 
 describe("RPG player sprite renderer integration", () => {
-  it("publishes continuous navigation within the 100ms binding limit", () => {
-    const publication = {
-      navigationRevision: 2,
-      lastNavigationRevision: 1,
-      lastNavigationUpdate: 1_000,
-      discreteReason: null
-    } as const;
+  it("publishes a changed navigation revision on the next evaluated frame", () => {
+    const session = createFlatWorldSession({
+      bounds: RPG_WORLD_BOUNDS,
+      start: { x: RPG_WORLD_SPAWN[0], z: RPG_WORLD_SPAWN[2] },
+      moveSpeed: 3.4,
+      canMoveTo: (x, z) => isWalkable([x, z])
+    });
+    const initial = session.getNavigationSnapshot();
+    let frameTime = 1_000;
+    const publications: Array<{ frameTime: number; revision: number }> = [];
+    const onNavigationChange = vi.fn((navigation) => {
+      publications.push({ frameTime, revision: navigation.revision });
+    });
+
+    session.setMovement({ x: -1, y: 0 });
+    session.advance(0.001);
+    const changed = session.getNavigationSnapshot();
+    frameTime += 1;
+
+    const publishedRevision = publishFlatWorldNavigationFrame({
+      navigation: changed,
+      lastNavigationRevision: initial.revision,
+      onNavigationChange
+    });
+
+    expect(publishedRevision).toBe(changed.revision);
+    expect(publications).toEqual([
+      { frameTime: 1_001, revision: changed.revision }
+    ]);
+    expect(onNavigationChange).toHaveBeenCalledOnce();
+    expect(onNavigationChange.mock.calls[0][0].position).not.toBe(
+      changed.position
+    );
 
     expect(
-      shouldPublishFlatWorldNavigation({ ...publication, now: 1_099 })
-    ).toBe(false);
-    expect(
-      shouldPublishFlatWorldNavigation({ ...publication, now: 1_100 })
-    ).toBe(true);
-    expect(
-      shouldPublishFlatWorldNavigation({
-        ...publication,
-        lastNavigationRevision: 2,
-        now: 1_100
+      publishFlatWorldNavigationFrame({
+        navigation: changed,
+        lastNavigationRevision: publishedRevision,
+        onNavigationChange
       })
-    ).toBe(false);
-    expect(
-      shouldPublishFlatWorldNavigation({
-        ...publication,
-        discreteReason: "reset",
-        now: 1_001
-      })
-    ).toBe(true);
+    ).toBe(publishedRevision);
+    expect(onNavigationChange).toHaveBeenCalledOnce();
   });
 
   it.each([
