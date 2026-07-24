@@ -10,7 +10,10 @@ import {
 } from "react";
 import { Group, Vector3 } from "three";
 import { NPC_CHARACTER_MODELS } from "./NpcCharacterModels";
-import { RpgAssetBoundary } from "./RpgAssetBoundary";
+import {
+  RpgAssetAvailabilityGate,
+  RpgAssetBoundary
+} from "./RpgAssetBoundary";
 import type { NpcSpriteId } from "./NpcAssets";
 import {
   createNpcPatrolPose,
@@ -80,7 +83,7 @@ function RpgNpcActor({
     yaw: 0,
     clearance: RPG_NPC_CAMERA_CLEARANCE
   });
-  const [assetAvailable, setAssetAvailable] = useState(true);
+  const [assetAvailable, setAssetAvailable] = useState(false);
   const assetFailed = useRef(false);
   const removeObstacle = () => {
     dynamicObstacles.current.delete(landmark.id);
@@ -100,6 +103,9 @@ function RpgNpcActor({
       "data-unavailable-npc-ids",
       [...failedIds].sort().join(",")
     );
+  };
+  const handleAssetAvailable = () => {
+    setAssetAvailable(true);
   };
 
   useEffect(() => {
@@ -150,18 +156,26 @@ function RpgNpcActor({
 
   return (
     <group ref={root}>
-      <RpgNpcAssetBoundary
+      <RpgAssetAvailabilityGate
         assetId={landmark.id}
+        src={model.modelAsset}
         fallback={null}
+        onAvailable={handleAssetAvailable}
         onError={handleAssetError}
       >
-        <RpgNpcCharacter3d
-          ref={character}
-          npcId={landmark.id}
-          variant={landmark.variant ?? 0}
-          playerPosition={playerPosition}
-        />
-      </RpgNpcAssetBoundary>
+        <RpgNpcAssetBoundary
+          assetId={landmark.id}
+          fallback={null}
+          onError={handleAssetError}
+        >
+          <RpgNpcCharacter3d
+            ref={character}
+            npcId={landmark.id}
+            variant={landmark.variant ?? 0}
+            playerPosition={playerPosition}
+          />
+        </RpgNpcAssetBoundary>
+      </RpgAssetAvailabilityGate>
     </group>
   );
 }

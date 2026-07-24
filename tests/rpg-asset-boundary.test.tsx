@@ -3,7 +3,11 @@ import { forwardRef } from "react";
 import { Vector3 } from "three";
 import { describe, expect, it, vi } from "vitest";
 import type { RpgCameraDynamicObstacle } from "../app/world/RpgCameraCollision";
-import { RpgAssetBoundary } from "../app/world/RpgAssetBoundary";
+import {
+  RpgAssetAvailabilityGate,
+  RpgAssetBoundary,
+  clearRpgAssetAvailabilityCacheForTests
+} from "../app/world/RpgAssetBoundary";
 import { createWorldRuntime } from "../app/world/WorldRuntime";
 
 vi.mock("@react-three/fiber", () => ({
@@ -30,6 +34,47 @@ function BrokenAsset(): never {
 }
 
 describe("RPG asset recovery", () => {
+  it("handles an expected network failure before mounting the throwing loader", async () => {
+    clearRpgAssetAvailabilityCacheForTests();
+    const loader = vi.fn(() => <p>GLTF loader mounted</p>);
+    const Loader = () => loader();
+    const onError = vi.fn();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("", { status: 404 }))
+    );
+
+    render(
+      <RpgAssetAvailabilityGate
+        assetId="player-male"
+        src="https://example.invalid/private/player-male.glb"
+        fallback={<p>Fallback character</p>}
+        onError={onError}
+      >
+        <Loader />
+      </RpgAssetAvailabilityGate>
+    );
+
+    expect(await screen.findByText("Fallback character")).toBeVisible();
+    expect(loader).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledOnce();
+    expect(consoleError).toHaveBeenCalledWith({
+      assetId: "player-male",
+      errorName: "AssetHttpError"
+    });
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
+      "example.invalid"
+    );
+    expect(JSON.stringify(onError.mock.calls)).not.toContain(
+      "example.invalid"
+    );
+    consoleError.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
   it("renders a local fallback and logs only assetId and errorName", () => {
     const consoleError = vi
       .spyOn(console, "error")
@@ -56,6 +101,11 @@ describe("RPG asset recovery", () => {
   })
 
   it("isolates one failed NPC obstacle and runtime interaction target", async () => {
+    clearRpgAssetAvailabilityCacheForTests();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("", { status: 200 }))
+    );
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
@@ -95,5 +145,6 @@ describe("RPG asset recovery", () => {
       vi.spyOn(freshRuntime, "setInteractionTargetAvailable")
     ).not.toHaveBeenCalled();
     consoleError.mockRestore();
+    vi.unstubAllGlobals();
   });
 });

@@ -10,6 +10,7 @@ import {
   RPG_GYUKATSU_OUTDOOR_DETAILS,
   RPG_TOKYO_CROSSWALK_DETAILS
 } from "../app/world/RpgTownDetailsLayout";
+import { isDecorationClusterVisible } from "../app/world/RpgTownDetails";
 
 describe("approved town concept 3D details", () => {
   it("adds an irregular non-blocking rock line outside the airport walking road", () => {
@@ -102,5 +103,13 @@ describe("approved town concept 3D details", () => {
     expect(source).toContain("zoneWeights.tokyo");
     expect(source).toContain("zoneWeights.gyukatsu");
     expect(source).toContain("decorationDensity");
+  });
+
+  it("hides far non-core details when the runtime distance drops from 48 to 18", () => {
+    const player = [0, 0, 0] as const;
+    const decoration = [[32, 0, 0]] as const;
+
+    expect(isDecorationClusterVisible(player, decoration, 48)).toBe(true);
+    expect(isDecorationClusterVisible(player, decoration, 18)).toBe(false);
   });
 });

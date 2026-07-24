@@ -86,6 +86,7 @@ export const RpgTownScene = memo(function RpgTownScene({
       <RpgTownDetails
         qualitySettings={qualitySettings}
         presentation={presentation}
+        playerPosition={playerPosition}
       />
       <RpgSignatureLandmarks
         qualitySettings={qualitySettings}

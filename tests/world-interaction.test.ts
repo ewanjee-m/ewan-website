@@ -10,7 +10,10 @@ import {
 } from "../app/world/WorldInteraction";
 import { WorldInteractionPrompt } from "../app/world/WorldInteractionPrompt";
 import { RpgSceneRuntime } from "../app/world/RpgSceneRuntime";
-import type { InputController } from "../app/world/InputController";
+import {
+  createInputController,
+  type InputController
+} from "../app/world/InputController";
 import type { WorldNavigationSnapshot } from "../app/world/WorldNavigationState";
 import type { WorldRuntime } from "../app/world/WorldRuntime";
 import { createWorldRuntime } from "../app/world/WorldRuntime";
@@ -226,6 +229,40 @@ function createRuntimeHarness(target: WorldInteractionTarget | null) {
 }
 
 describe("RPG scene interaction runtime", () => {
+  it("does not consume movement pressed before readiness and clears it before unlock", () => {
+    const runtime = createWorldRuntime();
+    const input = createInputController();
+    input.pressKey("ArrowRight");
+    const before = runtime.getNavigationSnapshot();
+    const navigation = { current: before };
+    const props = {
+      runtime,
+      input,
+      navigation,
+      onNavigationChange: vi.fn(),
+      telemetry: { current: null },
+      inputLocked: true,
+      onInteractionRequest: vi.fn()
+    };
+    const view = render(createElement(RpgSceneRuntime, props));
+    const lockedFrame = vi.mocked(useFrame).mock.calls.at(-1)?.[0];
+
+    lockedFrame!({ clock: { elapsedTime: 1 / 60 } } as never, 1 / 60);
+    lockedFrame!({ clock: { elapsedTime: 2 / 60 } } as never, 1 / 60);
+    expect(runtime.getNavigationSnapshot().position).toEqual(before.position);
+    expect(runtime.getNavigationSnapshot().revision).toBe(before.revision);
+
+    input.reset();
+    view.rerender(
+      createElement(RpgSceneRuntime, { ...props, inputLocked: false })
+    );
+    const unlockedFrame = vi.mocked(useFrame).mock.calls.at(-1)?.[0];
+    unlockedFrame!({ clock: { elapsedTime: 3 / 60 } } as never, 1 / 60);
+
+    expect(runtime.getNavigationSnapshot().position).toEqual(before.position);
+    expect(runtime.getNavigationSnapshot().revision).toBe(before.revision);
+  });
+
   it("keeps position, heading, and revision invariant for 30 locked frames", () => {
     const runtime = createWorldRuntime();
     runtime.setMovement({ x: 1, y: 0, runRequested: true });

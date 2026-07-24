@@ -124,7 +124,9 @@ export function getSceneQuality({
     maxDpr: pixelRatioDegraded
       ? Math.min(selected.maxDpr, coarsePointer ? 1 : 1.25)
       : selected.maxDpr,
-    shadowMapSize: shadowsDegraded ? 1024 : getSceneShadowMapSize(level),
+    shadowMapSize: shadowsDegraded
+      ? Math.min(getSceneShadowMapSize(level), 1024)
+      : getSceneShadowMapSize(level),
     shadowUpdateEveryFrames: shadowsDegraded ? 4 : 1,
     farDecorationDistance: farDecorationsDegraded ? 18 : 48,
     npcSecondaryMotion: !npcMotionDegraded,

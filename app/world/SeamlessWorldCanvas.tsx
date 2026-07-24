@@ -102,6 +102,7 @@ function SeamlessWorldContents({
   onSettingsChange,
   onPerformanceSample,
   onReady,
+  worldReady,
   ...props
 }: SeamlessWorldCanvasProps & {
   readonly runtime: WorldRuntime;
@@ -117,6 +118,7 @@ function SeamlessWorldContents({
     sample: Readonly<WorldPerformanceSample>
   ) => void;
   readonly onReady: () => void;
+  readonly worldReady: boolean;
 }) {
   const initialNavigation = useMemo(
     () => runtime.getNavigationSnapshot(),
@@ -153,7 +155,7 @@ function SeamlessWorldContents({
       <RpgSceneRuntime
         runtime={runtime}
         input={props.input}
-        inputLocked={props.inputLocked}
+        inputLocked={props.inputLocked || !worldReady}
         navigation={navigation}
         onNavigationChange={props.onNavigationChange}
         onInteractionRequest={props.onInteractionRequest}
@@ -333,6 +335,7 @@ function SupportedSeamlessWorldCanvas({
               onSettingsChange={setQualitySettings}
               onPerformanceSample={publishPerformance}
               onReady={markReady}
+              worldReady={worldReady}
             />
           ) : null}
         </Suspense>

@@ -33,14 +33,14 @@ The same focused command passed:
 
 ```text
 Test Files  9 passed (9)
-Tests       35 passed (35)
+Tests       41 passed (41)
 ```
 
 The full unit suite passed:
 
 ```text
 Test Files  95 passed (95)
-Tests       795 passed (795)
+Tests       803 passed (803)
 ```
 
 ## Failure Injection and Recovery
@@ -71,6 +71,10 @@ Tests       795 passed (795)
 - With only `npc-hanabi-yukata` unavailable, deterministic target selection
   still returns `npc-hanabi-child`.
 - Asset logs contain only `{ assetId, errorName }`.
+- Expected GLB and SVG network failures are checked before the throwing
+  `useGLTF` or `useLoader` path mounts. The availability gate caches requests,
+  reports a sanitized error, and leaves the boundary in place for unexpected
+  parse or render failures.
 - The Hanabi SVG is local geometry only. Its nested Suspense and asset boundary
   can remain pending indefinitely while the world reaches ready.
 
@@ -81,7 +85,17 @@ Tests       795 passed (795)
 - The legacy `SceneQualityLevel` return/getter API remains type-compatible.
 - Terrain, roads, collision, landmarks, and player remain enabled at every
   stage.
+- Far shoreline rocks and Gyukatsu outdoor details are culled against the live
+  player position and `farDecorationDistance`; crosswalk roads and signature
+  landmarks remain outside that culling.
+- Firework trail duration now changes the actual opacity lifetime and group
+  visibility window, so a reduced trail expires before the full trail.
+- Degraded shadows use the smaller of the device quality ceiling and `1024`;
+  low quality therefore remains shadow-free.
 - One immutable settings object flows through Canvas, scene, and consumers.
+- Scene runtime input remains locked until `worldReady`. Movement pressed
+  during loading cannot advance position or revision, and the stable input
+  controller is cleared immediately before unlock.
 - Quality changes do not key or remount Canvas or the scene root.
 - Performance samples publish only after two seconds and are frozen.
 - Frame recording uses refs rather than per-frame React state.
@@ -111,6 +125,48 @@ Result:
 - WebGL unavailable: no renderer is constructed; restoring support and clicking
   the now-clickable retry reaches ready.
 - Baseline WebGL world still reports one Canvas, runtime, and scene mount.
+- All three injected asset `404` cases recorded zero `pageerror` events.
+  Captured error reporting contained no asset filename, HTTP URL, or stack
+  frame.
+
+## Review Correction Evidence
+
+RED command:
+
+```text
+npx vitest run tests/rpg-asset-boundary.test.tsx tests/scene-quality.test.ts tests/world-effects.test.ts tests/rpg-town-details.test.ts
+```
+
+Initial result:
+
+```text
+Test Files  4 failed (4)
+Tests       4 failed | 30 passed (34)
+```
+
+- The availability gate and decoration visibility behavior did not exist.
+- Low-quality degraded shadows incorrectly increased from `0` to `1024`.
+- A `0.5` second firework trail remained visible when it should have expired.
+
+Corrected focused behavior:
+
+```text
+npx vitest run tests/rpg-asset-boundary.test.tsx tests/scene-quality.test.ts tests/world-effects.test.ts tests/rpg-town-details.test.ts tests/world-interaction.test.ts
+
+Test Files  5 passed (5)
+Tests       44 passed (44)
+```
+
+Final required verification:
+
+```text
+Task 9 focused: 9 files, 41 tests passed
+Full unit: 95 files, 803 tests passed
+Typecheck with --incremental false: passed
+Targeted ESLint: 0 errors, 0 warnings
+git diff --check: passed
+Task 9 404/WebGL browser grep: 5 passed (38.2s)
+```
 
 ## Static Verification
 
@@ -122,7 +178,7 @@ Result:
 
 ## Remaining Risk
 
-- The Task 9 browser grep proves failure isolation and interaction continuity,
-  while the exact Hanabi-child target selection is covered deterministically at
-  unit level. Long canonical-route timing and full route-driven interaction
-  validation remain outside this task’s validation migration scope.
+- The Task 9 browser grep proves failure isolation, zero page errors, and
+  interaction continuity. Exact Hanabi-child target selection remains covered
+  deterministically at unit level. Direct route-driven Hanabi-child browser
+  interaction is an accepted Task 10 validation gap.

@@ -158,6 +158,19 @@ describe("hanabi finale", () => {
     }
   });
 
+  it("expires a reduced trail before the full trail", () => {
+    const opacityAt = (trailSeconds: number) =>
+      calculateHanabiFrame({
+        elapsedSeconds: 1.7,
+        intensity: 1,
+        trailSeconds,
+        reducedMotion: false
+      }).find((burst) => burst.id === "gold-crown-left")?.opacity ?? 0;
+
+    expect(opacityAt(0.5)).toBe(0);
+    expect(opacityAt(1.15)).toBeGreaterThan(0);
+  });
+
   it("keeps the overlapping finale within its additive brightness budget", () => {
     const frame = calculateHanabiFrame({
       elapsedSeconds: 11.2,

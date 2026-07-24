@@ -92,6 +92,23 @@ describe("scene quality", () => {
     expect(degraded.npcSecondaryMotion).toBe(false);
   });
 
+  it.each([
+    ["high", 1024],
+    ["medium", 1024],
+    ["low", 0]
+  ] as const)(
+    "never raises the %s device shadow ceiling while degraded",
+    (level, expected) => {
+      expect(
+        getSceneQuality({
+          level,
+          reducedMotion: false,
+          degradationStage: "shadows"
+        }).shadowMapSize
+      ).toBe(expected);
+    }
+  );
+
   it("caps degraded DPR for desktop and coarse pointers", () => {
     expect(
       getSceneQuality({

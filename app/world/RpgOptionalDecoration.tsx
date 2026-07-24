@@ -1,9 +1,16 @@
 "use client";
 
 import { useLoader } from "@react-three/fiber";
-import { Suspense, useEffect, type RefObject } from "react";
+import {
+  Suspense,
+  useEffect,
+  type RefObject
+} from "react";
 import { TextureLoader } from "three";
-import { RpgAssetBoundary } from "./RpgAssetBoundary";
+import {
+  RpgAssetAvailabilityGate,
+  RpgAssetBoundary
+} from "./RpgAssetBoundary";
 
 const HANABI_SIGN_ASSET = "/assets/world/hanabi-festival-sign.svg";
 
@@ -34,20 +41,28 @@ export function RpgOptionalDecoration({
 }: {
   telemetry: RefObject<HTMLDivElement | null>;
 }) {
+  const handleAssetError = () => {
+    telemetry.current?.setAttribute(
+      "data-optional-decoration",
+      "omitted"
+    );
+  };
   return (
-    <RpgAssetBoundary
+    <RpgAssetAvailabilityGate
       assetId="hanabi-festival-sign"
+      src={HANABI_SIGN_ASSET}
       fallback={null}
-      onError={() => {
-        telemetry.current?.setAttribute(
-          "data-optional-decoration",
-          "omitted"
-        );
-      }}
+      onError={handleAssetError}
     >
-      <Suspense fallback={null}>
-        <HanabiFestivalSign telemetry={telemetry} />
-      </Suspense>
-    </RpgAssetBoundary>
+      <RpgAssetBoundary
+        assetId="hanabi-festival-sign"
+        fallback={null}
+        onError={handleAssetError}
+      >
+        <Suspense fallback={null}>
+          <HanabiFestivalSign telemetry={telemetry} />
+        </Suspense>
+      </RpgAssetBoundary>
+    </RpgAssetAvailabilityGate>
   );
 }

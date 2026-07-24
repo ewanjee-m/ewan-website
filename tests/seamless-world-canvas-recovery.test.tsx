@@ -133,6 +133,7 @@ beforeEach(() => {
 afterEach(() => {
   window.removeEventListener("error", captureError);
   window.removeEventListener("unhandledrejection", captureRejection);
+  vi.unstubAllGlobals();
 });
 
 function RecoveryHarness({
@@ -251,6 +252,7 @@ describe("seamless world recovery", () => {
 
   it("reaches ready while the optional decoration remains pending", async () => {
     mockAssetPending = true;
+    vi.stubGlobal("fetch", () => neverResolvingAsset);
     const SceneComponent: ComponentType<RpgTownSceneProps> = ({
       telemetry
     }) => <RpgOptionalDecoration telemetry={telemetry} />;

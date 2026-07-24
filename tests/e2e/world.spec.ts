@@ -102,9 +102,32 @@ async function approachAirportInteraction(page: Page) {
   ).toBeVisible();
 }
 
+function captureAssetFailureEvidence(page: Page) {
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.stack ?? error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  return { pageErrors, consoleErrors };
+}
+
+function expectRedactedAssetFailure(
+  evidence: ReturnType<typeof captureAssetFailureEvidence>,
+  assetFilename: string
+) {
+  expect(evidence.pageErrors).toEqual([]);
+  const reported = evidence.consoleErrors.join("\n");
+  expect(reported).not.toContain(assetFilename);
+  expect(reported).not.toContain("http://");
+  expect(reported).not.toContain("https://");
+  expect(reported).not.toMatch(/\n\s+at\s/);
+}
+
 test("falls back when the selected player GLB returns 404", async ({
   page
 }) => {
+  const evidence = captureAssetFailureEvidence(page);
   await page.route("**/player-male.glb", (route) =>
     route.fulfill({ status: 404, body: "" })
   );
@@ -112,9 +135,11 @@ test("falls back when the selected player GLB returns 404", async ({
 
   await expect(renderer).toHaveAttribute("data-character-fallback", "true");
   await expectMoved(page);
+  expectRedactedAssetFailure(evidence, "player-male.glb");
 });
 
 test("falls back by omitting only one failed NPC", async ({ page }) => {
+  const evidence = captureAssetFailureEvidence(page);
   await page.route("**/npc-hanabi-yukata.glb", (route) =>
     route.fulfill({ status: 404, body: "" })
   );
@@ -128,11 +153,13 @@ test("falls back by omitting only one failed NPC", async ({ page }) => {
   await approachAirportInteraction(page);
   await page.getByRole("button", { name: "Interact" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
+  expectRedactedAssetFailure(evidence, "npc-hanabi-yukata.glb");
 });
 
 test("falls back by omitting the optional Hanabi decoration", async ({
   page
 }) => {
+  const evidence = captureAssetFailureEvidence(page);
   await page.route("**/hanabi-festival-sign.svg", (route) =>
     route.fulfill({ status: 404, body: "" })
   );
@@ -145,6 +172,7 @@ test("falls back by omitting the optional Hanabi decoration", async ({
   await expect(renderer).toHaveAttribute("data-hanabi-fireworks", "true");
   await expectMoved(page);
   await approachAirportInteraction(page);
+  expectRedactedAssetFailure(evidence, "hanabi-festival-sign.svg");
 });
 
 test("retries after WebGL support becomes available", async ({ page }) => {

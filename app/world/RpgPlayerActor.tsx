@@ -4,7 +4,10 @@ import { useFrame } from "@react-three/fiber";
 import { useRef, type RefObject } from "react";
 import { Group, Vector3 } from "three";
 import type { PlayerCharacterId } from "./CharacterAssets";
-import { RpgAssetBoundary } from "./RpgAssetBoundary";
+import {
+  RpgAssetAvailabilityGate,
+  RpgAssetBoundary
+} from "./RpgAssetBoundary";
 import { RpgFallbackCharacter3d } from "./RpgFallbackCharacter3d";
 import {
   createRpgCharacterMotion3dPose,
@@ -15,6 +18,7 @@ import {
   RpgPlayerCharacter3d,
   type RpgPlayerCharacter3dHandle
 } from "./RpgPlayerCharacter3d";
+import { getRpgPlayerCharacterDesign } from "./RpgPlayerCharacterDesign";
 import type { SceneQualitySettings } from "./SceneQuality";
 import type { WorldNavigationSnapshot } from "./WorldNavigationState";
 import { WORLD_RUN_SPEED, WORLD_WALK_SPEED } from "./WorldRuntime";
@@ -41,6 +45,12 @@ export function RpgPlayerActor({
   const handleAssetError = () => {
     telemetry.current?.setAttribute("data-character-fallback", "true");
   };
+  const fallback = (
+    <RpgFallbackCharacter3d
+      ref={characterHandle}
+      character={character}
+    />
+  );
 
   useFrame((_, delta) => {
     const snapshot = navigation.current;
@@ -73,23 +83,25 @@ export function RpgPlayerActor({
 
   return (
     <group ref={root} name="rpg-player-actor">
-      <RpgAssetBoundary
+      <RpgAssetAvailabilityGate
         assetId={`player-${character}`}
-        fallback={
-          <RpgFallbackCharacter3d
-            ref={characterHandle}
-            character={character}
-          />
-        }
+        src={getRpgPlayerCharacterDesign(character).modelAsset}
+        fallback={fallback}
         onError={handleAssetError}
       >
-        <RpgPlayerCharacter3d
-          ref={characterHandle}
-          character={character}
-          guideActive={false}
-          qualityLevel={qualitySettings.level}
-        />
-      </RpgAssetBoundary>
+        <RpgAssetBoundary
+          assetId={`player-${character}`}
+          fallback={fallback}
+          onError={handleAssetError}
+        >
+          <RpgPlayerCharacter3d
+            ref={characterHandle}
+            character={character}
+            guideActive={false}
+            qualityLevel={qualitySettings.level}
+          />
+        </RpgAssetBoundary>
+      </RpgAssetAvailabilityGate>
     </group>
   );
 }

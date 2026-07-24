@@ -378,9 +378,10 @@ export function calculateHanabiFrameInto(
       HANABI_CYCLE_SECONDS;
     const expansion = Math.min(1, Math.max(0, localTime / 1.15));
     const fadeStart = Math.max(0.28, trailSeconds);
+    const fadeDuration = Math.max(1.05, trailSeconds * 0.9);
     const fade = Math.max(
       0,
-      1 - Math.max(0, localTime - fadeStart) / 1.35
+      1 - Math.max(0, localTime - fadeStart) / fadeDuration
     );
     const pulse = 0.92 + Math.sin(localTime * 2) * 0.04;
     const fadeIn = reducedMotion
@@ -405,7 +406,9 @@ export function calculateHanabiFrameInto(
   }
   output.length = HANABI_BURSTS.length;
   const opacityScale =
-    combinedEnvelope > 0 ? Math.min(0.72, 3.6 / combinedEnvelope) : 0;
+    combinedEnvelope > 0
+      ? Math.min(0.72, 3.599999 / combinedEnvelope)
+      : 0;
   for (const frame of output) {
     frame.opacity *= availableIntensity * opacityScale;
   }
