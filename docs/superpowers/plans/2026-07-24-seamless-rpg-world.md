@@ -3040,6 +3040,7 @@ git push fork HEAD:agent/visual-fidelity-map-alignment
 - Modify: `app/world/WorldNavigationState.ts`
 - Modify: `app/world/WorldRuntime.ts`
 - Modify: `app/world/RpgSceneRuntime.tsx`
+- Modify: `app/world/SeamlessWorldCanvas.tsx`
 - Modify: `app/world/PortfolioGuide.tsx:1-121`
 - Modify: `app/world/WorldView.tsx`
 - Modify: `app/i18n/messages.ts`
@@ -3238,7 +3239,7 @@ Expected: PASS; interaction opens the mapped portfolio entry and closing it pres
 - [ ] **Step 7: Commit and push**
 
 ```bash
-git add app/world/WorldInteraction.ts app/world/WorldInteractionPrompt.tsx app/world/WorldNavigationState.ts app/world/WorldRuntime.ts app/world/RpgSceneRuntime.tsx app/world/PortfolioGuide.tsx app/world/WorldView.tsx app/i18n/messages.ts app/globals.css tests/world-interaction.test.ts tests/portfolio-guide.test.tsx tests/start-experience.test.tsx tests/messages.test.ts
+git add app/world/WorldInteraction.ts app/world/WorldInteractionPrompt.tsx app/world/WorldNavigationState.ts app/world/WorldRuntime.ts app/world/RpgSceneRuntime.tsx app/world/SeamlessWorldCanvas.tsx app/world/PortfolioGuide.tsx app/world/WorldView.tsx app/i18n/messages.ts app/globals.css tests/world-interaction.test.ts tests/portfolio-guide.test.tsx tests/start-experience.test.tsx tests/messages.test.ts
 git commit -m "Add in-world RPG interactions" \
   -m "Generated with Codex" \
   -m "Co-Authored-By: OpenAI Codex <noreply@openai.com>"
