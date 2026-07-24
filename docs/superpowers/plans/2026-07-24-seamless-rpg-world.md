@@ -950,6 +950,8 @@ git push fork HEAD:agent/visual-fidelity-map-alignment
 - Test: `tests/rpg-reference-registration.test.ts`
 - Test: `tests/rpg-world-transform.test.ts`
 - Test: `tests/messages.test.ts`
+- Test: `tests/e2e/map-accessibility.spec.ts`
+- Test: `tests/e2e/world.spec.ts`
 
 **Interfaces:**
 - Consumes: `WorldNavigationSnapshot`.
@@ -1063,7 +1065,19 @@ it("keeps runtime position and revision fixed for 500ms after map selection", as
     vi.useRealTimers();
   }
 });
+
+it("rejects a polygon outside the registered map terrain", () => {
+  expect(() =>
+    projectRpgWorldPolygon([
+      [Number.MAX_SAFE_INTEGER, 0, Number.MAX_SAFE_INTEGER],
+      [Number.MAX_SAFE_INTEGER - 1, 0, Number.MAX_SAFE_INTEGER],
+      [Number.MAX_SAFE_INTEGER, 0, Number.MAX_SAFE_INTEGER - 1]
+    ])
+  ).toThrow(RangeError);
+});
 ```
+
+Update the active map E2E assertions in this task so no committed intermediate state retains the removed image/fast-travel contract. `tests/e2e/map-accessibility.spec.ts` and `tests/e2e/world.spec.ts` must assert `data-map-layer="model-terrain"`, no SVG `<image>`, `Inspect` controls, a still-open dialog after selection, changed selected-place copy, and unchanged player position/navigation revision.
 
 - [ ] **Step 2: Run map tests and verify they fail**
 
@@ -1125,6 +1139,10 @@ export function RpgMapTerrain() {
       {RPG_WORLD_ZONES.map((zone) => (
         <polygon
           key={zone.id}
+          className="rpg-map-terrain-zone"
+          fill="#dfcfaa"
+          stroke="#8d745b"
+          strokeWidth="2"
           data-map-zone={zone.id}
           points={serializeRpgReferencePoints(
             projectRpgWorldPolygon(zone.displayPolygon)
@@ -1132,6 +1150,10 @@ export function RpgMapTerrain() {
         />
       ))}
       <polygon
+        className="rpg-map-terrain-water"
+        fill="#8bc9d9"
+        stroke="#4d91a8"
+        strokeWidth="2"
         data-map-water={RPG_WORLD_CANAL.id}
         points={serializeRpgReferencePoints(
           projectRpgWorldPolygon(RPG_WORLD_CANAL.polygon)
@@ -1140,6 +1162,10 @@ export function RpgMapTerrain() {
       {RPG_WORLD_ROUTES.map((route) => (
         <polygon
           key={route.id}
+          className="rpg-map-terrain-route"
+          fill="#d6b184"
+          stroke="#9a734b"
+          strokeWidth="2"
           data-map-route={route.id}
           points={serializeRpgReferencePoints(
             projectRpgWorldPolygon(route.polygon)
@@ -1147,6 +1173,10 @@ export function RpgMapTerrain() {
         />
       ))}
       <polygon
+        className="rpg-map-terrain-bridge"
+        fill="#b67d52"
+        stroke="#74462d"
+        strokeWidth="2"
         data-map-bridge={RPG_WORLD_BRIDGE.id}
         points={serializeRpgReferencePoints(
           projectRpgWorldPolygon(RPG_WORLD_BRIDGE.polygon)
@@ -1158,6 +1188,7 @@ export function RpgMapTerrain() {
 ```
 
 Replace the `<image href="/assets/world/world-environment-concept.png">` layer in both maps with `<RpgMapTerrain />`.
+Keep semantic classes and distinct land, water, route, and bridge fill/stroke values on the shared SVG component so the generated geometry is visually distinguishable without renderer-specific duplicate CSS.
 
 - [ ] **Step 5: Make the full map read-only**
 
@@ -1214,14 +1245,15 @@ Run:
 
 ```bash
 npm run test:unit -- --run tests/rpg-mini-map.test.ts tests/rpg-mini-map-component.test.tsx tests/rpg-world-map-component.test.tsx tests/world-mini-map-integration.test.tsx tests/rpg-reference-registration.test.ts tests/rpg-world-transform.test.ts tests/messages.test.ts
+npm run test:e2e -- tests/e2e/map-accessibility.spec.ts tests/e2e/world.spec.ts
 ```
 
-Expected: PASS; no map `<image>` or travel callback remains, and selection leaves navigation revision and position unchanged.
+Expected: PASS; no map `<image>` or travel callback remains in unit or active E2E contracts, terrain layers are visually distinct, and selection leaves navigation revision and position unchanged.
 
 - [ ] **Step 8: Commit and push**
 
 ```bash
-git add app/world/RpgMapTerrain.tsx app/world/RpgMiniMapProjection.ts app/world/RpgMiniMap.tsx app/world/RpgWorldMap.tsx app/world/WorldView.tsx app/i18n/messages.ts tests/rpg-mini-map.test.ts tests/rpg-mini-map-component.test.tsx tests/rpg-world-map-component.test.tsx tests/world-mini-map-integration.test.tsx tests/rpg-reference-registration.test.ts tests/rpg-world-transform.test.ts tests/messages.test.ts
+git add app/world/RpgMapTerrain.tsx app/world/RpgMiniMapProjection.ts app/world/RpgMiniMap.tsx app/world/RpgWorldMap.tsx app/world/WorldView.tsx app/i18n/messages.ts tests/rpg-mini-map.test.ts tests/rpg-mini-map-component.test.tsx tests/rpg-world-map-component.test.tsx tests/world-mini-map-integration.test.tsx tests/rpg-reference-registration.test.ts tests/rpg-world-transform.test.ts tests/messages.test.ts tests/e2e/map-accessibility.spec.ts tests/e2e/world.spec.ts
 git commit -m "Make the RPG maps coordinate-driven and read-only" \
   -m "Generated with Codex" \
   -m "Co-Authored-By: OpenAI Codex <noreply@openai.com>"
