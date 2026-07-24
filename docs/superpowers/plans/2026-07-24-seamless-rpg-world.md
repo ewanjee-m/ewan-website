@@ -168,6 +168,7 @@ Verify local `HEAD`, the fork branch SHA, and PR `headRefOid` are identical befo
 - Test: `tests/keyboard-input.test.ts`
 - Test: `tests/rpg-world-map-component.test.tsx`
 - Test: `tests/rpg-player-renderer-integration.test.ts`
+- Test: `tests/world-mini-map-integration.test.tsx`
 
 **Interfaces:**
 - Produces: `WorldMovementIntent`, `WorldCameraDragIntent`, `WorldPointerKind`.
@@ -426,6 +427,8 @@ Keep passing that object to the legacy session; structural typing lets the legac
 
 In the same task, remove `supportsFastTravel`, `travelToDestination`, and `onTravel` from `WorldView` and `RpgWorldMap`. Give `RpgWorldMap` a local `selectedZoneId` initialized from `navigation.currentZoneId`; destination buttons update only that local selection. This keeps every intermediate commit type-correct while Task 3 later replaces the terrain and adds selected-place descriptions.
 
+Update the existing `tests/world-mini-map-integration.test.tsx` fast-travel assertion in this task, rather than leaving the otherwise clean unit suite red until Task 3. After selecting Gyukatsu, assert that the full map stays open and that the shared navigation position and revision remain unchanged. Task 3 may extend the same integration test for model-driven terrain, but it must not be responsible for repairing a failure introduced here.
+
 Change the interim `FlatWorldCanvas` input buffer to `WorldMovementIntent`; its legacy screen/world projection functions read only `x` and `y`, while `runRequested` is ignored until `WorldRuntime` becomes active. In `WorldView.updateMovement`, send:
 
 ```ts
@@ -444,15 +447,15 @@ Update every `getMovement()` test/caller to the caller-owned `readMovement(targe
 Run:
 
 ```bash
-npm run test:unit -- --run tests/input-controller.test.ts tests/keyboard-input.test.ts tests/rpg-world-map-component.test.tsx tests/rpg-player-renderer-integration.test.ts
+npm run test:unit -- --run tests/input-controller.test.ts tests/keyboard-input.test.ts tests/rpg-world-map-component.test.tsx tests/rpg-player-renderer-integration.test.ts tests/world-mini-map-integration.test.tsx
 ```
 
-Expected: PASS with no travel method in the active input controller; `Escape` closes the map and never enters the gameplay input buffer.
+Expected: PASS with no travel method in the active input controller; `Escape` closes the map and never enters the gameplay input buffer; selecting a destination keeps the read-only map open and leaves navigation unchanged.
 
 - [ ] **Step 6: Commit and push**
 
 ```bash
-git add app/world/WorldInput.ts app/world/InputController.ts app/world/KeyboardInput.ts app/world/FlatWorldCanvas.tsx app/world/WorldCanvas.tsx app/world/RpgWorldMap.tsx app/world/WorldView.tsx tests/input-controller.test.ts tests/keyboard-input.test.ts tests/rpg-world-map-component.test.tsx tests/rpg-player-renderer-integration.test.ts
+git add app/world/WorldInput.ts app/world/InputController.ts app/world/KeyboardInput.ts app/world/FlatWorldCanvas.tsx app/world/WorldCanvas.tsx app/world/RpgWorldMap.tsx app/world/WorldView.tsx tests/input-controller.test.ts tests/keyboard-input.test.ts tests/rpg-world-map-component.test.tsx tests/rpg-player-renderer-integration.test.ts tests/world-mini-map-integration.test.tsx
 git commit -m "Replace world input and remove fast travel" \
   -m "Generated with Codex" \
   -m "Co-Authored-By: OpenAI Codex <noreply@openai.com>"
