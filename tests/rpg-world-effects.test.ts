@@ -1,25 +1,140 @@
 import { describe, expect, it } from "vitest";
-import { RPG_HANABI_BURSTS } from "../app/world/RpgHanabiLayout";
-import { calculateActiveRpgFireworkFrame } from "../app/world/RpgWorldEffects";
+import {
+  RPG_HANABI_BURSTS,
+  calculateRpgFireworkFrame,
+  getRpgHanabiRenderBudget
+} from "../app/world/RpgHanabiLayout";
+import {
+  calculateActiveRpgFireworkFrame,
+  calculateActiveRpgFireworkFrameInto,
+  calculateActiveRpgFireworkTrailFrame
+} from "../app/world/RpgWorldEffects";
 
 describe("active RPG world effects", () => {
-  it("expires a reduced trail before the full trail at the same active frame", () => {
+  it.each(["high", "medium", "low"] as const)(
+    "keeps at least four canonical %s base shells visible from 0 through 30 seconds",
+    (level) => {
+      const budget = getRpgHanabiRenderBudget(level);
+      for (let elapsedSeconds = 0; elapsedSeconds <= 30; elapsedSeconds += 0.05) {
+        const frames = budget.bursts.map((burst) =>
+          calculateActiveRpgFireworkFrame({
+            elapsedSeconds,
+            burst,
+            intensity: 1,
+            reducedMotion: false
+          })
+        );
+        expect(
+          frames.filter(({ visible }) => visible).length,
+          `${level} at ${elapsedSeconds.toFixed(2)}s`
+        ).toBeGreaterThanOrEqual(4);
+      }
+    }
+  );
+
+  it("preserves canonical wrapping at low 0.95s and high 23.2s", () => {
+    for (const [level, elapsedSeconds] of [
+      ["low", 0.95],
+      ["high", 23.2]
+    ] as const) {
+      const visible = getRpgHanabiRenderBudget(level).bursts.filter(
+        (burst) =>
+          calculateActiveRpgFireworkFrame({
+            elapsedSeconds,
+            burst,
+            intensity: 1,
+            reducedMotion: false
+          }).visible
+      );
+      expect(visible.length, `${level} at ${elapsedSeconds}s`)
+        .toBeGreaterThanOrEqual(4);
+    }
+  });
+
+  it("keeps persistent base shells visible beyond the normal hide phase", () => {
+    for (const burst of RPG_HANABI_BURSTS.filter(
+      ({ persistent }) => persistent
+    )) {
+      const elapsedSeconds = burst.delay + burst.cycle * 0.95;
+      const active = calculateActiveRpgFireworkFrame({
+        elapsedSeconds,
+        burst,
+        intensity: 1,
+        reducedMotion: false
+      });
+      const canonical = calculateRpgFireworkFrame({
+        elapsedSeconds,
+        burst,
+        intensity: 1,
+        reducedMotion: false
+      });
+
+      expect(active).toEqual(canonical);
+      expect(active.visible, burst.id).toBe(true);
+    }
+  });
+
+  it("shortens only the active trail envelope while preserving its base shell", () => {
     const burst = RPG_HANABI_BURSTS[0];
-    const reduced = calculateActiveRpgFireworkFrame({
-      elapsedSeconds: 0.95,
+    const base = calculateActiveRpgFireworkFrame({
+      elapsedSeconds: 0.7,
       burst,
       intensity: 1,
+      reducedMotion: false
+    });
+    const reducedTrail = calculateActiveRpgFireworkTrailFrame({
+      base,
+      burst,
       trailSeconds: 0.5
     });
-    const full = calculateActiveRpgFireworkFrame({
-      elapsedSeconds: 0.95,
+    const fullTrail = calculateActiveRpgFireworkTrailFrame({
+      base,
       burst,
-      intensity: 1,
       trailSeconds: 1.15
     });
 
-    expect(reduced).toEqual({ visible: false, opacity: 0 });
-    expect(full.visible).toBe(true);
-    expect(full.opacity).toBeGreaterThan(0);
+    expect(base.visible).toBe(true);
+    expect(reducedTrail).toEqual({ visible: false, opacity: 0 });
+    expect(fullTrail.visible).toBe(true);
+    expect(fullTrail.opacity).toBeGreaterThan(0);
+  });
+
+  it("keeps the active production frame seam finite for invalid cycle and trail values", () => {
+    const burst = {
+      ...RPG_HANABI_BURSTS[0],
+      cycle: Number.NaN
+    };
+    const target = {
+      visible: false,
+      progress: 0,
+      expansion: 0,
+      droop: 0,
+      sizeEnvelope: 0,
+      twinkle: 0,
+      opacity: 0
+    };
+    const base = calculateActiveRpgFireworkFrameInto(
+      {
+        elapsedSeconds: 0.7,
+        burst,
+        intensity: 1,
+        reducedMotion: false
+      },
+      target
+    );
+    const trail = calculateActiveRpgFireworkTrailFrame({
+      base,
+      burst,
+      trailSeconds: Number.NaN
+    });
+
+    expect(base).toBe(target);
+    expect(
+      Object.values(base)
+        .filter((value): value is number => typeof value === "number")
+        .every(Number.isFinite)
+    ).toBe(true);
+    expect(trail).toEqual({ visible: false, opacity: 0 });
+    expect(Number.isFinite(trail.opacity)).toBe(true);
   });
 });

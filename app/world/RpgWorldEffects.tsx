@@ -4,8 +4,11 @@ import { useFrame } from "@react-three/fiber";
 import { memo, type RefObject, useMemo, useRef } from "react";
 import type { Group, PointsMaterial } from "three";
 import {
+  calculateRpgFireworkFrameInto,
   createRpgHanabiShell,
   getRpgHanabiRenderBudget,
+  type RpgFireworkFrame,
+  type RpgFireworkFrameInput,
   type RpgHanabiBurst
 } from "./RpgHanabiLayout";
 import type { RpgRegionPresentationState } from "./RpgRegionPresentation";
@@ -22,29 +25,53 @@ function createPetalPositions(count: number) {
   return values;
 }
 
-export function calculateActiveRpgFireworkFrame({
-  elapsedSeconds,
+export function calculateActiveRpgFireworkFrameInto(
+  input: RpgFireworkFrameInput,
+  target: RpgFireworkFrame
+) {
+  return calculateRpgFireworkFrameInto(input, target);
+}
+
+export function calculateActiveRpgFireworkFrame(
+  input: RpgFireworkFrameInput
+) {
+  return calculateActiveRpgFireworkFrameInto(input, createFireworkFrame());
+}
+
+export function calculateActiveRpgFireworkTrailFrame({
+  base,
   burst,
-  intensity,
   trailSeconds
 }: {
-  elapsedSeconds: number;
+  base: Readonly<RpgFireworkFrame>;
   burst: RpgHanabiBurst;
-  intensity: number;
   trailSeconds: number;
 }) {
-  const elapsed = elapsedSeconds - burst.delay;
-  if (elapsed < 0 || intensity <= 0) {
+  const safeTrailSeconds = Number.isFinite(trailSeconds)
+    ? Math.max(0, trailSeconds)
+    : 0;
+  const safeCycle = Number.isFinite(burst.cycle)
+    ? Math.max(0.1, burst.cycle)
+    : 4;
+  const localSeconds = base.progress * safeCycle;
+  if (!base.visible || localSeconds >= safeTrailSeconds) {
     return { visible: false, opacity: 0 } as const;
   }
-  const localTime = elapsed % burst.cycle;
-  const lifetime = Math.min(burst.cycle * 0.9, 0.3 + trailSeconds);
-  if (localTime >= lifetime) {
-    return { visible: false, opacity: 0 } as const;
-  }
-  const fade = Math.max(0, 1 - localTime / lifetime);
-  const opacity = Math.min(1, Math.max(0, intensity) * fade);
+  const fade = 1 - localSeconds / safeTrailSeconds;
+  const opacity = base.opacity * 0.32 * fade;
   return { visible: opacity > 0.01, opacity } as const;
+}
+
+function createFireworkFrame(): RpgFireworkFrame {
+  return {
+    visible: false,
+    progress: 0,
+    expansion: 0,
+    droop: 0,
+    sizeEnvelope: 0,
+    twinkle: 0,
+    opacity: 0
+  };
 }
 
 export const RpgWorldEffects = memo(function RpgWorldEffects({
@@ -75,6 +102,9 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
   const petalGroup = useRef<Group>(null);
   const fireworkGroups = useRef<Array<{ visible: boolean } | null>>([]);
   const fireworkMaterials = useRef<Array<PointsMaterial | null>>([]);
+  const trailGroups = useRef<Array<{ visible: boolean } | null>>([]);
+  const trailMaterials = useRef<Array<PointsMaterial | null>>([]);
+  const fireworkFrames = useRef<RpgFireworkFrame[]>([]);
 
   useFrame(({ clock }, delta) => {
     const state = presentation.current;
@@ -93,16 +123,29 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
       petalGroup.current.position.y = Math.sin(clock.elapsedTime * 0.5) * 0.18;
     }
     for (let index = 0; index < shells.length; index += 1) {
-      const frame = calculateActiveRpgFireworkFrame({
-        elapsedSeconds: clock.elapsedTime,
-        burst: shells[index].burst,
-        intensity: hanabiIntensity,
+      const burst = shells[index].burst;
+      const frame = calculateActiveRpgFireworkFrameInto(
+        {
+          elapsedSeconds: clock.elapsedTime,
+          burst,
+          intensity: hanabiIntensity,
+          reducedMotion: qualitySettings.fireworks.softPulseOnly
+        },
+        fireworkFrames.current[index] ??= createFireworkFrame()
+      );
+      const trail = calculateActiveRpgFireworkTrailFrame({
+        base: frame,
+        burst,
         trailSeconds: qualitySettings.fireworks.trailSeconds
       });
       const group = fireworkGroups.current[index];
       const material = fireworkMaterials.current[index];
+      const trailGroup = trailGroups.current[index];
+      const trailMaterial = trailMaterials.current[index];
       if (group) group.visible = frame.visible;
       if (material) material.opacity = frame.opacity;
+      if (trailGroup) trailGroup.visible = trail.visible;
+      if (trailMaterial) trailMaterial.opacity = trail.opacity;
     }
   }, -1);
 
@@ -128,29 +171,70 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
         </points>
       </group>
       {shells.map(({ burst, shell }, index) => (
-        <points
-          ref={(group) => {
-            fireworkGroups.current[index] = group;
-          }}
+        <group
           key={burst.id}
           position={burst.position}
           scale={burst.radius}
-          userData={{ effectOwner: "RpgHanabiLayout", burstId: burst.id }}
         >
-          <bufferGeometry>
-            <bufferAttribute attach="attributes-position" args={[shell.positions, 3]} />
-          </bufferGeometry>
-          <pointsMaterial
-            ref={(material) => {
-              fireworkMaterials.current[index] = material;
+          <points
+            ref={(group) => {
+              fireworkGroups.current[index] = group;
             }}
-            color={burst.color}
-            size={0.18}
-            transparent
-            depthWrite={false}
-            blending={2}
-          />
-        </points>
+            userData={{
+              effectOwner: "RpgHanabiLayout",
+              burstId: burst.id,
+              layer: "base"
+            }}
+          >
+            <bufferGeometry>
+              <bufferAttribute
+                attach="attributes-position"
+                args={[shell.positions, 3]}
+              />
+            </bufferGeometry>
+            <pointsMaterial
+              ref={(material) => {
+                fireworkMaterials.current[index] = material;
+              }}
+              color={burst.color}
+              size={0.18}
+              transparent
+              depthWrite={false}
+              blending={2}
+            />
+          </points>
+          {hanabiBudget.shellLayers > 1 ? (
+            <points
+              ref={(group) => {
+                trailGroups.current[index] = group;
+              }}
+              scale={0.92}
+              userData={{
+                effectOwner: "RpgHanabiLayout",
+                burstId: burst.id,
+                layer: "trail"
+              }}
+            >
+              <bufferGeometry>
+                <bufferAttribute
+                  attach="attributes-position"
+                  args={[shell.positions, 3]}
+                />
+              </bufferGeometry>
+              <pointsMaterial
+                ref={(material) => {
+                  trailMaterials.current[index] = material;
+                }}
+                color={burst.color}
+                size={0.13}
+                transparent
+                opacity={0}
+                depthWrite={false}
+                blending={2}
+              />
+            </points>
+          ) : null}
+        </group>
       ))}
     </group>
   );

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { RPG_WORLD_SPAWN } from "../../app/world/RpgWorldModel";
 
 type Box = { x: number; y: number; width: number; height: number };
 
@@ -90,16 +91,28 @@ async function expectMoved(page: Page) {
 
 async function approachAirportInteraction(page: Page) {
   await page.getByRole("button", { name: "Return to start" }).click();
-  await page.waitForTimeout(100);
+  await expect.poll(async () => {
+    const position = await readWorldPosition(page);
+    return Math.hypot(
+      (position[0] ?? 0) - RPG_WORLD_SPAWN[0],
+      (position[2] ?? 0) - RPG_WORLD_SPAWN[2]
+    );
+  }).toBeLessThan(0.05);
+
+  const airportPrompt = page.locator(
+    'button[data-target-id="airport-terminal-entry"], ' +
+      'button[data-target-id="npc-airport-traveler"]'
+  );
   await page.keyboard.down("ArrowUp");
-  await page.waitForTimeout(1_800);
-  await page.keyboard.up("ArrowUp");
-  await page.keyboard.down("ArrowLeft");
-  await page.waitForTimeout(800);
-  await page.keyboard.up("ArrowLeft");
-  await expect(
-    page.getByRole("button", { name: "Interact" })
-  ).toBeVisible();
+  try {
+    await expect(airportPrompt).toBeVisible({ timeout: 5_000 });
+  } finally {
+    await page.keyboard.up("ArrowUp");
+  }
+  await expect(airportPrompt).toHaveAttribute(
+    "data-target-id",
+    /^(airport-terminal-entry|npc-airport-traveler)$/
+  );
 }
 
 function captureAssetFailureEvidence(page: Page) {
