@@ -463,6 +463,7 @@ a:focus-visible {
   inset: 0;
   overflow: hidden;
   background: #07152e;
+  touch-action: none;
 }
 
 .world-canvas,
@@ -474,7 +475,20 @@ a:focus-visible {
 
 .world-canvas {
   display: block;
-  touch-action: pinch-zoom;
+  touch-action: none;
+}
+
+.world-camera-input {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  touch-action: none;
+}
+
+@media (pointer: coarse) {
+  .world-camera-input {
+    left: 45%;
+  }
 }
 
 .world-canvas-loading,
