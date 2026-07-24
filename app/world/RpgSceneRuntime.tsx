@@ -7,19 +7,27 @@ import { createWorldNavigationPublisher } from "./WorldNavigationPublisher";
 import type { WorldNavigationSnapshot } from "./WorldNavigationState";
 import type { WorldMovementIntent } from "./WorldInput";
 import type { WorldRuntime } from "./WorldRuntime";
+import {
+  getWorldInteractionTarget,
+  type WorldInteractionEntryId
+} from "./WorldInteraction";
 
 export function RpgSceneRuntime({
   runtime,
   input,
   navigation: navigationRef,
   onNavigationChange,
-  telemetry: telemetryRef
+  telemetry: telemetryRef,
+  inputLocked,
+  onInteractionRequest
 }: {
   runtime: WorldRuntime;
   input: InputController;
   navigation: RefObject<WorldNavigationSnapshot>;
   onNavigationChange: (snapshot: WorldNavigationSnapshot) => void;
   telemetry: RefObject<HTMLDivElement | null>;
+  inputLocked: boolean;
+  onInteractionRequest: (entryId: WorldInteractionEntryId) => void;
 }) {
   const movement = useRef<WorldMovementIntent>({
     x: 0,
@@ -35,12 +43,22 @@ export function RpgSceneRuntime({
   );
 
   useFrame(({ clock }, delta) => {
-    if (input.consumeReset()) runtime.reset();
-    if (input.consumeJump()) runtime.jump();
-    runtime.setMovement(input.readMovement(movement.current));
-    runtime.advance(delta, runtime.getCameraState().yaw);
+    if (!inputLocked && input.consumeReset()) runtime.reset();
+    if (!inputLocked && input.consumeJump()) runtime.jump();
+    runtime.setMovement(
+      inputLocked
+        ? { x: 0, y: 0, runRequested: false }
+        : input.readMovement(movement.current)
+    );
+    if (!inputLocked) {
+      runtime.advance(delta, runtime.getCameraState().yaw);
+    }
 
     const next = runtime.getNavigationSnapshot();
+    if (!inputLocked && input.consumeInteraction()) {
+      const target = getWorldInteractionTarget(next.nearInteractionId);
+      if (target) onInteractionRequest(target.entryId);
+    }
     navigationRef.current = next;
     const telemetryNode = telemetryRef.current;
     if (telemetryNode) {

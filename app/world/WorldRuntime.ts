@@ -15,6 +15,7 @@ import {
   type WorldNavigationSnapshot
 } from "./WorldNavigationState";
 import { createChaseOrbitCameraState } from "./ChaseOrbitCamera";
+import { findWorldInteractionTarget } from "./WorldInteraction";
 
 export const WORLD_WALK_SPEED = 1.61;
 export const WORLD_RUN_SPEED = 1.9;
@@ -39,6 +40,7 @@ export function resolveCameraRelativeDirection(
 
 export interface WorldRuntimeOptions {
   canOccupyDynamic?: (position: readonly [number, number]) => boolean;
+  unavailableInteractionTargetIds?: ReadonlySet<string>;
 }
 
 export function isWorldRuntimeWalkablePosition(
@@ -69,6 +71,12 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
     const surfaceHeight = getSurfaceHeight([x, z]);
     const grounded = jumpOffset === 0;
     const speed = Math.hypot(movement.x, movement.y);
+    const nearInteractionId =
+      findWorldInteractionTarget({
+        position: [x, surfaceHeight + jumpOffset, z],
+        heading,
+        unavailableTargetIds: options.unavailableInteractionTargetIds
+      })?.id ?? null;
     return Object.freeze({
       revision,
       position: Object.freeze([x, surfaceHeight + jumpOffset, z] as const),
@@ -90,18 +98,13 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
       transitionProgress: region.kind === "transition" ? region.progress : null,
       currentZoneId: region.displayZoneId,
       highlightedZoneIds: region.highlightedZoneIds,
-      nearInteractionId: null
+      nearInteractionId
     });
   };
 
   return {
     setMovement(next: Readonly<WorldMovementIntent>) {
-      const changed =
-        next.x !== movement.x ||
-        next.y !== movement.y ||
-        next.runRequested !== movement.runRequested;
       Object.assign(movement, next);
-      if (changed) revision += 1;
     },
     jump() {
       if (jumpOffset === 0) jumpVelocity = JUMP_VELOCITY;

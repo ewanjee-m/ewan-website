@@ -17,20 +17,94 @@ interface PortfolioLabels {
   portfolioItems: readonly PortfolioEntry[];
 }
 
-export function PortfolioGuide({ labels }: { labels: PortfolioLabels }) {
+export interface PortfolioGuideProps {
+  labels: PortfolioLabels;
+  requestedEntryId: string | null;
+  onOpenChange: (open: boolean) => void;
+  onRequestHandled: () => void;
+}
+
+export function PortfolioGuide({
+  labels,
+  requestedEntryId,
+  onOpenChange,
+  onRequestHandled
+}: PortfolioGuideProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const closeButton = useRef<HTMLButtonElement>(null);
-  const activeTrigger = useRef<HTMLButtonElement>(null);
+  const activeTrigger = useRef<HTMLElement>(null);
   const shouldRestoreFocus = useRef(false);
+  const open = useRef(false);
+  const acknowledgedRequestId = useRef<string | null>(null);
+  const [handledRequestId, setHandledRequestId] = useState<string | null>(
+    null
+  );
+  const requestedEntry = labels.portfolioItems.find(
+    (entry) => entry.id === requestedEntryId
+  );
+  if (requestedEntryId === null && handledRequestId !== null) {
+    setHandledRequestId(null);
+  } else if (
+    requestedEntry &&
+    handledRequestId !== requestedEntry.id
+  ) {
+    setHandledRequestId(requestedEntry.id);
+    setMenuOpen(false);
+    setActiveId(requestedEntry.id);
+  }
   const activeEntry = labels.portfolioItems.find(
     (entry) => entry.id === activeId
   );
   const closePortfolio = useCallback(() => {
+    if (!open.current) return;
+    open.current = false;
     shouldRestoreFocus.current = true;
     setActiveId(null);
     setMenuOpen(true);
-  }, []);
+    onOpenChange(false);
+  }, [onOpenChange]);
+
+  const openPortfolio = useCallback(
+    (entryId: string, trigger: HTMLElement | null) => {
+      activeTrigger.current = trigger;
+      setMenuOpen(false);
+      setActiveId(entryId);
+      if (!open.current) {
+        open.current = true;
+        onOpenChange(true);
+      }
+    },
+    [onOpenChange]
+  );
+
+  useEffect(() => {
+    if (requestedEntryId === null) {
+      acknowledgedRequestId.current = null;
+      return;
+    }
+    if (
+      handledRequestId !== requestedEntryId ||
+      acknowledgedRequestId.current === requestedEntryId
+    ) {
+      return;
+    }
+    acknowledgedRequestId.current = requestedEntryId;
+    activeTrigger.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    if (!open.current) {
+      open.current = true;
+      onOpenChange(true);
+    }
+    onRequestHandled();
+  }, [
+    handledRequestId,
+    onOpenChange,
+    onRequestHandled,
+    requestedEntryId
+  ]);
 
   useEffect(() => {
     if (activeEntry) {
@@ -82,9 +156,7 @@ export function PortfolioGuide({ labels }: { labels: PortfolioLabels }) {
             type="button"
             aria-pressed={entry.id === activeId}
             onClick={(event) => {
-              activeTrigger.current = event.currentTarget;
-              setMenuOpen(false);
-              setActiveId(entry.id);
+              openPortfolio(entry.id, event.currentTarget);
             }}
           >
             <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>

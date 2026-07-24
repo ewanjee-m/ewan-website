@@ -29,6 +29,11 @@ import { RpgMiniMap, type RpgMiniMapLabels } from "./RpgMiniMap";
 import { RpgWorldMap, type RpgWorldMapLabels } from "./RpgWorldMap";
 import { WorldCameraInput } from "./WorldCameraInput";
 import { WorldErrorBoundary } from "./WorldErrorBoundary";
+import {
+  getWorldInteractionTarget,
+  type WorldInteractionEntryId
+} from "./WorldInteraction";
+import { WorldInteractionPrompt } from "./WorldInteractionPrompt";
 
 const WorldCanvas = dynamic(() => import("./SeamlessWorldCanvas"), {
   ssr: false,
@@ -45,6 +50,7 @@ interface WorldLabels {
   cameraControl: string;
   resetPosition: string;
   jump: string;
+  interact: string;
   worldFallback: string;
   portfolioLabel: string;
   openPortfolio: string;
@@ -92,11 +98,23 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
       createInitialWorldNavigationSnapshot
     );
   const [worldMapOpen, setWorldMapOpen] = useState(false);
+  const [interactionOpen, setInteractionOpen] = useState(false);
+  const [requestedEntryId, setRequestedEntryId] =
+    useState<WorldInteractionEntryId | null>(null);
   const sharedNavigation = useMemo(
     () => shareWorldNavigationSnapshot(navigation),
     [navigation]
   );
+  const nearInteractionTarget = useMemo(
+    () =>
+      getWorldInteractionTarget(
+        sharedNavigation.telemetry.nearInteractionId
+      ),
+    [sharedNavigation.telemetry.nearInteractionId]
+  );
   const worldMapTrigger = useRef<HTMLButtonElement>(null);
+  const interactionPromptHost = useRef<HTMLDivElement>(null);
+  const interactionWasOpen = useRef(false);
   const movementPointer = useRef<number | null>(null);
   const movementKnob = useRef<HTMLSpanElement>(null);
   const readableFallback = (
@@ -116,10 +134,34 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
     setWorldMapOpen(false);
     worldMapTrigger.current?.focus();
   }, []);
+  const requestInteraction = useCallback(
+    (entryId: WorldInteractionEntryId) => {
+      if (interactionOpen || worldMapOpen) return;
+      setRequestedEntryId(entryId);
+    },
+    [interactionOpen, worldMapOpen]
+  );
+  const handleInteractionOpenChange = useCallback((open: boolean) => {
+    setInteractionOpen(open);
+  }, []);
   useEffect(() => {
     const detachKeyboard = attachWorldKeyboardInput(input);
     return detachKeyboard;
   }, [input]);
+
+  useEffect(() => {
+    if (interactionOpen) {
+      interactionWasOpen.current = true;
+      input.reset();
+      return;
+    }
+    if (interactionWasOpen.current) {
+      interactionWasOpen.current = false;
+      interactionPromptHost.current
+        ?.querySelector<HTMLButtonElement>(".world-interaction-prompt")
+        ?.focus();
+    }
+  }, [input, interactionOpen]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -129,6 +171,7 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
         event.altKey ||
         event.ctrlKey ||
         event.metaKey ||
+        interactionOpen ||
         blocksWorldMapShortcut(event.target)
       ) {
         return;
@@ -142,7 +185,7 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [closeWorldMap, worldMapOpen]);
+  }, [closeWorldMap, interactionOpen, worldMapOpen]);
 
   const updateMovement = (event: ReactPointerEvent<HTMLElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -181,6 +224,7 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
       data-testid="world-view"
       data-character={character}
       data-locale={locale}
+      data-interaction-open={interactionOpen}
       data-navigation-revision={sharedNavigation.telemetry.revision}
       data-navigation-region={sharedNavigation.telemetry.navigationRegionId}
       data-transition-progress={
@@ -201,7 +245,9 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
         <WorldCanvas
           character={character}
           input={input}
+          inputLocked={interactionOpen}
           activeDestinationId={activeRecommendation?.destinationId ?? null}
+          onInteractionRequest={requestInteraction}
           onNavigationChange={updateNavigation}
         />
       </WorldErrorBoundary>
@@ -213,7 +259,24 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
         }
       />
 
-      <PortfolioGuide labels={labels} />
+      <PortfolioGuide
+        labels={labels}
+        requestedEntryId={requestedEntryId}
+        onOpenChange={handleInteractionOpenChange}
+        onRequestHandled={() => setRequestedEntryId(null)}
+      />
+
+      <div ref={interactionPromptHost}>
+        <WorldInteractionPrompt
+          target={interactionOpen || worldMapOpen ? null : nearInteractionTarget}
+          label={labels.interact}
+          onInteract={() => {
+            if (nearInteractionTarget) {
+              requestInteraction(nearInteractionTarget.entryId);
+            }
+          }}
+        />
+      </div>
 
       <GuidePanel
           locale={locale}
@@ -236,12 +299,16 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
           role="region"
           aria-label={labels.movementControl}
           onPointerDown={(event) => {
+            if (interactionOpen) return;
             movementPointer.current = event.pointerId;
             event.currentTarget.setPointerCapture(event.pointerId);
             updateMovement(event);
           }}
           onPointerMove={(event) => {
-            if (movementPointer.current === event.pointerId) {
+            if (
+              !interactionOpen &&
+              movementPointer.current === event.pointerId
+            ) {
               updateMovement(event);
             }
           }}
@@ -260,6 +327,7 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
           className="world-control-button position-reset"
           type="button"
           aria-label={labels.resetPosition}
+          disabled={interactionOpen}
           onClick={() => input.queueReset()}
         >
           ⌂
@@ -270,6 +338,7 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
           type="button"
           aria-label={labels.worldMap.open}
           aria-expanded={worldMapOpen}
+          disabled={interactionOpen}
           onClick={() =>
             worldMapOpen ? closeWorldMap() : setWorldMapOpen(true)
           }
@@ -280,6 +349,7 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
           className="world-control-button jump-button"
           type="button"
           aria-label={labels.jump}
+          disabled={interactionOpen}
           onClick={() => input.queueJump()}
         >
           ↑

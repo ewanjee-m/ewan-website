@@ -1,11 +1,38 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { InputController } from "../app/world/InputController";
+import {
+  createInitialWorldNavigationSnapshot,
+  type WorldNavigationSnapshot
+} from "../app/world/WorldNavigationState";
+
+interface MockWorldCanvasProps {
+  input: InputController;
+  inputLocked: boolean;
+  onInteractionRequest: (entryId: string) => void;
+  onNavigationChange: (snapshot: WorldNavigationSnapshot) => void;
+}
+
+const worldCanvasHarness = vi.hoisted(() => ({
+  current: null as MockWorldCanvasProps | null
+}));
+
+vi.mock("next/dynamic", () => ({
+  default: () =>
+    function MockWorldCanvas(props: MockWorldCanvasProps) {
+      worldCanvasHarness.current = props;
+      return null;
+    }
+}));
+
 import { ExperienceShell } from "../app/components/ExperienceShell";
+import { WORLD_INTERACTION_TARGETS } from "../app/world/WorldInteraction";
 
 describe("start experience", () => {
   beforeEach(() => {
     vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    worldCanvasHarness.current = null;
   });
 
   it("shows the English welcome screen before character selection", () => {
@@ -281,6 +308,76 @@ describe("start experience", () => {
     expect(
       screen.getByRole("navigation", { name: "Portfolio landmarks" })
     ).toBeVisible();
+  });
+
+  it("locks interaction movement for 30 frames and resumes the unchanged world", async () => {
+    const user = userEvent.setup();
+    render(<ExperienceShell locale="en" />);
+    await user.click(screen.getByRole("button", { name: "START" }));
+    await user.click(
+      screen.getByRole("button", { name: "Select male character" })
+    );
+    await user.click(screen.getByRole("button", { name: "ENTER WORLD" }));
+
+    const canvas = worldCanvasHarness.current;
+    expect(canvas).not.toBeNull();
+    const target = WORLD_INTERACTION_TARGETS[0];
+    const nearTarget = {
+      ...createInitialWorldNavigationSnapshot(),
+      revision: 42,
+      position: Object.freeze([-32, 0, 0]),
+      heading: Object.freeze([1, 0, 0]),
+      nearInteractionId: target.id
+    } satisfies WorldNavigationSnapshot;
+    act(() => canvas!.onNavigationChange(nearTarget));
+
+    const world = screen.getByTestId("world-view");
+    const position = world.getAttribute("data-player-position");
+    const heading = world.getAttribute("data-player-heading");
+    const revision = world.getAttribute("data-navigation-revision");
+    const prompt = screen.getByRole("button", { name: "Interact" });
+    await user.click(prompt);
+    expect(worldCanvasHarness.current?.inputLocked).toBe(true);
+    expect(
+      screen.getByRole("dialog", { name: "Festival World Design" })
+    ).toBeVisible();
+
+    act(() => {
+      for (let frame = 0; frame < 30; frame += 1) {
+        worldCanvasHarness.current!.onNavigationChange(nearTarget);
+      }
+    });
+    await user.keyboard("{Escape}");
+
+    expect(worldCanvasHarness.current?.inputLocked).toBe(false);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Interact" })).toHaveFocus();
+    expect(world).toHaveAttribute("data-player-position", position);
+    expect(world).toHaveAttribute("data-player-heading", heading);
+    expect(world).toHaveAttribute("data-navigation-revision", revision);
+  });
+
+  it("uses Escape for the full map only and never queues gameplay", async () => {
+    const user = userEvent.setup();
+    render(<ExperienceShell locale="en" />);
+    await user.click(screen.getByRole("button", { name: "START" }));
+    await user.click(
+      screen.getByRole("button", { name: "Select male character" })
+    );
+    await user.click(screen.getByRole("button", { name: "ENTER WORLD" }));
+
+    await user.click(
+      screen.getByRole("button", { name: "Open world map (M key)" })
+    );
+    expect(screen.getByRole("dialog", { name: "World map" })).toBeVisible();
+    await user.keyboard("{Escape}");
+
+    expect(
+      screen.queryByRole("dialog", { name: "World map" })
+    ).not.toBeInTheDocument();
+    expect(
+      worldCanvasHarness.current?.input.consumeInteraction()
+    ).toBe(false);
   });
 
   it("lets visitors open and close the same readable portfolio in the world fallback", async () => {

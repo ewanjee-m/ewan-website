@@ -31,11 +31,14 @@ import {
 } from "./SceneQuality";
 import type { WorldNavigationSnapshot } from "./WorldNavigationState";
 import { createWorldRuntime } from "./WorldRuntime";
+import type { WorldInteractionEntryId } from "./WorldInteraction";
 
 export interface SeamlessWorldCanvasProps {
   character: PlayerCharacterId;
   input: InputController;
   activeDestinationId: DestinationId | null;
+  inputLocked: boolean;
+  onInteractionRequest: (entryId: WorldInteractionEntryId) => void;
   onNavigationChange: (snapshot: WorldNavigationSnapshot) => void;
 }
 
@@ -135,8 +138,10 @@ function SeamlessWorldCanvas(props: SeamlessWorldCanvasProps) {
           <RpgSceneRuntime
             runtime={runtime}
             input={props.input}
+            inputLocked={props.inputLocked}
             navigation={navigation}
             onNavigationChange={props.onNavigationChange}
+            onInteractionRequest={props.onInteractionRequest}
             telemetry={telemetry}
           />
           <ChaseOrbitCamera3d

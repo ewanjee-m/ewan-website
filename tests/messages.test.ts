@@ -157,4 +157,10 @@ describe("localized messages", () => {
     expect(getMessages("ja").worldMap.title).toBe("ワールドマップ");
     expect(getMessages("ja").worldMap.open).toContain("M");
   });
+
+  it("localizes the in-world interaction prompt", () => {
+    expect(getMessages("ko").interact).toBe("상호작용");
+    expect(getMessages("ja").interact).toBe("調べる");
+    expect(getMessages("en").interact).toBe("Interact");
+  });
 });

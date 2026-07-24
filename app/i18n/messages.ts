@@ -26,6 +26,7 @@ const messages = {
     resetCamera: "카메라 초기화",
     resetPosition: "시작 위치로 돌아가기",
     jump: "점프",
+    interact: "상호작용",
     worldFallback:
       "월드를 표시하지 못해 읽기 가능한 포트폴리오를 대신 표시합니다.",
     portfolioLabel: "포트폴리오 장소",
@@ -181,6 +182,7 @@ const messages = {
     resetCamera: "カメラをリセット",
     resetPosition: "スタート地点に戻る",
     jump: "ジャンプ",
+    interact: "調べる",
     worldFallback:
       "ワールドを表示できないため、読みやすいポートフォリオを代わりに表示します。",
     portfolioLabel: "ポートフォリオの場所",
@@ -337,6 +339,7 @@ const messages = {
     resetCamera: "Reset camera",
     resetPosition: "Return to start",
     jump: "Jump",
+    interact: "Interact",
     worldFallback:
       "The world could not be displayed, so the readable portfolio is shown instead.",
     portfolioLabel: "Portfolio landmarks",
