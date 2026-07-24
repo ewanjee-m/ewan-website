@@ -81,7 +81,7 @@ export const RPG_VISUAL_CAMERA_FIXTURES: Readonly<
     focusLandmarkIds: ["hanabi-apple-stall", "hanabi-street-torii"],
     focusWorldXZ: [22, -14.3],
     screenOffsetDegrees: -6,
-    pitchDegrees: 0,
+    pitchDegrees: 12,
     desktopDistance: 9.2,
     mobileDistance: 8.28,
     capturePosition: [22, 0],
@@ -91,9 +91,10 @@ export const RPG_VISUAL_CAMERA_FIXTURES: Readonly<
       [18, -8],
       [18, -4],
       [18, 0],
+      [21.979, 0.199],
       [22, 0]
     ],
-    mobileScreenOffsetDegrees: -8
+    mobileScreenOffsetDegrees: -4
   }
 };
 

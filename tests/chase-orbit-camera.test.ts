@@ -87,7 +87,9 @@ describe("chase orbit camera", () => {
       6.3
     );
     expect(getRegionCameraProfile("sakura", "mobile").fovDegrees).toBe(70);
-    expect(getRegionCameraProfile("hanabi", "desktop").pitchDegrees).toBe(18);
+    expect(getRegionCameraProfile("hanabi", "desktop").pitchDegrees).toBe(12);
+    expect(getRegionCameraProfile("hanabi", "desktop").fovDegrees).toBe(60);
+    expect(getRegionCameraProfile("hanabi", "mobile").fovDegrees).toBe(75);
   });
 
   it("smoothsteps camera values through a transition", () => {

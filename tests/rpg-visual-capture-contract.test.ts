@@ -40,7 +40,7 @@ describe("RPG visual capture execution contract", () => {
     expect(source).toContain("cameraFacingDot >= 0.98");
     expect(
       source.match(/await waitForCameraFixture\(/g)
-    ).toHaveLength(6);
+    ).toHaveLength(7);
   });
 
   it("uses one landmark-focused camera fixture source instead of arrival-heading offsets", () => {
@@ -73,6 +73,15 @@ describe("RPG visual capture execution contract", () => {
     ).toHaveLength(0);
     expect(source).toMatch(
       /await setCamera\([\s\S]*?interactionCamera\.position[\s\S]*?hanabiTravelPitchDegrees\s*\);/
+    );
+  });
+
+  it("captures Hanabi with the untouched live chase-camera profile", () => {
+    expect(source).toContain("applyCameraFixture = true");
+    expect(source).toContain('applyCameraFixture: id !== "hanabi"');
+    expect(source).toContain("E_HANABI_LIVE_CAMERA");
+    expect(source).toContain(
+      'getRegionCameraProfile("hanabi", viewportName)'
     );
   });
 

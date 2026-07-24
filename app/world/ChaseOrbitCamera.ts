@@ -3,11 +3,36 @@ import type { NavigationRegion } from "./RpgWorldGeometry";
 import type { WorldCameraDragIntent } from "./WorldInput";
 
 const PROFILE = {
-  airport: { distance: 8.4, pitchDegrees: 22, mobileFovDegrees: 52 },
-  tokyo: { distance: 7.8, pitchDegrees: 18, mobileFovDegrees: 52 },
-  gyukatsu: { distance: 7, pitchDegrees: 26, mobileFovDegrees: 52 },
-  sakura: { distance: 8, pitchDegrees: 20, mobileFovDegrees: 70 },
-  hanabi: { distance: 9.2, pitchDegrees: 18, mobileFovDegrees: 52 }
+  airport: {
+    distance: 8.4,
+    pitchDegrees: 22,
+    desktopFovDegrees: 45,
+    mobileFovDegrees: 52
+  },
+  tokyo: {
+    distance: 7.8,
+    pitchDegrees: 18,
+    desktopFovDegrees: 45,
+    mobileFovDegrees: 52
+  },
+  gyukatsu: {
+    distance: 7,
+    pitchDegrees: 26,
+    desktopFovDegrees: 45,
+    mobileFovDegrees: 52
+  },
+  sakura: {
+    distance: 8,
+    pitchDegrees: 20,
+    desktopFovDegrees: 45,
+    mobileFovDegrees: 70
+  },
+  hanabi: {
+    distance: 9.2,
+    pitchDegrees: 12,
+    desktopFovDegrees: 60,
+    mobileFovDegrees: 75
+  }
 } as const;
 
 const MINIMUM_CAMERA_PITCH_DEGREES = 0;
@@ -59,6 +84,11 @@ export function getRegionCameraProfile(
               to.pitchDegrees,
               progress
             ),
+            desktopFovDegrees: mix(
+              from.desktopFovDegrees,
+              to.desktopFovDegrees,
+              progress
+            ),
             mobileFovDegrees: mix(
               from.mobileFovDegrees,
               to.mobileFovDegrees,
@@ -70,7 +100,10 @@ export function getRegionCameraProfile(
   return {
     distance: profile.distance * (viewport === "mobile" ? 0.9 : 1),
     pitchDegrees: profile.pitchDegrees,
-    fovDegrees: viewport === "mobile" ? profile.mobileFovDegrees : 45
+    fovDegrees:
+      viewport === "mobile"
+        ? profile.mobileFovDegrees
+        : profile.desktopFovDegrees
   };
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getRegionCameraProfile } from "../app/world/ChaseOrbitCamera";
+import { RPG_HANABI_BURSTS } from "../app/world/RpgHanabiLayout";
 import {
   RPG_LANDMARKS,
   isRpgWalkablePosition
@@ -37,12 +38,7 @@ describe("RPG visual camera fixtures", () => {
         "mobile"
       );
 
-      if (zoneId === "hanabi") {
-        expect(fixture.pitchDegrees).toBe(0);
-        expect(fixture.pitchDegrees).toBeLessThan(desktop.pitchDegrees);
-      } else {
-        expect(fixture.pitchDegrees, zoneId).toBe(desktop.pitchDegrees);
-      }
+      expect(fixture.pitchDegrees, zoneId).toBe(desktop.pitchDegrees);
       expect(fixture.desktopDistance, zoneId).toBe(desktop.distance);
       expect(fixture.mobileDistance, zoneId).toBeCloseTo(mobile.distance, 10);
     }
@@ -136,12 +132,122 @@ describe("RPG visual camera fixtures", () => {
       [18, -8],
       [18, -4],
       [18, 0],
+      [21.979, 0.199],
       [22, 0]
     ]);
     expect(fixture.capturePosition).toEqual([22, 0]);
-    expect(fixture.pitchDegrees).toBe(0);
+    expect(fixture.pitchDegrees).toBe(12);
     expect(fixture.screenOffsetDegrees).toBe(-6);
-    expect(fixture.mobileScreenOffsetDegrees).toBe(-8);
+    expect(fixture.mobileScreenOffsetDegrees).toBe(-4);
+  });
+
+  it("places every Hanabi burst center inside the portrait scenic view", () => {
+    const fixture = RPG_VISUAL_CAMERA_FIXTURES.hanabi;
+    const player = [
+      fixture.capturePosition![0],
+      0,
+      fixture.capturePosition![1]
+    ] as const;
+    const yaw = resolveRpgVisualCameraYaw(
+      fixture,
+      player,
+      fixture.focusWorldXZ,
+      fixture.mobileScreenOffsetDegrees
+    );
+    const verticalFov =
+      getRegionCameraProfile("hanabi", "mobile").fovDegrees *
+      Math.PI / 180;
+    const horizontalHalfFov =
+      Math.atan(Math.tan(verticalFov / 2) * (390 / 844));
+
+    for (const burst of RPG_HANABI_BURSTS) {
+      const burstYaw = Math.atan2(
+        burst.position[0] - player[0],
+        burst.position[2] - player[2]
+      );
+      const offset = Math.abs(
+        Math.atan2(
+          Math.sin(burstYaw - yaw),
+          Math.cos(burstYaw - yaw)
+        )
+      );
+      expect(offset, burst.id).toBeLessThan(horizontalHalfFov);
+    }
+  });
+
+  it("keeps live Hanabi burst centers in the 3D chase-camera frustum", () => {
+    const player = [28, 0, -24] as const;
+    const yaw = Math.PI;
+    const countVisibleCenters = (viewport: "desktop" | "mobile") => {
+      const profile = getRegionCameraProfile("hanabi", viewport);
+      const pitch = profile.pitchDegrees * Math.PI / 180;
+      const focus = [player[0], 1.15, player[2]] as const;
+      const horizontal = Math.cos(pitch) * profile.distance;
+      const camera = [
+        focus[0] - Math.sin(yaw) * horizontal,
+        focus[1] + Math.sin(pitch) * profile.distance,
+        focus[2] - Math.cos(yaw) * horizontal
+      ] as const;
+      const forward = [
+        focus[0] - camera[0],
+        focus[1] - camera[1],
+        focus[2] - camera[2]
+      ] as const;
+      const forwardLength = Math.hypot(...forward);
+      const normalizedForward = forward.map(
+        (value) => value / forwardLength
+      );
+      const right = [
+        -normalizedForward[2],
+        0,
+        normalizedForward[0]
+      ];
+      const rightLength = Math.hypot(...right);
+      const normalizedRight = right.map((value) => value / rightLength);
+      const up = [
+        normalizedRight[1] * normalizedForward[2] -
+          normalizedRight[2] * normalizedForward[1],
+        normalizedRight[2] * normalizedForward[0] -
+          normalizedRight[0] * normalizedForward[2],
+        normalizedRight[0] * normalizedForward[1] -
+          normalizedRight[1] * normalizedForward[0]
+      ];
+      const verticalHalfFov = profile.fovDegrees * Math.PI / 360;
+      const aspect = viewport === "mobile" ? 390 / 844 : 1440 / 900;
+      const horizontalHalfFov = Math.atan(
+        Math.tan(verticalHalfFov) * aspect
+      );
+
+      return RPG_HANABI_BURSTS.filter((burst) => {
+        const relative = [
+          burst.position[0] - camera[0],
+          burst.position[1] - camera[1],
+          burst.position[2] - camera[2]
+        ];
+        const depth = relative.reduce(
+          (sum, value, index) =>
+            sum + value * normalizedForward[index],
+          0
+        );
+        const horizontalOffset = relative.reduce(
+          (sum, value, index) =>
+            sum + value * normalizedRight[index],
+          0
+        );
+        const verticalOffset = relative.reduce(
+          (sum, value, index) => sum + value * up[index],
+          0
+        );
+        return (
+          Math.abs(Math.atan2(horizontalOffset, depth)) <
+            horizontalHalfFov &&
+          Math.abs(Math.atan2(verticalOffset, depth)) < verticalHalfFov
+        );
+      }).length;
+    };
+
+    expect(countVisibleCenters("desktop")).toBe(8);
+    expect(countVisibleCenters("mobile")).toBeGreaterThanOrEqual(6);
   });
 
   it("fits both Sakura landmarks inside the portrait mobile field of view", () => {

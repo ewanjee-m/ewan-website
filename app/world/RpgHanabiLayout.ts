@@ -79,69 +79,69 @@ export const RPG_HANABI_BURSTS: readonly RpgHanabiBurst[] = [
 // without forcing the chase camera below the ground plane.
   {
     id: "gold-welcome",
-    position: [-6, 13, -48],
+    position: [22, 11, -42],
     color: "#ffd06b",
     delay: 0,
     cycle: 3.5,
-    radius: 13.0,
+    radius: 11,
     persistent: true
   },
   {
     id: "coral-finale",
-    position: [4, 14, -52],
+    position: [29, 12, -46],
     color: "#ff7488",
     delay: 0.48,
     cycle: 4.05,
-    radius: 15.0
+    radius: 12
   },
   {
     id: "sky-blue",
-    position: [-2, 12, -46],
+    position: [14, 10, -40],
     color: "#8edbff",
     delay: 0.96,
     cycle: 3.25,
-    radius: 10.0
+    radius: 9
   },
   {
     id: "sakura-pink",
-    position: [-22, 16, -42],
+    position: [30, 13, -46],
     color: "#f4a7dc",
     delay: 1.42,
     cycle: 4.45,
-    radius: 12.0
+    radius: 10
   },
   {
     id: "festival-gold",
-    position: [-14, 15, -50],
+    position: [18, 12, -48],
     color: "#ffe89a",
     delay: 1.88,
     cycle: 3.75,
-    radius: 16.0,
+    radius: 12,
     persistent: true
   },
   {
     id: "mint-wheel",
-    position: [-36, 16, -32],
+    position: [13, 12, -44],
     color: "#8df0d2",
     delay: 2.34,
     cycle: 3.55,
-    radius: 10.0
+    radius: 8
   },
   {
     id: "violet-crown",
-    position: [-28, 15, -46],
+    position: [26, 13, -49],
     color: "#c8a1ff",
     delay: 2.8,
     cycle: 4.2,
-    radius: 14.0
+    radius: 11
   },
   {
     id: "vermillion-ring",
-    position: [10, 12, -54],
+    position: [34, 10, -42],
     color: "#ff9a66",
     delay: 3.24,
     cycle: 3.68,
-    radius: 9.0
+    radius: 8
   }
 ] as const;
 
@@ -385,7 +385,7 @@ export function calculateRpgFireworkFrameInto(
     target.droop = 0;
     target.sizeEnvelope = 0.85;
     target.twinkle = 0;
-    target.opacity = safeIntensity * (burst.persistent ? 0.72 : 0.52);
+    target.opacity = safeIntensity * (burst.persistent ? 0.92 : 0.78);
     return target;
   }
 

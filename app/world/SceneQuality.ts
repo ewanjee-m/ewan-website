@@ -138,7 +138,7 @@ export function getSceneQuality({
       trailSeconds: fireworksDegraded
         ? baseTrailSeconds * 0.5
         : baseTrailSeconds,
-      pointSize: reducedMotion ? 0.8 : 0.18,
+      pointSize: reducedMotion ? 1 : 0.65,
       softPulseOnly: reducedMotion
     })
   });

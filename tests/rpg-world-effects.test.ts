@@ -7,10 +7,24 @@ import {
 import {
   calculateActiveRpgFireworkFrame,
   calculateActiveRpgFireworkFrameInto,
-  calculateActiveRpgFireworkTrailFrame
+  calculateActiveRpgFireworkTrailFrame,
+  createRpgFireworkSparkTexture
 } from "../app/world/RpgWorldEffects";
 
 describe("active RPG world effects", () => {
+  it("renders fireworks with a circular soft spark instead of square points", () => {
+    const texture = createRpgFireworkSparkTexture(16);
+    const data = texture.image.data as Uint8Array;
+    const alphaAt = (x: number, y: number) =>
+      data[(y * texture.image.width + x) * 4 + 3];
+
+    expect(texture.image.width).toBe(16);
+    expect(texture.image.height).toBe(16);
+    expect(alphaAt(8, 8)).toBeGreaterThan(240);
+    expect(alphaAt(0, 0)).toBe(0);
+    expect(alphaAt(8, 2)).toBeGreaterThan(alphaAt(8, 0));
+  });
+
   it.each(["high", "medium", "low"] as const)(
     "keeps at least four canonical %s base shells visible from 0 through 30 seconds",
     (level) => {

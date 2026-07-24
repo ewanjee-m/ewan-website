@@ -750,11 +750,12 @@ async function captureRow({
   viewportName,
   id,
   selectedCharacter,
-  rows
+  rows,
+  applyCameraFixture = true
 }) {
   const current = await telemetry(page);
   const fixture = CAMERA_FIXTURES[id];
-  if (fixture) {
+  if (fixture && applyCameraFixture) {
     const liveFocusWorldXZ =
       id === "airport"
         ? [current.busPosition[0], current.busPosition[2]]
@@ -978,8 +979,34 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
       if (scenicPosition) {
         await driveTo(page, scenicPosition);
       }
+      if (id === "hanabi") {
+        const liveProfile = getRegionCameraProfile("hanabi", viewportName);
+        const liveCamera = await waitForCameraFixture(
+          page,
+          liveProfile.pitchDegrees,
+          liveProfile.distance
+        );
+        if (
+          liveCamera.cameraSafe !== "true" ||
+          liveCamera.cameraDiagnostic !== "ok"
+        ) {
+          fail(
+            "E_HANABI_LIVE_CAMERA",
+            `live Hanabi camera differs before capture: ` +
+              `yaw=${liveCamera.cameraYaw}; ` +
+              `pitch=${liveCamera.cameraPitch}; boom=${liveCamera.cameraBoom}; ` +
+              `safe=${liveCamera.cameraSafe}; diagnostic=${liveCamera.cameraDiagnostic}`
+          );
+        }
+      }
       await captureRow({
-        page, evidenceDirectory, viewportName, id, selectedCharacter: "male", rows
+        page,
+        evidenceDirectory,
+        viewportName,
+        id,
+        selectedCharacter: "male",
+        rows,
+        applyCameraFixture: id !== "hanabi"
       });
       if (id === "gyukatsu") {
         await driveTo(page, [8, 0]);

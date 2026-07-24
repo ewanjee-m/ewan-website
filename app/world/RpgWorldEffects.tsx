@@ -1,8 +1,20 @@
 "use client";
 
 import { useFrame } from "@react-three/fiber";
-import { memo, type RefObject, useMemo, useRef } from "react";
-import type { Group, PointsMaterial } from "three";
+import {
+  memo,
+  type RefObject,
+  useEffect,
+  useMemo,
+  useRef
+} from "react";
+import {
+  DataTexture,
+  LinearFilter,
+  RGBAFormat,
+  type Group,
+  type PointsMaterial
+} from "three";
 import {
   calculateRpgFireworkFrameInto,
   createRpgHanabiShell,
@@ -23,6 +35,40 @@ function createPetalPositions(count: number) {
     values[index * 3 + 2] = -24 + Math.sin(angle) * (2 + (index % 7) * 0.42);
   }
   return values;
+}
+
+export function createRpgFireworkSparkTexture(size = 32) {
+  const textureSize = Math.max(4, Math.floor(size));
+  const center = (textureSize - 1) / 2;
+  const radius = center;
+  const data = new Uint8Array(textureSize * textureSize * 4);
+
+  for (let y = 0; y < textureSize; y += 1) {
+    for (let x = 0; x < textureSize; x += 1) {
+      const distance = Math.hypot(x - center, y - center) / radius;
+      const edge = Math.max(0, 1 - distance);
+      const alpha =
+        distance >= 1
+          ? 0
+          : Math.round(255 * Math.min(1, Math.pow(edge, 0.65) * 1.35));
+      const offset = (y * textureSize + x) * 4;
+      data[offset] = 255;
+      data[offset + 1] = 255;
+      data[offset + 2] = 255;
+      data[offset + 3] = alpha;
+    }
+  }
+
+  const texture = new DataTexture(
+    data,
+    textureSize,
+    textureSize,
+    RGBAFormat
+  );
+  texture.minFilter = LinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.needsUpdate = true;
+  return texture;
 }
 
 export function calculateActiveRpgFireworkFrameInto(
@@ -97,6 +143,14 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
         )
       })),
     [hanabiBudget, qualitySettings.fireworks.particlesPerBurst]
+  );
+  const fireworkSparkTexture = useMemo(
+    () => createRpgFireworkSparkTexture(),
+    []
+  );
+  useEffect(
+    () => () => fireworkSparkTexture.dispose(),
+    [fireworkSparkTexture]
   );
   const petalMaterial = useRef<PointsMaterial>(null);
   const petalGroup = useRef<Group>(null);
@@ -198,9 +252,12 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
               }}
               color={burst.color}
               size={qualitySettings.fireworks.pointSize}
+              map={fireworkSparkTexture}
+              alphaTest={0.02}
               transparent
               depthWrite={false}
               blending={2}
+              toneMapped={false}
             />
           </points>
           {hanabiBudget.shellLayers > 1 ? (
@@ -227,10 +284,13 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
                 }}
                 color={burst.color}
                 size={0.13}
+                map={fireworkSparkTexture}
+                alphaTest={0.02}
                 transparent
                 opacity={0}
                 depthWrite={false}
                 blending={2}
+                toneMapped={false}
               />
             </points>
           ) : null}

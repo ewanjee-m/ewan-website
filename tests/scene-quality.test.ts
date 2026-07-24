@@ -38,7 +38,16 @@ describe("scene quality", () => {
     expect(reduced.busPetalSwirl).toBe(false);
     expect(reduced.fireworks.softPulseOnly).toBe(true);
     expect(reduced.fireworks.particlesPerBurst).toBe(72);
-    expect(reduced.fireworks.pointSize).toBe(0.8);
+    expect(reduced.fireworks.pointSize).toBe(1);
+  });
+
+  it("keeps normal-motion firework sparks large enough to remain readable", () => {
+    const full = getSceneQuality({
+      level: "high",
+      reducedMotion: false
+    });
+
+    expect(full.fireworks.pointSize).toBe(0.65);
   });
 
   it("applies the detected mobile quality ceiling to the canvas DPR", () => {

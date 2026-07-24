@@ -70,8 +70,8 @@ describe("RPG hanabi skyline", () => {
     for (const burst of RPG_HANABI_BURSTS) {
       expect(burst.radius * 2, burst.id).toBeGreaterThanOrEqual(16);
       expect(burst.radius * 2, burst.id).toBeLessThanOrEqual(36);
-      expect(burst.position[1], burst.id).toBeGreaterThanOrEqual(12);
-      expect(burst.position[1], burst.id).toBeLessThanOrEqual(16);
+      expect(burst.position[1], burst.id).toBeGreaterThanOrEqual(10);
+      expect(burst.position[1], burst.id).toBeLessThanOrEqual(13);
     }
     expect(
       Math.max(...RPG_HANABI_BURSTS.map(({ position }) => position[2])) -
