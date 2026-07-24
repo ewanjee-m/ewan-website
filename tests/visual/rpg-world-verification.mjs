@@ -892,8 +892,8 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
   let context;
   let page;
   let primaryViewportError;
-  const openFreshPage = async () => {
-    await context?.close();
+  const getViewportPage = async () => {
+    if (page) return page;
     context = await browser.newContext({
       ...VIEWPORTS[viewportName],
       locale: "en-US",
@@ -940,7 +940,7 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
 
   const startedAt = Date.now();
   try {
-    page = await openFreshPage();
+    page = await getViewportPage();
     await enterWorld(page, "male");
     await captureRow({
       page, evidenceDirectory, viewportName, id: "airport", selectedCharacter: "male", rows
@@ -961,7 +961,7 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
     await page.keyboard.press("Escape");
 
     for (const { end, id } of ARRIVAL_PREFIXES) {
-      page = await openFreshPage();
+      page = await getViewportPage();
       await enterWorld(page, "male");
       await driveRoutePrefix(page, end);
       const fixture = CAMERA_FIXTURES[id];
@@ -1100,7 +1100,7 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
       }
     }
 
-    page = await openFreshPage();
+    page = await getViewportPage();
     await enterWorld(page, "female");
     assertUninterruptedRoute(
       await driveContinuousTrustedRoute(page, ROUTE, {

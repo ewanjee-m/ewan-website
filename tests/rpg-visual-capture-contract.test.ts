@@ -35,6 +35,24 @@ describe("RPG visual capture execution contract", () => {
     expect(source).toContain("primaryViewportError");
   });
 
+  it("reuses one browser context and page for every capture in a viewport", () => {
+    const captureViewportSource = source.slice(
+      source.indexOf("async function captureViewport("),
+      source.indexOf("async function capture()")
+    );
+
+    expect(captureViewportSource).toContain("if (page) return page;");
+    expect(
+      captureViewportSource.match(/browser\.newContext\(/g)
+    ).toHaveLength(1);
+    expect(
+      captureViewportSource.match(/context\.newPage\(/g)
+    ).toHaveLength(1);
+    expect(
+      captureViewportSource.match(/await context\?\.close\(\)/g)
+    ).toHaveLength(1);
+  });
+
   it("waits for the rendered camera to face the player after fixture turns", () => {
     expect(source).toContain("const facingResolved");
     expect(source).toContain("cameraFacingDot >= 0.98");
