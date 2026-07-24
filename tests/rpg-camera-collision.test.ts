@@ -33,7 +33,8 @@ import {
   forEachRpgCameraOccluderMaterial,
   getRpgCameraOcclusionHitDisposition,
   getRpgCameraLookSlerpAlpha,
-  resolveRpgCameraLookQuaternionInto
+  resolveRpgCameraLookQuaternionInto,
+  shouldAccelerateRpgCameraLook
 } from "../app/world/ChaseOrbitCamera3d";
 import {
   isRpgWalkablePosition,
@@ -139,6 +140,30 @@ describe("RPG chase camera obstacle clearance", () => {
     }
     expect(escapeAlpha).toBeGreaterThan(normalAlpha);
     expect(remainingError).toBeLessThan(0.001);
+  });
+
+  it("keeps accelerated look convergence active through a manual turn", () => {
+    expect(
+      shouldAccelerateRpgCameraLook({
+        elapsedSeconds: 10.25,
+        lastManualInputSeconds: 10,
+        lateralCollisionEscape: false
+      })
+    ).toBe(true);
+    expect(
+      shouldAccelerateRpgCameraLook({
+        elapsedSeconds: 10.5,
+        lastManualInputSeconds: 10,
+        lateralCollisionEscape: false
+      })
+    ).toBe(false);
+    expect(
+      shouldAccelerateRpgCameraLook({
+        elapsedSeconds: 10.5,
+        lastManualInputSeconds: 10,
+        lateralCollisionEscape: true
+      })
+    ).toBe(true);
   });
 
   it("raycasts only explicit static camera occluder roots", () => {

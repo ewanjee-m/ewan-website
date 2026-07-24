@@ -50,19 +50,38 @@ interface MaterialAppearance {
 
 const RPG_CAMERA_LOOK_HALFLIFE_SECONDS = 0.08;
 const RPG_CAMERA_ESCAPE_LOOK_HALFLIFE_SECONDS = 0.025;
+const RPG_CAMERA_MANUAL_LOOK_ACCELERATION_SECONDS = 0.32;
 
 export function getRpgCameraLookSlerpAlpha(
   deltaSeconds: number,
-  lateralCollisionEscape = false
+  accelerated = false
 ) {
   return 1 -
     Math.pow(
       0.5,
       Math.max(0, deltaSeconds) /
-        (lateralCollisionEscape
+        (accelerated
           ? RPG_CAMERA_ESCAPE_LOOK_HALFLIFE_SECONDS
           : RPG_CAMERA_LOOK_HALFLIFE_SECONDS)
     );
+}
+
+export function shouldAccelerateRpgCameraLook({
+  elapsedSeconds,
+  lastManualInputSeconds,
+  lateralCollisionEscape
+}: {
+  elapsedSeconds: number;
+  lastManualInputSeconds: number;
+  lateralCollisionEscape: boolean;
+}) {
+  if (lateralCollisionEscape) return true;
+  const manualInputAge = elapsedSeconds - lastManualInputSeconds;
+  return (
+    Number.isFinite(manualInputAge) &&
+    manualInputAge >= 0 &&
+    manualInputAge <= RPG_CAMERA_MANUAL_LOOK_ACCELERATION_SECONDS
+  );
 }
 
 export function resolveRpgCameraLookQuaternionInto(
@@ -311,6 +330,11 @@ export function ChaseOrbitCamera3d({
       resolved.current[1] - collisionDesired.current[1],
       resolved.current[2] - collisionDesired.current[2]
     );
+    const accelerateLook = shouldAccelerateRpgCameraLook({
+      elapsedSeconds: clock.elapsedTime,
+      lastManualInputSeconds: state.lastManualInputSeconds,
+      lateralCollisionEscape: usedLateralCollisionEscape
+    });
 
     collisionIsFinite.current = resolved.current.every(Number.isFinite);
     const initializePlacement =
@@ -364,10 +388,7 @@ export function ChaseOrbitCamera3d({
     } else {
       activeCamera.quaternion.slerp(
         lookQuaternion.current,
-        getRpgCameraLookSlerpAlpha(
-          delta,
-          usedLateralCollisionEscape
-        )
+        getRpgCameraLookSlerpAlpha(delta, accelerateLook)
       );
     }
     activeCamera.updateMatrixWorld();
@@ -479,10 +500,7 @@ export function ChaseOrbitCamera3d({
     } else {
       activeCamera.quaternion.slerp(
         lookQuaternion.current,
-        getRpgCameraLookSlerpAlpha(
-          delta,
-          usedLateralCollisionEscape
-        )
+        getRpgCameraLookSlerpAlpha(delta, accelerateLook)
       );
     }
     activeCamera.updateMatrixWorld();
