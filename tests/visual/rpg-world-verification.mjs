@@ -1073,7 +1073,21 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
       }),
       "female Hanabi route"
     );
+    const hanabiCaptureDistance =
+      viewportName === "mobile"
+        ? CAMERA_FIXTURES.hanabi.mobileDistance
+        : CAMERA_FIXTURES.hanabi.desktopDistance;
+    await waitForCameraFixture(
+      page,
+      CAMERA_FIXTURES.hanabi.pitchDegrees,
+      hanabiCaptureDistance
+    );
     await driveTo(page, [21, -26.1]);
+    await waitForCameraFixture(
+      page,
+      CAMERA_FIXTURES.hanabi.pitchDegrees,
+      hanabiCaptureDistance
+    );
     await driveForwardToPoint(page, [21, -26], 0, {
       tolerance: 0.05
     });
@@ -1091,9 +1105,7 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
     await waitForCameraFixture(
       page,
       CAMERA_FIXTURES.hanabi.pitchDegrees,
-      viewportName === "mobile"
-        ? CAMERA_FIXTURES.hanabi.mobileDistance
-        : CAMERA_FIXTURES.hanabi.desktopDistance
+      hanabiCaptureDistance
     );
     const prompt = page.locator(
       'button.world-interaction-prompt[data-target-id="npc-hanabi-child"]'
