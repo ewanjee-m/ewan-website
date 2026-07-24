@@ -65,15 +65,34 @@ test("enters the seamless WebGL world", async ({ page }) => {
     '.seamless-world-renderer[data-renderer-technology="webgl3d"][data-world-ready="true"]'
   );
   await expect(renderer).toBeVisible({ timeout: 30_000 });
-  await expect(renderer).toHaveAttribute("data-camera-diagnostic", "ok");
-  await expect
-    .poll(async () => Number(await renderer.getAttribute("data-camera-boom")))
-    .toBeGreaterThanOrEqual(2.6);
-  await expect
-    .poll(async () =>
-      Number(await renderer.getAttribute("data-camera-safe-violation-ms"))
-    )
-    .toBeLessThanOrEqual(250);
+  await page.waitForTimeout(300);
+  const cameraTelemetry = await renderer.evaluate((element) => {
+    const boom = element.getAttribute("data-camera-boom");
+    const safe = element.getAttribute("data-camera-safe");
+    const safeViolationMs = element.getAttribute(
+      "data-camera-safe-violation-ms"
+    );
+    const diagnostic = element.getAttribute("data-camera-diagnostic");
+    return {
+      boom,
+      safe,
+      safeViolationMs,
+      diagnostic,
+      parsedBoom: boom === null ? Number.NaN : Number(boom),
+      parsedSafeViolationMs:
+        safeViolationMs === null ? Number.NaN : Number(safeViolationMs)
+    };
+  });
+  expect(cameraTelemetry.boom).not.toBeNull();
+  expect(cameraTelemetry.safe).not.toBeNull();
+  expect(cameraTelemetry.safeViolationMs).not.toBeNull();
+  expect(cameraTelemetry.diagnostic).not.toBeNull();
+  expect(Number.isFinite(cameraTelemetry.parsedBoom)).toBe(true);
+  expect(Number.isFinite(cameraTelemetry.parsedSafeViolationMs)).toBe(true);
+  expect(cameraTelemetry.diagnostic).toBe("ok");
+  expect(cameraTelemetry.safe).toBe("true");
+  expect(cameraTelemetry.parsedBoom).toBeGreaterThanOrEqual(2.6);
+  expect(cameraTelemetry.parsedSafeViolationMs).toBeLessThanOrEqual(250);
   expect(
     await page.evaluate(() => window.__RPG_RUNTIME_DIAGNOSTICS__)
   ).toEqual({

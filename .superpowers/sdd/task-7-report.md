@@ -76,3 +76,38 @@ Tests       83 passed (83)
 
 - The Task 7 browser gate covers world entry, readiness, camera diagnostics, minimum boom, safety duration, and mount counts on Chromium.
 - Canvas2D-specific broad browser assertions remain outside this task and are scheduled for the later active E2E migration.
+
+## Occlusion and smoke correction evidence
+
+### RED
+
+Command:
+
+```text
+npm run test:unit -- --run tests/rpg-camera-occlusion.test.ts
+```
+
+Result: exit 1.
+
+- The behavioral material test failed because
+  `createRpgCameraOcclusionMaterialBindings` was not implemented.
+- The ownership extension failed because
+  `createRpgCameraOcclusionOwnedMaterial` was not implemented.
+- These failures established that the production path had no tested gradual
+  material-opacity binding or owned-material creation.
+
+### GREEN
+
+- NPC toon and outline materials are cloned per NPC before opacity changes.
+- Shared source materials remain unchanged.
+- Original `transparent` and `opacity` values are preserved, restored over
+  `200ms`, restored on cleanup, and owned clones are disposed on cleanup.
+- Distance-based visibility remains independent from line-of-sight opacity.
+- Occlusion behavior: 3 tests passed.
+- Affected NPC slice: 3 files and 10 tests passed.
+- Task 7 focused slice: 9 files and 85 tests passed.
+- TypeScript, targeted ESLint, and diff whitespace checks passed.
+- The production WebGL smoke waits `300ms` after world readiness, requires all
+  camera telemetry attributes, rejects missing or non-finite numeric telemetry,
+  and passed 1 test.
+- Full unit suite: 89 files and 765 tests passed.

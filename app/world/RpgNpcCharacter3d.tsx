@@ -5,12 +5,19 @@ import { useFrame } from "@react-three/fiber";
 import {
   forwardRef,
   memo,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
   type RefObject
 } from "react";
-import { SkinnedMesh, Vector3, type Group, type Object3D } from "three";
+import {
+  SkinnedMesh,
+  Vector3,
+  type Group,
+  type Material,
+  type Object3D
+} from "three";
 import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import { NPC_CHARACTER_MODELS } from "./NpcCharacterModels";
 import {
@@ -26,8 +33,12 @@ import {
   shouldRenderRpgCharacter
 } from "./RpgCharacterCameraVisibility";
 import {
+  applyRpgCameraOcclusionMaterials,
   advanceRpgCameraOcclusion,
-  createRpgCameraOcclusionState
+  createRpgCameraOcclusionMaterialBindings,
+  createRpgCameraOcclusionOwnedMaterial,
+  createRpgCameraOcclusionState,
+  restoreRpgCameraOcclusionMaterials
 } from "./RpgCameraOcclusion";
 import {
   createRpgNpcRigAdapter,
@@ -58,18 +69,41 @@ const NPC_OUTLINE_MAX_DISTANCE = 14;
 
 function prepareNpcModel(source: Object3D) {
   const model = cloneSkeleton(source);
+  const ownedMaterials = new Map<Material, Material>();
+  const ownMaterial = (shared: Material) => {
+    const existing = ownedMaterials.get(shared);
+    if (existing) return existing;
+    const owned = createRpgCameraOcclusionOwnedMaterial(shared);
+    ownedMaterials.set(shared, owned);
+    return owned;
+  };
   // Collected first, then outlined: adding the hulls inside the traversal would
   // make traverse walk into the nodes it just created.
   const skinnedMeshes: SkinnedMesh[] = [];
   model.traverse((object) => {
     if (!(object instanceof SkinnedMesh)) return;
-    object.material = resolveRpgCharacterToonMaterial(object.material, "npc");
+    object.material = ownMaterial(
+      resolveRpgCharacterToonMaterial(object.material, "npc")
+    );
     object.castShadow = false;
     object.receiveShadow = false;
     object.frustumCulled = false;
     skinnedMeshes.push(object);
   });
-  return { model, outlines: attachRpgCharacterOutline(skinnedMeshes, "npc") };
+  const outlines = attachRpgCharacterOutline(skinnedMeshes, "npc");
+  for (const outline of outlines) {
+    const materials = Array.isArray(outline.material)
+      ? outline.material.map(ownMaterial)
+      : ownMaterial(outline.material);
+    outline.material = materials;
+  }
+  const materials = [...ownedMaterials.values()];
+  return {
+    model,
+    outlines,
+    materials,
+    occlusionMaterials: createRpgCameraOcclusionMaterialBindings(materials)
+  };
 }
 
 const RpgNpcCharacter3dBase = forwardRef<
@@ -89,6 +123,14 @@ const RpgNpcCharacter3dBase = forwardRef<
   const wasBlockingSightLine = useRef(false);
   const sightLineOcclusion = useRef(createRpgCameraOcclusionState());
   const modelScale = modelDefinition.visibleHeight / modelDefinition.nativeHeight;
+
+  useEffect(
+    () => () => {
+      restoreRpgCameraOcclusionMaterials(prepared.occlusionMaterials);
+      for (const material of prepared.materials) material.dispose();
+    },
+    [prepared]
+  );
 
   useImperativeHandle(
     forwardedRef,
@@ -143,11 +185,15 @@ const RpgNpcCharacter3dBase = forwardRef<
       delta,
       npcId
     );
+    applyRpgCameraOcclusionMaterials(
+      prepared.occlusionMaterials,
+      sightLineOcclusion.current.opacity
+    );
     model.visible =
       shouldRenderRpgCharacter(
         cameraDistance,
         NPC_CHARACTER_CAMERA_HIDE_DISTANCE
-      ) && sightLineOcclusion.current.opacity > 0.15;
+      );
     const outlineVisible = cameraDistance <= NPC_OUTLINE_MAX_DISTANCE;
     for (const outline of prepared.outlines) {
       outline.visible = outlineVisible;

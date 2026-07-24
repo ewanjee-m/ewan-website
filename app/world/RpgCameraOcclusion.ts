@@ -1,3 +1,5 @@
+import type { Material } from "three";
+
 const OCCLUSION_WAIT_SECONDS = 0.25;
 const OCCLUSION_FADE_SECONDS = 0.1;
 const OCCLUSION_RESTORE_SECONDS = 0.2;
@@ -8,6 +10,73 @@ export interface RpgCameraOcclusionState {
   blockedSeconds: number;
   fading: boolean;
   opacity: number;
+}
+
+export interface RpgCameraOcclusionMaterialBinding {
+  material: Material;
+  originalTransparent: boolean;
+  originalOpacity: number;
+}
+
+export function createRpgCameraOcclusionOwnedMaterial(shared: Material) {
+  const owned = shared.clone();
+  owned.onBeforeCompile = shared.onBeforeCompile;
+  owned.customProgramCacheKey = shared.customProgramCacheKey;
+  return owned;
+}
+
+export function createRpgCameraOcclusionMaterialBindings(
+  materials: readonly Material[]
+) {
+  const unique = new Set<Material>();
+  const bindings: RpgCameraOcclusionMaterialBinding[] = [];
+  for (const material of materials) {
+    if (unique.has(material)) continue;
+    unique.add(material);
+    bindings.push({
+      material,
+      originalTransparent: material.transparent,
+      originalOpacity: material.opacity
+    });
+  }
+  return bindings;
+}
+
+export function applyRpgCameraOcclusionMaterials(
+  bindings: readonly RpgCameraOcclusionMaterialBinding[],
+  opacity: number
+) {
+  const factor = Number.isFinite(opacity)
+    ? Math.min(1, Math.max(0, opacity))
+    : 1;
+  for (const binding of bindings) {
+    const transparent =
+      factor < 1 ? true : binding.originalTransparent;
+    const materialOpacity = binding.originalOpacity * factor;
+    if (
+      binding.material.transparent !== transparent ||
+      binding.material.opacity !== materialOpacity
+    ) {
+      binding.material.transparent = transparent;
+      binding.material.opacity = materialOpacity;
+      binding.material.needsUpdate = true;
+    }
+  }
+}
+
+export function restoreRpgCameraOcclusionMaterials(
+  bindings: readonly RpgCameraOcclusionMaterialBinding[]
+) {
+  for (const binding of bindings) {
+    if (
+      binding.material.transparent !== binding.originalTransparent ||
+      binding.material.opacity !== binding.originalOpacity
+    ) {
+      binding.material.transparent = binding.originalTransparent;
+      binding.material.opacity = binding.originalOpacity;
+      binding.material.needsUpdate = true;
+    }
+  }
 }
 
 export function createRpgCameraOcclusionState(
