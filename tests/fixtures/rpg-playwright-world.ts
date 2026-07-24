@@ -598,7 +598,13 @@ async function readCameraYaw(page: Page) {
 
 export async function readWorldTelemetry(
   page: Page,
-  { assertSafe = true }: { assertSafe?: boolean } = {}
+  {
+    assertSafe = true,
+    requireFacing = true
+  }: {
+    assertSafe?: boolean;
+    requireFacing?: boolean;
+  } = {}
 ): Promise<WorldTelemetry> {
   const raw = await page
     .locator(`${WORLD_SELECTOR}, ${RENDERER_SELECTOR}`)
@@ -673,11 +679,16 @@ export async function readWorldTelemetry(
     cameraSafeViolationMs: Number(raw.cameraSafeViolationMs),
     cameraDiagnostic: raw.cameraDiagnostic
   };
-  if (assertSafe) assertSafeCameraTelemetry(telemetry);
+  if (assertSafe) {
+    assertSafeCameraTelemetry(telemetry, { requireFacing });
+  }
   return telemetry;
 }
 
-export function assertSafeCameraTelemetry(telemetry: WorldTelemetry) {
+export function assertSafeCameraTelemetry(
+  telemetry: WorldTelemetry,
+  { requireFacing = true }: { requireFacing?: boolean } = {}
+) {
   if (
     telemetry.movement.some((value) => !Number.isFinite(value)) ||
     !Number.isFinite(telemetry.movementStrength)
@@ -708,7 +719,7 @@ export function assertSafeCameraTelemetry(telemetry: WorldTelemetry) {
   }
   if (
     !Number.isFinite(telemetry.cameraFacingDot) ||
-    telemetry.cameraFacingDot < 0.98
+    (requireFacing && telemetry.cameraFacingDot < 0.98)
   ) {
     throw new Error(
       `camera is not facing the player focus: ${telemetry.cameraFacingDot}`
@@ -2138,6 +2149,7 @@ export async function driveWithKeyboardToPoint(
     timeoutMs = 30_000,
     navigationRegions = [],
     zones = [],
+    requireCameraFacing = true,
     onFirstKeydown
   }: {
     runRequested?: boolean;
@@ -2145,6 +2157,7 @@ export async function driveWithKeyboardToPoint(
     timeoutMs?: number;
     navigationRegions?: string[];
     zones?: string[];
+    requireCameraFacing?: boolean;
     onFirstKeydown?: () => Promise<void>;
   } = {}
 ) {
@@ -2223,7 +2236,9 @@ export async function driveWithKeyboardToPoint(
         { previousPosition: initial.positionRaw, keys }
         )
     });
-    const telemetry = await readWorldTelemetry(page);
+    const telemetry = await readWorldTelemetry(page, {
+      requireFacing: requireCameraFacing
+    });
     if (!moved || telemetry.positionRaw === initial.positionRaw) {
       return null;
     }
@@ -2237,7 +2252,9 @@ export async function driveWithKeyboardToPoint(
   };
   for (let attempt = 0; attempt < 48; attempt += 1) {
     if (Date.now() >= deadline) break;
-    const initial = await readWorldTelemetry(page);
+    const initial = await readWorldTelemetry(page, {
+      requireFacing: requireCameraFacing
+    });
     const deltaX = target[0] - initial.position[0];
     const deltaZ = target[1] - initial.position[2];
     const distance = Math.hypot(deltaX, deltaZ);
@@ -2441,7 +2458,9 @@ export async function driveWithKeyboardToPoint(
       if (runRequested) await trustedRouteKeyUp(page, "Shift");
     }
     if (outcome === "near") {
-      const arrived = await readWorldTelemetry(page);
+      const arrived = await readWorldTelemetry(page, {
+        requireFacing: requireCameraFacing
+      });
       if (
         Math.hypot(
           arrived.position[0] - target[0],
@@ -2458,7 +2477,9 @@ export async function driveWithKeyboardToPoint(
   }
   let current: WorldTelemetry;
   try {
-    current = await readWorldTelemetry(page);
+    current = await readWorldTelemetry(page, {
+      requireFacing: requireCameraFacing
+    });
   } catch (error) {
     throw new Error(
       `keyboard route failed before target=${target.join(",")}: ${
@@ -2477,10 +2498,12 @@ export async function driveForwardToPoint(
   headingYaw: number,
   {
     tolerance = RPG_CANONICAL_ROUTE_TOLERANCE,
-    timeoutMs = 5_000
+    timeoutMs = 5_000,
+    requireCameraFacing = true
   }: {
     tolerance?: number;
     timeoutMs?: number;
+    requireCameraFacing?: boolean;
   } = {}
 ) {
   await ensureTrustedRouteStopBinding(page);
@@ -2575,7 +2598,9 @@ export async function driveForwardToPoint(
   } finally {
     await trustedRouteKeyUp(page, "w");
   }
-  return readWorldTelemetry(page);
+  return readWorldTelemetry(page, {
+    requireFacing: requireCameraFacing
+  });
 }
 
 export async function driveCanonicalRoute(

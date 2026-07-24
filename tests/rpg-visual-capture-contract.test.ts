@@ -40,7 +40,7 @@ describe("RPG visual capture execution contract", () => {
     expect(source).toContain("cameraFacingDot >= 0.98");
     expect(
       source.match(/await waitForCameraFixture\(/g)
-    ).toHaveLength(4);
+    ).toHaveLength(6);
   });
 
   it("uses one landmark-focused camera fixture source instead of arrival-heading offsets", () => {

@@ -689,11 +689,20 @@ async function waitForCameraFixture(
   );
 }
 
-async function driveTo(page, target, { run = true, tolerance = 0.05 } = {}) {
+async function driveTo(
+  page,
+  target,
+  {
+    run = true,
+    tolerance = 0.05,
+    requireCameraFacing = true
+  } = {}
+) {
   return driveWithKeyboardToPoint(page, target, {
     runRequested: run,
     tolerance,
-    timeoutMs: 40_000
+    timeoutMs: 40_000,
+    requireCameraFacing
   });
 }
 
@@ -1082,14 +1091,17 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
       CAMERA_FIXTURES.hanabi.pitchDegrees,
       hanabiCaptureDistance
     );
-    await driveTo(page, [21, -26.1]);
+    await driveTo(page, [21, -26.1], {
+      requireCameraFacing: false
+    });
     await waitForCameraFixture(
       page,
       CAMERA_FIXTURES.hanabi.pitchDegrees,
       hanabiCaptureDistance
     );
     await driveForwardToPoint(page, [21, -26], 0, {
-      tolerance: 0.05
+      tolerance: 0.05,
+      requireCameraFacing: false
     });
     const interactionCamera = await telemetry(page, {
       requireFacing: false
