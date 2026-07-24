@@ -1,7 +1,8 @@
 "use client";
 
 import { Instance, Instances } from "@react-three/drei";
-import { memo, useMemo } from "react";
+import { memo, useCallback, useMemo } from "react";
+import type { InstancedMesh } from "three";
 import type { SceneQualityLevel } from "./SceneQuality";
 import {
   RPG_ARCHITECTURE_FACADE_DETAILS,
@@ -48,6 +49,26 @@ interface ArchitectureInstance {
 
 interface RpgTownArchitectureProps {
   qualityLevel?: SceneQualityLevel;
+}
+
+export const RPG_TOWN_CAMERA_FADEABLE_BATCH_IDS = [
+  "canopies",
+  "foliage",
+  "overhead-cables"
+] as const;
+
+type RpgTownArchitectureCameraFadeableBatchId =
+  (typeof RPG_TOWN_CAMERA_FADEABLE_BATCH_IDS)[number];
+
+export function markRpgTownCameraFadeableBatch(
+  batch: InstancedMesh,
+  batchId: string
+) {
+  Object.assign(batch.userData, {
+    cameraOccluder: true,
+    cameraOcclusionFadeBatch: true,
+    cameraOcclusionBatchId: batchId
+  });
 }
 
 const districtBuildings = RPG_DISTRICT_ARCHITECTURE.filter(
@@ -699,10 +720,14 @@ export function getRpgTownArchitectureBatchStats(
       strideFilter(hedgeInstances, stride).length
   },
   {
-    id: "posts-and-cables",
+    id: "prop-posts",
     geometry: "cylinder8",
-    instanceCount:
-      propCount(propPostInstances) + overheadCableInstances.length
+    instanceCount: propCount(propPostInstances)
+  },
+  {
+    id: "overhead-cables",
+    geometry: "cylinder8",
+    instanceCount: overheadCableInstances.length
   },
   {
     id: "prop-heads",
@@ -744,15 +769,34 @@ export const RPG_TOWN_ARCHITECTURE_BATCH_STATS: readonly RpgTownBatchStat[] =
 function InstanceBatch({
   instances,
   geometry,
-  material
+  material,
+  cameraOcclusionFadeBatchId
 }: {
   instances: readonly ArchitectureInstance[];
   geometry: React.ReactNode;
   material: React.ReactNode;
+  cameraOcclusionFadeBatchId?: RpgTownArchitectureCameraFadeableBatchId;
 }) {
+  const markCameraFadeableBatch = useCallback(
+    (batch: InstancedMesh | null) => {
+      if (batch && cameraOcclusionFadeBatchId) {
+        markRpgTownCameraFadeableBatch(
+          batch,
+          cameraOcclusionFadeBatchId
+        );
+      }
+    },
+    [cameraOcclusionFadeBatchId]
+  );
   if (instances.length === 0) return null;
   return (
-    <Instances limit={instances.length} frames={1} castShadow receiveShadow>
+    <Instances
+      ref={markCameraFadeableBatch}
+      limit={instances.length}
+      frames={1}
+      castShadow
+      receiveShadow
+    >
       {geometry}
       {material}
       {instances.map((instance) => (
@@ -824,6 +868,7 @@ export const RpgTownArchitecture = memo(function RpgTownArchitecture({
         instances={canopyInstances}
         geometry={<coneGeometry args={[1, 1, 4]} />}
         material={<meshStandardMaterial color="#ffffff" roughness={0.88} />}
+        cameraOcclusionFadeBatchId="canopies"
       />
       <InstanceBatch
         instances={parapetInstances}
@@ -896,14 +941,18 @@ export const RpgTownArchitecture = memo(function RpgTownArchitecture({
         instances={visibleFoliage}
         geometry={<icosahedronGeometry args={[1, 1]} />}
         material={<meshStandardMaterial color="#ffffff" roughness={0.94} flatShading />}
+        cameraOcclusionFadeBatchId="foliage"
       />
       <InstanceBatch
-        instances={[
-          ...filterProps(propPostInstances),
-          ...overheadCableInstances
-        ]}
+        instances={filterProps(propPostInstances)}
         geometry={<cylinderGeometry args={[1, 1, 1, 8]} />}
         material={<meshStandardMaterial color="#ffffff" roughness={0.92} />}
+      />
+      <InstanceBatch
+        instances={overheadCableInstances}
+        geometry={<cylinderGeometry args={[1, 1, 1, 8]} />}
+        material={<meshStandardMaterial color="#ffffff" roughness={0.92} />}
+        cameraOcclusionFadeBatchId="overhead-cables"
       />
       <InstanceBatch
         instances={filterProps(propHeadInstances)}

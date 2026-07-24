@@ -4,9 +4,9 @@ import type { WorldCameraDragIntent } from "./WorldInput";
 
 const PROFILE = {
   airport: { distance: 8.4, pitchDegrees: 22, mobileFovDegrees: 52 },
-  tokyo: { distance: 7.8, pitchDegrees: 22, mobileFovDegrees: 52 },
+  tokyo: { distance: 7.8, pitchDegrees: 18, mobileFovDegrees: 52 },
   gyukatsu: { distance: 7, pitchDegrees: 26, mobileFovDegrees: 52 },
-  sakura: { distance: 8, pitchDegrees: 22, mobileFovDegrees: 68 },
+  sakura: { distance: 8, pitchDegrees: 20, mobileFovDegrees: 70 },
   hanabi: { distance: 9.2, pitchDegrees: 18, mobileFovDegrees: 52 }
 } as const;
 

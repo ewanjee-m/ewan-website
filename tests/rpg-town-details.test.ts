@@ -2,6 +2,12 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  BoxGeometry,
+  InstancedMesh,
+  MeshStandardMaterial,
+  Object3D
+} from "three";
+import {
   RPG_MAIN_ROUTE,
   isRpgWalkablePosition
 } from "../app/world/RpgTownSceneLayout";
@@ -10,7 +16,14 @@ import {
   RPG_GYUKATSU_OUTDOOR_DETAILS,
   RPG_TOKYO_CROSSWALK_DETAILS
 } from "../app/world/RpgTownDetailsLayout";
-import { isDecorationClusterVisible } from "../app/world/RpgTownDetails";
+import {
+  isDecorationClusterVisible,
+  markRpgTownShorelineRockBatch,
+  RPG_TOWN_SHORELINE_CAMERA_OCCLUSION_BATCH_ID
+} from "../app/world/RpgTownDetails";
+import {
+  getRpgCameraOcclusionHitDisposition
+} from "../app/world/ChaseOrbitCamera3d";
 
 describe("approved town concept 3D details", () => {
   it("adds an irregular non-blocking rock line outside the airport walking road", () => {
@@ -103,6 +116,34 @@ describe("approved town concept 3D details", () => {
     expect(source).toContain("zoneWeights.tokyo");
     expect(source).toContain("zoneWeights.gyukatsu");
     expect(source).toContain("decorationDensity");
+  });
+
+  it("marks the shoreline rock instance batch for camera occlusion fading", () => {
+    const material = new MeshStandardMaterial();
+    const batch = new InstancedMesh(new BoxGeometry(), material, 1);
+    const instanceProxy = new Object3D();
+    const internalInstances: unknown[] = [];
+    batch.userData = { instances: internalInstances, limit: 1, frames: 1 };
+    batch.add(instanceProxy);
+
+    markRpgTownShorelineRockBatch(batch);
+
+    expect(batch.userData).toMatchObject({
+      cameraOccluder: true,
+      cameraOcclusionFadeBatch: true,
+      cameraOcclusionBatchId:
+        RPG_TOWN_SHORELINE_CAMERA_OCCLUSION_BATCH_ID
+    });
+    expect(batch.userData.instances).toBe(internalInstances);
+    expect(
+      getRpgCameraOcclusionHitDisposition(instanceProxy, batch)
+    ).toBe("fade");
+
+    const source = readFileSync(
+      resolve(process.cwd(), "app/world/RpgTownDetails.tsx"),
+      "utf8"
+    );
+    expect(source).toContain("ref={markRpgTownShorelineRockBatch}");
   });
 
   it("hides far non-core details when the runtime distance drops from 48 to 18", () => {

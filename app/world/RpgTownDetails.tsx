@@ -3,9 +3,15 @@
 import { Instance, Instances } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { memo, type RefObject, useRef } from "react";
-import type { Group, MeshStandardMaterial, Vector3 } from "three";
+import type {
+  Group,
+  InstancedMesh,
+  MeshStandardMaterial,
+  Vector3
+} from "three";
 import type { RpgRegionPresentationState } from "./RpgRegionPresentation";
 import type { SceneQualitySettings } from "./SceneQuality";
+import { markRpgTownCameraFadeableBatch } from "./RpgTownArchitecture";
 import {
   RPG_COASTAL_ROCK_DETAILS,
   RPG_GYUKATSU_OUTDOOR_DETAILS,
@@ -26,6 +32,19 @@ const GYUKATSU_DECORATION_POINTS = RPG_GYUKATSU_OUTDOOR_DETAILS.map(
 );
 
 type DecorationPoint = readonly [number, number, number];
+
+export const RPG_TOWN_SHORELINE_CAMERA_OCCLUSION_BATCH_ID =
+  "shoreline-rocks";
+
+export function markRpgTownShorelineRockBatch(
+  batch: InstancedMesh | null
+) {
+  if (!batch) return;
+  markRpgTownCameraFadeableBatch(
+    batch,
+    RPG_TOWN_SHORELINE_CAMERA_OCCLUSION_BATCH_ID
+  );
+}
 
 export function isDecorationClusterVisible(
   player: DecorationPoint,
@@ -95,6 +114,7 @@ export const RpgTownDetails = memo(function RpgTownDetails({
     >
       <group ref={shorelineGroup} name="far-shoreline-details">
         <Instances
+          ref={markRpgTownShorelineRockBatch}
           limit={SHORELINE_ROCKS.length}
           frames={1}
           castShadow

@@ -125,12 +125,54 @@ function findCameraOccluder(object: Object3D) {
   return null;
 }
 
-function forEachMaterial(
+export type RpgCameraOcclusionHitDisposition =
+  | "fade"
+  | "batched-occlusion"
+  | "ignore";
+
+function isInstancedMeshObject(object: Object3D) {
+  return (
+    object instanceof InstancedMesh ||
+    (object as InstancedMesh).isInstancedMesh === true
+  );
+}
+
+function isRpgCameraInstancedOcclusionHit(
+  hitObject: Object3D,
+  candidate: Object3D
+) {
+  let current: Object3D | null = hitObject;
+  while (current) {
+    if (isInstancedMeshObject(current)) return true;
+    if (current === candidate) break;
+    current = current.parent;
+  }
+  return isInstancedMeshObject(candidate);
+}
+
+export function getRpgCameraOcclusionHitDisposition(
+  hitObject: Object3D,
+  candidate: Object3D | null
+): RpgCameraOcclusionHitDisposition {
+  if (!candidate || candidate.userData.landmarkId === "airport-bus") {
+    return "ignore";
+  }
+  const instancedHit = isRpgCameraInstancedOcclusionHit(
+    hitObject,
+    candidate
+  );
+  return instancedHit &&
+    candidate.userData.cameraOcclusionFadeBatch !== true
+    ? "batched-occlusion"
+    : "fade";
+}
+
+export function forEachRpgCameraOccluderMaterial(
   object: Object3D,
   visit: (material: Material) => void
 ) {
   object.traverse((child) => {
-    if (!(child instanceof Mesh) || child instanceof InstancedMesh) return;
+    if (!(child instanceof Mesh)) return;
     const materials = Array.isArray(child.material)
       ? child.material
       : [child.material];
@@ -519,14 +561,16 @@ export function ChaseOrbitCamera3d({
     let batchedOcclusion = false;
     for (const hit of rayHits.current) {
       const candidate = findCameraOccluder(hit.object);
-      if (!candidate) continue;
-      if (hit.object instanceof InstancedMesh) {
+      const disposition = getRpgCameraOcclusionHitDisposition(
+        hit.object,
+        candidate
+      );
+      if (disposition === "ignore") continue;
+      if (disposition === "batched-occlusion") {
         batchedOcclusion = true;
         break;
       }
-      if (candidate.userData.landmarkId !== "airport-bus") {
-        nextOccluder = candidate;
-      }
+      nextOccluder = candidate;
       break;
     }
     batchedOcclusionSeconds.current = batchedOcclusion
@@ -545,7 +589,7 @@ export function ChaseOrbitCamera3d({
         delta,
         occluder.current.uuid
       );
-      forEachMaterial(occluder.current, (material) => {
+      forEachRpgCameraOccluderMaterial(occluder.current, (material) => {
         if (!materialAppearances.current.has(material)) {
           materialAppearances.current.set(material, {
             transparent: material.transparent,

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { Matrix4, Object3D, Quaternion, Vector3 } from "three";
+import {
+  BoxGeometry,
+  InstancedMesh,
+  Matrix4,
+  MeshStandardMaterial,
+  Object3D,
+  Quaternion,
+  Vector3
+} from "three";
 import {
   calculateRpgCameraCollisionRatio,
   resolveRpgCameraCollisionInto,
@@ -22,6 +30,8 @@ import { createRpgBusMotionPose } from "../app/world/RpgBusMotion";
 import {
   collectRpgCameraDynamicObstacles,
   collectRpgCameraOcclusionRoots,
+  forEachRpgCameraOccluderMaterial,
+  getRpgCameraOcclusionHitDisposition,
   getRpgCameraLookSlerpAlpha,
   resolveRpgCameraLookQuaternionInto
 } from "../app/world/ChaseOrbitCamera3d";
@@ -151,6 +161,62 @@ describe("RPG chase camera obstacle clearance", () => {
 
     expect(collectRpgCameraOcclusionRoots(scene, target)).toBe(target);
     expect(target).toEqual([terminal]);
+  });
+
+  it("fades an explicitly marked instanced occluder hit through a Drei instance proxy", () => {
+    const material = new MeshStandardMaterial();
+    const batch = new InstancedMesh(new BoxGeometry(), material, 1);
+    const instanceProxy = new Object3D();
+    batch.userData = {
+      cameraOccluder: true,
+      cameraOcclusionFadeBatch: true
+    };
+    batch.add(instanceProxy);
+
+    expect(
+      getRpgCameraOcclusionHitDisposition(instanceProxy, batch)
+    ).toBe("fade");
+  });
+
+  it("keeps the batched-occlusion diagnostic for unmarked instanced occluders", () => {
+    const batch = new InstancedMesh(
+      new BoxGeometry(),
+      new MeshStandardMaterial(),
+      1
+    );
+    const instanceProxy = new Object3D();
+    batch.userData = { cameraOccluder: true };
+    batch.add(instanceProxy);
+
+    expect(
+      getRpgCameraOcclusionHitDisposition(instanceProxy, batch)
+    ).toBe("batched-occlusion");
+    expect(
+      getRpgCameraOcclusionHitDisposition(batch, batch)
+    ).toBe("batched-occlusion");
+
+    const parentOccluder = new Object3D();
+    parentOccluder.userData = { cameraOccluder: true };
+    batch.userData = {};
+    parentOccluder.add(batch);
+    expect(
+      getRpgCameraOcclusionHitDisposition(
+        instanceProxy,
+        parentOccluder
+      )
+    ).toBe("batched-occlusion");
+  });
+
+  it("visits the shared material of a fadeable instanced occluder", () => {
+    const material = new MeshStandardMaterial();
+    const batch = new InstancedMesh(new BoxGeometry(), material, 1);
+    const materials: MeshStandardMaterial[] = [];
+
+    forEachRpgCameraOccluderMaterial(batch, (candidate) => {
+      materials.push(candidate as MeshStandardMaterial);
+    });
+
+    expect(materials).toEqual([material]);
   });
 
   it("refills the caller-owned dynamic obstacle collection without replacing it", () => {

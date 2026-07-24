@@ -65,24 +65,72 @@ describe("RPG visual camera fixtures", () => {
     expect(resolveRpgVisualCameraYaw(fixture, player)).toBeCloseTo(expected, 10);
   });
 
-  it("uses reachable scenic positions for the two multi-landmark captures", () => {
-    for (const zoneId of ["tokyo", "sakura", "hanabi"] as const) {
-      const position = RPG_VISUAL_CAMERA_FIXTURES[zoneId].capturePosition;
+  it("uses reachable scenic routes and positions for landmark captures", () => {
+    for (const zoneId of ["tokyo", "gyukatsu", "sakura", "hanabi"] as const) {
+      const fixture = RPG_VISUAL_CAMERA_FIXTURES[zoneId];
+      const position = fixture.capturePosition;
       expect(position, zoneId).toBeDefined();
-      expect(isRpgWalkablePosition(position![0], position![1]), zoneId).toBe(
-        true
-      );
+      for (const point of [...(fixture.captureRoute ?? []), position!]) {
+        expect(
+          isRpgWalkablePosition(point[0], point[1]),
+          `${zoneId}:${point}`
+        ).toBe(true);
+      }
+      const mobilePosition = fixture.mobileCapturePosition;
+      for (const point of [
+        ...(fixture.mobileCaptureRoute ?? []),
+        ...(mobilePosition ? [mobilePosition] : [])
+      ]) {
+        expect(
+          isRpgWalkablePosition(point[0], point[1]),
+          `${zoneId}:mobile:${point}`
+        ).toBe(true);
+      }
     }
+  });
+
+  it("approaches both Sakura frames through collision-free routes", () => {
+    const fixture = RPG_VISUAL_CAMERA_FIXTURES.sakura;
+    expect(fixture.captureRoute).toEqual([
+      [10, -18],
+      [8, -20],
+      [0, -20],
+      [0, -24],
+      [-4, -24],
+      [-4, -30]
+    ]);
+    expect(fixture.capturePosition).toEqual([-4, -30]);
+    expect(fixture.mobileCaptureRoute).toEqual([
+      [10, -18],
+      [8, -20],
+      [8, -30],
+      [2, -30],
+      [2, -36],
+      [8, -36]
+    ]);
+    expect(fixture.mobileCapturePosition).toEqual([8, -36]);
+  });
+
+  it("frames the Tokyo tower from the open center connector", () => {
+    const fixture = RPG_VISUAL_CAMERA_FIXTURES.tokyo;
+    expect(fixture.capturePosition).toEqual([-8, 12]);
+    expect(fixture.screenOffsetDegrees).toBe(0);
+    expect(fixture.pitchDegrees).toBe(18);
   });
 
   it("fits both Sakura landmarks inside the portrait mobile field of view", () => {
     const fixture = RPG_VISUAL_CAMERA_FIXTURES.sakura;
     const player = [
-      fixture.capturePosition![0],
+      fixture.mobileCapturePosition![0],
       0,
-      fixture.capturePosition![1]
+      fixture.mobileCapturePosition![1]
     ] as const;
-    const yaw = resolveRpgVisualCameraYaw(fixture, player);
+    const yaw = resolveRpgVisualCameraYaw(
+      fixture,
+      player,
+      fixture.focusWorldXZ,
+      fixture.mobileScreenOffsetDegrees
+    );
     const verticalFov =
       getRegionCameraProfile("sakura", "mobile").fovDegrees *
       Math.PI / 180;

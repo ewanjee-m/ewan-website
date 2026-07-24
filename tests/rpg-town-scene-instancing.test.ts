@@ -41,6 +41,51 @@ describe("RPG town scene static ownership", () => {
     );
   });
 
+  it("gives every primary destination landmark a distinct readable signature", () => {
+    const source = read("RpgSignatureLandmarks.tsx");
+    const landmark = (id: string) =>
+      RPG_LANDMARKS.find((candidate) => candidate.id === id);
+
+    expect(landmark("tokyo-blue-tower")).toMatchObject({
+      color: "#2879aa",
+      accent: "#67edf0"
+    });
+    expect(landmark("gyukatsu-main-machiya")).toMatchObject({
+      color: "#8c5846",
+      accent: "#ffc86a"
+    });
+    expect(landmark("sakura-tree-01")).toMatchObject({
+      color: "#5d3b35",
+      accent: "#ffd1e1"
+    });
+    expect(landmark("sakura-bridge")).toMatchObject({
+      color: "#d84c43",
+      accent: "#ffd166"
+    });
+    expect(landmark("hanabi-apple-stall")).toMatchObject({
+      color: "#b93642",
+      accent: "#ffd166"
+    });
+    expect(landmark("hanabi-street-torii")).toMatchObject({
+      color: "#d45242",
+      accent: "#472129"
+    });
+
+    for (const signatureName of [
+      "tokyo-blue-tower-signature",
+      "gyukatsu-main-machiya-signature",
+      "hanabi-apple-stall-signature"
+    ]) {
+      expect(source).toContain(`name="${signatureName}"`);
+    }
+    expect(source).toMatch(
+      /function SakuraLandmark[\s\S]*?color=\{landmark\.accent\}[\s\S]*?function CanalDetails/
+    );
+    expect(source).toMatch(
+      /function RepeatedLandmarkBatches[\s\S]*?emissive="#681611"[\s\S]*?richToriiInstances/
+    );
+  });
+
   it("puts landmark ownership and rotation-correct transforms on every rendered lantern and torii instance", () => {
     const repeatedLandmarks = RPG_LANDMARKS.filter(
       ({ kind }) => kind === "lantern" || kind === "torii"

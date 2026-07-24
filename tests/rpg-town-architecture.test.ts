@@ -2,6 +2,15 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  BoxGeometry,
+  InstancedMesh,
+  MeshStandardMaterial
+} from "three";
+import {
+  markRpgTownCameraFadeableBatch,
+  RPG_TOWN_CAMERA_FADEABLE_BATCH_IDS
+} from "../app/world/RpgTownArchitecture";
+import {
   RPG_ARCHITECTURE_FACADE_DETAILS,
   RPG_ARCHITECTURE_STREET_PROPS,
   RPG_DISTRICT_ARCHITECTURE,
@@ -119,5 +128,46 @@ describe("direct-rendered Japanese town architecture", () => {
     expect(architectureSource).not.toContain("useLoader");
     expect(architectureSource).not.toContain("<sprite");
     expect(architectureSource).not.toContain("<planeGeometry");
+  });
+
+  it("marks only canopy, foliage, and overhead cable batches as fadeable camera occluders", () => {
+    expect(RPG_TOWN_CAMERA_FADEABLE_BATCH_IDS).toEqual([
+      "canopies",
+      "foliage",
+      "overhead-cables"
+    ]);
+    expect(
+      architectureSource.match(/cameraOcclusionFadeBatchId="/g)?.length ?? 0
+    ).toBe(RPG_TOWN_CAMERA_FADEABLE_BATCH_IDS.length);
+    for (const batchId of RPG_TOWN_CAMERA_FADEABLE_BATCH_IDS) {
+      expect(architectureSource).toContain(
+        `cameraOcclusionFadeBatchId="${batchId}"`
+      );
+    }
+  });
+
+  it("preserves Drei instance bookkeeping while marking a fadeable camera batch", () => {
+    const batch = new InstancedMesh(
+      new BoxGeometry(),
+      new MeshStandardMaterial(),
+      1
+    );
+    const internalInstances: unknown[] = [];
+    batch.userData = {
+      instances: internalInstances,
+      limit: 1,
+      frames: 1
+    };
+
+    markRpgTownCameraFadeableBatch(batch, "foliage");
+
+    expect(batch.userData).toMatchObject({
+      cameraOccluder: true,
+      cameraOcclusionFadeBatch: true,
+      cameraOcclusionBatchId: "foliage",
+      limit: 1,
+      frames: 1
+    });
+    expect(batch.userData.instances).toBe(internalInstances);
   });
 });

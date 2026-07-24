@@ -86,7 +86,7 @@ describe("chase orbit camera", () => {
     expect(getRegionCameraProfile("gyukatsu", "mobile").distance).toBeCloseTo(
       6.3
     );
-    expect(getRegionCameraProfile("sakura", "mobile").fovDegrees).toBe(68);
+    expect(getRegionCameraProfile("sakura", "mobile").fovDegrees).toBe(70);
   });
 
   it("smoothsteps camera values through a transition", () => {
@@ -104,7 +104,7 @@ describe("chase orbit camera", () => {
       "desktop"
     );
     expect(profile.distance).toBeCloseTo(7.5);
-    expect(profile.pitchDegrees).toBeCloseTo(24);
+    expect(profile.pitchDegrees).toBeCloseTo(23);
   });
 
   it("returns the signed shortest yaw error across the wrap boundary", () => {

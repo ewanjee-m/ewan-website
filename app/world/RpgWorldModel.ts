@@ -531,8 +531,18 @@ const createSakuraTree = (
   zoneId: "sakura",
   position,
   size,
-  color: variant % 2 === 0 ? "#6f4d43" : "#795246",
-  accent: variant % 2 === 0 ? "#f5abc5" : "#ffc1d4",
+  color:
+    id === "sakura-tree-01"
+      ? "#5d3b35"
+      : variant % 2 === 0
+        ? "#6f4d43"
+        : "#795246",
+  accent:
+    id === "sakura-tree-01"
+      ? "#ffd1e1"
+      : variant % 2 === 0
+        ? "#f5abc5"
+        : "#ffc1d4",
   blocksMovement,
   variant,
   collisionPadding
@@ -623,8 +633,8 @@ export const RPG_WORLD_SCENE_LANDMARKS: readonly WorldSceneLandmark[] = [
     zoneId: "tokyo",
     position: RPG_PRIMARY_LANDMARK_POSITIONS.tokyo,
     size: [3.25, 7.3, 3.1],
-    color: "#304c60",
-    accent: "#71d0d1",
+    color: "#2879aa",
+    accent: "#67edf0",
     blocksMovement: true,
     variant: 0
   },
@@ -723,8 +733,8 @@ export const RPG_WORLD_SCENE_LANDMARKS: readonly WorldSceneLandmark[] = [
     zoneId: "gyukatsu",
     position: RPG_PRIMARY_LANDMARK_POSITIONS.gyukatsu,
     size: [6.2, 3.1, 3.35],
-    color: "#754a3e",
-    accent: "#efb45d",
+    color: "#8c5846",
+    accent: "#ffc86a",
     blocksMovement: true,
     variant: 0
   },
@@ -867,8 +877,8 @@ export const RPG_WORLD_SCENE_LANDMARKS: readonly WorldSceneLandmark[] = [
     zoneId: "sakura",
     position: [BRIDGE_CENTER_X, 0, BRIDGE_CENTER_Z],
     size: [BRIDGE_WIDTH, 0.14, BRIDGE_ROUTE_HALF_DEPTH * 2],
-    color: "#ac4a3d",
-    accent: "#efad60",
+    color: "#d84c43",
+    accent: "#ffd166",
     blocksMovement: false,
     sourceRouteId: "sakura-bridge-route"
   },
@@ -878,8 +888,8 @@ export const RPG_WORLD_SCENE_LANDMARKS: readonly WorldSceneLandmark[] = [
     zoneId: "hanabi",
     position: RPG_PRIMARY_LANDMARK_POSITIONS.hanabi,
     size: [2.65, 2.35, 2.4],
-    color: "#a64147",
-    accent: "#f2c563",
+    color: "#b93642",
+    accent: "#ffd166",
     blocksMovement: true,
     variant: 0
   },
@@ -958,8 +968,8 @@ export const RPG_WORLD_SCENE_LANDMARKS: readonly WorldSceneLandmark[] = [
     zoneId: "hanabi",
     position: [33, 2.5, -32],
     size: [4, 5, 1],
-    color: "#a63f36",
-    accent: "#241f25",
+    color: "#cf4a3d",
+    accent: "#432129",
     blocksMovement: true
   },
   {
@@ -968,8 +978,8 @@ export const RPG_WORLD_SCENE_LANDMARKS: readonly WorldSceneLandmark[] = [
     zoneId: "hanabi",
     position: [22, 2.5, -12.6],
     size: [4.4, 5, 1],
-    color: "#b0453a",
-    accent: "#2a2229",
+    color: "#d45242",
+    accent: "#472129",
     blocksMovement: true
   },
   {

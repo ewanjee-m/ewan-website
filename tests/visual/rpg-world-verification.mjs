@@ -754,7 +754,10 @@ async function captureRow({
       resolveRpgVisualCameraYaw(
         fixture,
         current.position,
-        liveFocusWorldXZ
+        liveFocusWorldXZ,
+        viewportName === "mobile"
+          ? fixture.mobileScreenOffsetDegrees
+          : undefined
       ),
       fixture.pitchDegrees
     );
@@ -950,7 +953,18 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
       page = await openFreshPage();
       await enterWorld(page, "male");
       await driveRoutePrefix(page, end);
-      const scenicPosition = CAMERA_FIXTURES[id]?.capturePosition;
+      const fixture = CAMERA_FIXTURES[id];
+      const captureRoute =
+        viewportName === "mobile"
+          ? fixture?.mobileCaptureRoute ?? fixture?.captureRoute
+          : fixture?.captureRoute;
+      for (const waypoint of captureRoute ?? []) {
+        await driveTo(page, waypoint);
+      }
+      const scenicPosition =
+        viewportName === "mobile"
+          ? fixture?.mobileCapturePosition ?? fixture?.capturePosition
+          : fixture?.capturePosition;
       if (scenicPosition) {
         await driveTo(page, scenicPosition);
       }
@@ -1062,7 +1076,9 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
     await driveForwardToPoint(page, [21, -26], 0, {
       tolerance: 0.05
     });
-    const interactionCamera = await telemetry(page);
+    const interactionCamera = await telemetry(page, {
+      requireFacing: false
+    });
     await setCamera(
       page,
       resolveRpgVisualCameraYaw(
