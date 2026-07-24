@@ -976,14 +976,14 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
         assertUninterruptedRoute(
           await driveContinuousTrustedRoute(
             page,
-            [[8, 0], [5, 6]],
+            [[8, 0], [4, 5]],
             { runRequested: false, tolerance: 0.05 }
           ),
           "gyukatsu narrow-camera route"
         );
         const narrow = await telemetry(page);
         if (
-          Math.hypot(narrow.position[0] - 5, narrow.position[2] - 6) > 0.05 ||
+          Math.hypot(narrow.position[0] - 4, narrow.position[2] - 5) > 0.05 ||
           narrow.zone !== "gyukatsu" ||
           narrow.cameraSafe !== "true" ||
           narrow.cameraDiagnostic !== "ok"
@@ -1028,7 +1028,7 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
 
         await setCamera(
           page,
-          narrowYaw - 30 * Math.PI / 180,
+          narrowYaw - 45 * Math.PI / 180,
           CAMERA_FIXTURES.gyukatsu.pitchDegrees
         );
         await waitForCameraFixture(
