@@ -329,11 +329,6 @@ export function ChaseOrbitCamera3d({
         height: size.height
       })
     );
-    safetyViolationSeconds.current = advanceRpgCameraSafetyViolation(
-      safetyViolationSeconds.current,
-      correction,
-      delta
-    );
     cameraRight.current
       .set(1, 0, 0)
       .applyQuaternion(activeCamera.quaternion);
@@ -382,6 +377,57 @@ export function ChaseOrbitCamera3d({
       );
     }
     activeCamera.updateMatrixWorld();
+
+    foot.current
+      .set(
+        playerPositionRef.current.x,
+        snapshot.surfaceHeight,
+        playerPositionRef.current.z
+      )
+      .project(activeCamera);
+    head.current
+      .set(
+        playerPositionRef.current.x,
+        snapshot.surfaceHeight + playerVisibleHeight,
+        playerPositionRef.current.z
+      )
+      .project(activeCamera);
+    const remainingSafetyCorrection =
+      calculateRpgCameraSafetyCorrection(
+        {
+          minimumX: Math.min(
+            toScreenX(foot.current.x),
+            toScreenX(head.current.x)
+          ),
+          maximumX: Math.max(
+            toScreenX(foot.current.x),
+            toScreenX(head.current.x)
+          ),
+          minimumY: Math.min(
+            toScreenY(foot.current.y),
+            toScreenY(head.current.y)
+          ),
+          maximumY: Math.max(
+            toScreenY(foot.current.y),
+            toScreenY(head.current.y)
+          )
+        },
+        getRpgCameraSafeArea(
+          mobile.current ? "mobile" : "desktop",
+          {
+            x: 0,
+            y: 0,
+            width: size.width,
+            height: size.height
+          }
+        )
+      );
+    safetyViolationSeconds.current =
+      advanceRpgCameraSafetyViolation(
+        safetyViolationSeconds.current,
+        remainingSafetyCorrection,
+        delta
+      );
 
     rayDirection.current
       .copy(activeCamera.position)
