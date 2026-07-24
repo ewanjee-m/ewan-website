@@ -65,12 +65,15 @@ describe("RPG visual capture execution contract", () => {
       source.match(
         /await waitForCameraFixture\(\s*page,\s*hanabiTravelPitchDegrees,/g
       )
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     expect(
       source.match(
         /await waitForCameraFixture\(\s*page,\s*CAMERA_FIXTURES\.hanabi\.pitchDegrees,/g
-      )
-    ).toHaveLength(1);
+      ) ?? []
+    ).toHaveLength(0);
+    expect(source).toMatch(
+      /await setCamera\([\s\S]*?interactionCamera\.position[\s\S]*?hanabiTravelPitchDegrees\s*\);/
+    );
   });
 
   it("aims the airport proof at the live moving coach", () => {

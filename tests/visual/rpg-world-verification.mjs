@@ -1115,11 +1115,11 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
         CAMERA_FIXTURES.hanabi,
         interactionCamera.position
       ),
-      CAMERA_FIXTURES.hanabi.pitchDegrees
+      hanabiTravelPitchDegrees
     );
     await waitForCameraFixture(
       page,
-      CAMERA_FIXTURES.hanabi.pitchDegrees,
+      hanabiTravelPitchDegrees,
       hanabiCaptureDistance
     );
     const prompt = page.locator(
