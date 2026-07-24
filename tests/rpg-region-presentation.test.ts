@@ -1,5 +1,6 @@
 import { createElement } from "react";
 import { cleanup, fireEvent, render } from "@testing-library/react";
+import { useFrame } from "@react-three/fiber";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Color, MeshStandardMaterial } from "three";
 
@@ -178,6 +179,42 @@ describe("RPG region presentation", () => {
     expect(target.audioGains.tokyo).toBeCloseTo(t * to.ambienceVolume);
   });
 
+  it("uses exact arithmetic midpoints for every transition channel at 0.5", () => {
+    const target = createRpgRegionPresentation();
+    const from = RPG_REGION_PRESENTATION_PROFILES.airport;
+    const to = RPG_REGION_PRESENTATION_PROFILES.tokyo;
+
+    resolveRpgRegionPresentation(transition(0.5), target);
+
+    expect(target.sky.getHexString()).toBe(expectedColor(from.sky, to.sky, 0.5));
+    expect(target.fog.getHexString()).toBe(expectedColor(from.fog, to.fog, 0.5));
+    expect(target.key.getHexString()).toBe(expectedColor(from.key, to.key, 0.5));
+    expect(target.fill.getHexString()).toBe(expectedColor(from.fill, to.fill, 0.5));
+    for (const scalar of [
+      "keyIntensity",
+      "fillIntensity",
+      "decorationDensity",
+      "vegetationDensity",
+      "effectIntensity",
+      "ambienceVolume"
+    ] as const) {
+      expect(target[scalar], scalar).toBeCloseTo(
+        (from[scalar] + to[scalar]) / 2
+      );
+    }
+    for (const zoneId of ZONE_IDS) {
+      const expectedWeight =
+        zoneId === "airport" || zoneId === "tokyo" ? 0.5 : 0;
+      expect(target.zoneWeights[zoneId], `${zoneId}:weight`).toBe(
+        expectedWeight
+      );
+      expect(target.audioGains[zoneId], `${zoneId}:gain`).toBeCloseTo(
+        expectedWeight *
+          RPG_REGION_PRESENTATION_PROFILES[zoneId].ambienceVolume
+      );
+    }
+  });
+
   it("matches every source and destination channel at transition endpoints", () => {
     for (const [progress, expectedZone] of [
       [0, "airport"],
@@ -284,12 +321,12 @@ describe("RPG region presentation", () => {
       loop && start.mock.calls.length === 1
     )).toBe(true);
     expect(context.gains[0].gain.value).toBe(0.35);
-    expect(graph.gains.airport.gain.setTargetAtTime).toHaveBeenCalledWith(
-      presentation.audioGains.airport, 12, 0.08
-    );
-    expect(graph.gains.tokyo.gain.setTargetAtTime).toHaveBeenCalledWith(
-      presentation.audioGains.tokyo, 12, 0.08
-    );
+    for (const zoneId of ZONE_IDS) {
+      expect(
+        graph.gains[zoneId].gain.setTargetAtTime,
+        zoneId
+      ).toHaveBeenCalledWith(presentation.audioGains[zoneId], 12, 0.08);
+    }
   });
 
   it("stays silent before a gesture and stops/closes the graph on unmount", () => {
@@ -309,6 +346,15 @@ describe("RPG region presentation", () => {
     expect(FakeAudioContext.instances).toHaveLength(1);
     const context = FakeAudioContext.instances[0];
     expect(context.sources).toHaveLength(5);
+    const frameCallback = vi.mocked(useFrame).mock.calls.at(-1)?.[0];
+    expect(frameCallback).toBeDefined();
+    frameCallback!({} as never, 0);
+    for (const [index, zoneId] of ZONE_IDS.entries()) {
+      expect(
+        context.gains[index + 1].gain.setTargetAtTime,
+        zoneId
+      ).toHaveBeenCalledWith(presentation.audioGains[zoneId], 12, 0.08);
+    }
 
     view.unmount();
     expect(context.sources.every(({ stop }) => stop.mock.calls.length === 1))
