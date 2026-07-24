@@ -130,20 +130,23 @@ describe("direct-rendered Japanese town architecture", () => {
     expect(architectureSource).not.toContain("<planeGeometry");
   });
 
-  it("marks only canopy, foliage, and overhead cable batches as fadeable camera occluders", () => {
+  it("marks foreground canopy, foliage, cables, and festival banners as fadeable camera occluders", () => {
     expect(RPG_TOWN_CAMERA_FADEABLE_BATCH_IDS).toEqual([
       "canopies",
       "foliage",
-      "overhead-cables"
+      "overhead-cables",
+      "festival-banners"
     ]);
-    expect(
-      architectureSource.match(/cameraOcclusionFadeBatchId="/g)?.length ?? 0
-    ).toBe(RPG_TOWN_CAMERA_FADEABLE_BATCH_IDS.length);
     for (const batchId of RPG_TOWN_CAMERA_FADEABLE_BATCH_IDS) {
       expect(architectureSource).toContain(
         `cameraOcclusionFadeBatchId="${batchId}"`
       );
     }
+    expect(
+      architectureSource.match(
+        /cameraOcclusionFadeBatchId="festival-banners"/g
+      )
+    ).toHaveLength(2);
   });
 
   it("preserves Drei instance bookkeeping while marking a fadeable camera batch", () => {

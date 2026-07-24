@@ -71,7 +71,7 @@ describe("RPG hanabi skyline", () => {
       expect(burst.radius * 2, burst.id).toBeGreaterThanOrEqual(16);
       expect(burst.radius * 2, burst.id).toBeLessThanOrEqual(36);
       expect(burst.position[1], burst.id).toBeGreaterThanOrEqual(12);
-      expect(burst.position[1], burst.id).toBeLessThanOrEqual(24);
+      expect(burst.position[1], burst.id).toBeLessThanOrEqual(16);
     }
     expect(
       Math.max(...RPG_HANABI_BURSTS.map(({ position }) => position[2])) -

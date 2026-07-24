@@ -37,7 +37,12 @@ describe("RPG visual camera fixtures", () => {
         "mobile"
       );
 
-      expect(fixture.pitchDegrees, zoneId).toBe(desktop.pitchDegrees);
+      if (zoneId === "hanabi") {
+        expect(fixture.pitchDegrees).toBe(0);
+        expect(fixture.pitchDegrees).toBeLessThan(desktop.pitchDegrees);
+      } else {
+        expect(fixture.pitchDegrees, zoneId).toBe(desktop.pitchDegrees);
+      }
       expect(fixture.desktopDistance, zoneId).toBe(desktop.distance);
       expect(fixture.mobileDistance, zoneId).toBeCloseTo(mobile.distance, 10);
     }
@@ -121,6 +126,22 @@ describe("RPG visual camera fixtures", () => {
     ]);
     expect(fixture.screenOffsetDegrees).toBe(0);
     expect(fixture.pitchDegrees).toBe(18);
+  });
+
+  it("approaches Hanabi from the north so the market and fireworks share the frame", () => {
+    const fixture = RPG_VISUAL_CAMERA_FIXTURES.hanabi;
+    expect(fixture.captureRoute).toEqual([
+      [18, -18],
+      [18, -12],
+      [18, -8],
+      [18, -4],
+      [18, 0],
+      [22, 0]
+    ]);
+    expect(fixture.capturePosition).toEqual([22, 0]);
+    expect(fixture.pitchDegrees).toBe(0);
+    expect(fixture.screenOffsetDegrees).toBe(-6);
+    expect(fixture.mobileScreenOffsetDegrees).toBe(-8);
   });
 
   it("fits both Sakura landmarks inside the portrait mobile field of view", () => {

@@ -102,7 +102,7 @@ export function getSceneQuality({
   const fireworksDegraded = atLeast("fireworks");
   const farDecorationsDegraded = atLeast("far-decorations");
   const npcMotionDegraded = atLeast("npc-secondary-motion");
-  const baseParticles = reducedMotion ? 18 : selected.particlesPerBurst;
+  const baseParticles = reducedMotion ? 72 : selected.particlesPerBurst;
   const baseTrailSeconds = reducedMotion ? 0.35 : selected.trailSeconds;
 
   return Object.freeze({
@@ -138,6 +138,7 @@ export function getSceneQuality({
       trailSeconds: fireworksDegraded
         ? baseTrailSeconds * 0.5
         : baseTrailSeconds,
+      pointSize: reducedMotion ? 0.8 : 0.18,
       softPulseOnly: reducedMotion
     })
   });

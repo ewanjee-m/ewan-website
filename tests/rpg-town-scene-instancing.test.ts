@@ -20,6 +20,12 @@ describe("RPG town scene static ownership", () => {
     );
   });
 
+  it("uses a high key light so buildings and characters keep compact contact shadows", () => {
+    expect(read("RpgTownAmbience.tsx")).toContain(
+      "position={[-12, 60, 12]}"
+    );
+  });
+
   it("owns surfaces and rich landmarks in dedicated modules", () => {
     expect(read("RpgWorldSurfaces.tsx")).toContain("RPG_RENDERED_SURFACE_GROUPS");
     expect(read("RpgWorldSurfaces.tsx")).toContain("createRpgBridgeDeckSegments");
@@ -78,6 +84,8 @@ describe("RPG town scene static ownership", () => {
     ]) {
       expect(source).toContain(`name="${signatureName}"`);
     }
+    expect(source).toContain('"hanabi-apple-stall-front-facade"');
+    expect(source).toContain('"hanabi-apple-stall-back-facade"');
     expect(source).toMatch(
       /function SakuraLandmark[\s\S]*?color=\{landmark\.accent\}[\s\S]*?function CanalDetails/
     );

@@ -10,6 +10,8 @@ const PROFILE = {
   hanabi: { distance: 9.2, pitchDegrees: 18, mobileFovDegrees: 52 }
 } as const;
 
+const MINIMUM_CAMERA_PITCH_DEGREES = 0;
+
 export interface ChaseOrbitCameraState {
   yaw: number;
   pitch: number;
@@ -111,7 +113,7 @@ export function advanceChaseOrbitCamera(
     state.pitch = Math.min(
       (55 * Math.PI) / 180,
       Math.max(
-        (18 * Math.PI) / 180,
+        (MINIMUM_CAMERA_PITCH_DEGREES * Math.PI) / 180,
         state.pitch + input.drag.deltaY * sensitivity
       )
     );

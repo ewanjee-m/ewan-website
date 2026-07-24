@@ -85,7 +85,7 @@ export function RpgTownAmbience({
         ref={directional}
         color="#fff6df"
         intensity={1.25}
-        position={[-22, 34, 18]}
+        position={[-12, 60, 12]}
         castShadow={qualitySettings.shadowMapSize > 0}
         shadow-mapSize-width={qualitySettings.shadowMapSize}
         shadow-mapSize-height={qualitySettings.shadowMapSize}

@@ -74,15 +74,12 @@ export const RPG_HANABI_CORE_WHITE_MIX = 0.4;
 export const RPG_HANABI_GLOW_SIZE_THRESHOLD = 1.6;
 
 export const RPG_HANABI_BURSTS: readonly RpgHanabiBurst[] = [
-// The shells burst out over the water south of the town rather than directly
-// above the festival street. Overhead they sat around fifty degrees up, so
-// from a standing view they were off the top of the frame unless the visitor
-// dragged the camera skyward; from forty units out the same shell sits about
-// twenty degrees up, inside the picture, and it is drawn wide enough to still
-// fill a third of it.
+// The shells burst over the water south of the town. Their lower skyline
+// placement keeps the full rings visible from the northern festival approach
+// without forcing the chase camera below the ground plane.
   {
     id: "gold-welcome",
-    position: [-6, 17, -48],
+    position: [-6, 13, -48],
     color: "#ffd06b",
     delay: 0,
     cycle: 3.5,
@@ -91,7 +88,7 @@ export const RPG_HANABI_BURSTS: readonly RpgHanabiBurst[] = [
   },
   {
     id: "coral-finale",
-    position: [4, 17, -52],
+    position: [4, 14, -52],
     color: "#ff7488",
     delay: 0.48,
     cycle: 4.05,
@@ -99,7 +96,7 @@ export const RPG_HANABI_BURSTS: readonly RpgHanabiBurst[] = [
   },
   {
     id: "sky-blue",
-    position: [-2, 16, -46],
+    position: [-2, 12, -46],
     color: "#8edbff",
     delay: 0.96,
     cycle: 3.25,
@@ -107,7 +104,7 @@ export const RPG_HANABI_BURSTS: readonly RpgHanabiBurst[] = [
   },
   {
     id: "sakura-pink",
-    position: [-22, 20, -42],
+    position: [-22, 16, -42],
     color: "#f4a7dc",
     delay: 1.42,
     cycle: 4.45,
@@ -115,7 +112,7 @@ export const RPG_HANABI_BURSTS: readonly RpgHanabiBurst[] = [
   },
   {
     id: "festival-gold",
-    position: [-14, 19, -50],
+    position: [-14, 15, -50],
     color: "#ffe89a",
     delay: 1.88,
     cycle: 3.75,
@@ -124,7 +121,7 @@ export const RPG_HANABI_BURSTS: readonly RpgHanabiBurst[] = [
   },
   {
     id: "mint-wheel",
-    position: [-36, 22, -32],
+    position: [-36, 16, -32],
     color: "#8df0d2",
     delay: 2.34,
     cycle: 3.55,
@@ -132,7 +129,7 @@ export const RPG_HANABI_BURSTS: readonly RpgHanabiBurst[] = [
   },
   {
     id: "violet-crown",
-    position: [-28, 21, -46],
+    position: [-28, 15, -46],
     color: "#c8a1ff",
     delay: 2.8,
     cycle: 4.2,
@@ -140,7 +137,7 @@ export const RPG_HANABI_BURSTS: readonly RpgHanabiBurst[] = [
   },
   {
     id: "vermillion-ring",
-    position: [10, 16, -54],
+    position: [10, 12, -54],
     color: "#ff9a66",
     delay: 3.24,
     cycle: 3.68,

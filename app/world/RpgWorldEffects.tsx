@@ -197,7 +197,7 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
                 fireworkMaterials.current[index] = material;
               }}
               color={burst.color}
-              size={0.18}
+              size={qualitySettings.fireworks.pointSize}
               transparent
               depthWrite={false}
               blending={2}

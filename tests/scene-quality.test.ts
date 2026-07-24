@@ -37,6 +37,8 @@ describe("scene quality", () => {
     expect(reduced.petalRotationSpeed).toBe(0);
     expect(reduced.busPetalSwirl).toBe(false);
     expect(reduced.fireworks.softPulseOnly).toBe(true);
+    expect(reduced.fireworks.particlesPerBurst).toBe(72);
+    expect(reduced.fireworks.pointSize).toBe(0.8);
   });
 
   it("applies the detected mobile quality ceiling to the canvas DPR", () => {

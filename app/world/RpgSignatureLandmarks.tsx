@@ -313,67 +313,80 @@ function HanabiAppleStallDetails({
   ] as const;
   return (
     <group name="hanabi-apple-stall-signature">
-      <Instances limit={2} frames={1}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial
-          color={accent}
-          emissive={accent}
-          emissiveIntensity={0.28}
-          roughness={0.74}
-        />
-        <Instance
-          position={[0, height * 0.2, facadeZ - 0.24]}
-          scale={[width * 1.02, height * 0.17, 0.48]}
-        />
-        <Instance
-          position={[0, height * 0.39, facadeZ - 0.08]}
-          scale={[width * 0.62, height * 0.16, 0.08]}
-        />
-      </Instances>
-      <Instances limit={6} frames={1}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial
-          color="#bc3341"
-          emissive="#6d111b"
-          emissiveIntensity={0.28}
-          roughness={0.8}
-        />
-        {[-0.4, -0.2, 0, 0.2, 0.4].map((offset) => (
-          <Instance
-            key={offset}
-            position={[offset * width, height * 0.2, facadeZ - 0.49]}
-            scale={[width * 0.105, height * 0.18, 0.035]}
-          />
-        ))}
-        <Instance
-          position={[0, -height * 0.19, facadeZ - 0.31]}
-          scale={[width * 0.88, height * 0.18, 0.58]}
-        />
-      </Instances>
-      <Instances limit={appleRows.length + 1} frames={1}>
-        <sphereGeometry args={[1, 10, 8]} />
-        <meshStandardMaterial
-          color="#dc3043"
-          emissive="#791320"
-          emissiveIntensity={0.24}
-          roughness={0.58}
-        />
-        {appleRows.map(([offsetX, offsetZ], index) => (
-          <Instance
-            key={`${offsetX}-${offsetZ}`}
-            position={[
-              offsetX * width,
-              -height * 0.06 + (index >= 4 ? 0.13 : 0),
-              facadeZ - 0.36 - offsetZ
-            ]}
-            scale={[0.14, 0.14, 0.14]}
-          />
-        ))}
-        <Instance
-          position={[0, height * 0.39, facadeZ - 0.15]}
-          scale={[width * 0.09, width * 0.09, width * 0.045]}
-        />
-      </Instances>
+      {[
+        {
+          name: "hanabi-apple-stall-front-facade",
+          rotationY: 0
+        },
+        {
+          name: "hanabi-apple-stall-back-facade",
+          rotationY: Math.PI
+        }
+      ].map(({ name, rotationY }) => (
+        <group key={name} name={name} rotation={[0, rotationY, 0]}>
+          <Instances limit={2} frames={1}>
+            <boxGeometry args={[1, 1, 1]} />
+            <meshStandardMaterial
+              color={accent}
+              emissive={accent}
+              emissiveIntensity={0.28}
+              roughness={0.74}
+            />
+            <Instance
+              position={[0, height * 0.2, facadeZ - 0.24]}
+              scale={[width * 1.02, height * 0.17, 0.48]}
+            />
+            <Instance
+              position={[0, height * 0.39, facadeZ - 0.08]}
+              scale={[width * 0.62, height * 0.16, 0.08]}
+            />
+          </Instances>
+          <Instances limit={6} frames={1}>
+            <boxGeometry args={[1, 1, 1]} />
+            <meshStandardMaterial
+              color="#bc3341"
+              emissive="#6d111b"
+              emissiveIntensity={0.28}
+              roughness={0.8}
+            />
+            {[-0.4, -0.2, 0, 0.2, 0.4].map((offset) => (
+              <Instance
+                key={offset}
+                position={[offset * width, height * 0.2, facadeZ - 0.49]}
+                scale={[width * 0.105, height * 0.18, 0.035]}
+              />
+            ))}
+            <Instance
+              position={[0, -height * 0.19, facadeZ - 0.31]}
+              scale={[width * 0.88, height * 0.18, 0.58]}
+            />
+          </Instances>
+          <Instances limit={appleRows.length + 1} frames={1}>
+            <sphereGeometry args={[1, 10, 8]} />
+            <meshStandardMaterial
+              color="#dc3043"
+              emissive="#791320"
+              emissiveIntensity={0.24}
+              roughness={0.58}
+            />
+            {appleRows.map(([offsetX, offsetZ], index) => (
+              <Instance
+                key={`${offsetX}-${offsetZ}`}
+                position={[
+                  offsetX * width,
+                  -height * 0.06 + (index >= 4 ? 0.13 : 0),
+                  facadeZ - 0.36 - offsetZ
+                ]}
+                scale={[0.14, 0.14, 0.14]}
+              />
+            ))}
+            <Instance
+              position={[0, height * 0.39, facadeZ - 0.15]}
+              scale={[width * 0.09, width * 0.09, width * 0.045]}
+            />
+          </Instances>
+        </group>
+      ))}
     </group>
   );
 }

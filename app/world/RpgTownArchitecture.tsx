@@ -54,7 +54,8 @@ interface RpgTownArchitectureProps {
 export const RPG_TOWN_CAMERA_FADEABLE_BATCH_IDS = [
   "canopies",
   "foliage",
-  "overhead-cables"
+  "overhead-cables",
+  "festival-banners"
 ] as const;
 
 type RpgTownArchitectureCameraFadeableBatchId =
@@ -427,7 +428,12 @@ function createPropPost(prop: RpgArchitectureStreetProp): ArchitectureInstance[]
   ];
 }
 
-const propPostInstances = RPG_ARCHITECTURE_STREET_PROPS.flatMap(createPropPost);
+const propPostInstances = RPG_ARCHITECTURE_STREET_PROPS
+  .filter(({ kind }) => kind !== "festivalBanner")
+  .flatMap(createPropPost);
+const festivalBannerPostInstances = RPG_ARCHITECTURE_STREET_PROPS
+  .filter(({ kind }) => kind === "festivalBanner")
+  .flatMap(createPropPost);
 const propHeadInstances: readonly ArchitectureInstance[] =
   RPG_ARCHITECTURE_STREET_PROPS.filter(({ kind }) =>
     kind === "streetLamp" || kind === "stoneLantern" || kind === "bollard"
@@ -725,6 +731,11 @@ export function getRpgTownArchitectureBatchStats(
     instanceCount: propCount(propPostInstances)
   },
   {
+    id: "festival-banner-posts",
+    geometry: "cylinder8",
+    instanceCount: propCount(festivalBannerPostInstances)
+  },
+  {
     id: "overhead-cables",
     geometry: "cylinder8",
     instanceCount: overheadCableInstances.length
@@ -949,6 +960,12 @@ export const RpgTownArchitecture = memo(function RpgTownArchitecture({
         material={<meshStandardMaterial color="#ffffff" roughness={0.92} />}
       />
       <InstanceBatch
+        instances={filterProps(festivalBannerPostInstances)}
+        geometry={<cylinderGeometry args={[1, 1, 1, 8]} />}
+        material={<meshStandardMaterial color="#ffffff" roughness={0.92} />}
+        cameraOcclusionFadeBatchId="festival-banners"
+      />
+      <InstanceBatch
         instances={overheadCableInstances}
         geometry={<cylinderGeometry args={[1, 1, 1, 8]} />}
         material={<meshStandardMaterial color="#ffffff" roughness={0.92} />}
@@ -985,6 +1002,7 @@ export const RpgTownArchitecture = memo(function RpgTownArchitecture({
         instances={filterProps(bannerInstances)}
         geometry={<boxGeometry args={[1, 1, 1]} />}
         material={<meshStandardMaterial color="#ffffff" roughness={0.82} />}
+        cameraOcclusionFadeBatchId="festival-banners"
       />
       <InstanceBatch
         instances={perimeterShellInstances}

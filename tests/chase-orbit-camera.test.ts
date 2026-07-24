@@ -45,7 +45,7 @@ describe("chase orbit camera", () => {
       navigationRegion: airportRegion
     });
     expect(touch.yaw).toBeCloseTo(-0.6);
-    expect(touch.pitch).toBeCloseTo((18 * Math.PI) / 180);
+    expect(touch.pitch).toBeCloseTo(0);
   });
 
   it("waits 0.8s then returns within 5 degrees in 1.2s", () => {
@@ -87,6 +87,7 @@ describe("chase orbit camera", () => {
       6.3
     );
     expect(getRegionCameraProfile("sakura", "mobile").fovDegrees).toBe(70);
+    expect(getRegionCameraProfile("hanabi", "desktop").pitchDegrees).toBe(18);
   });
 
   it("smoothsteps camera values through a transition", () => {
