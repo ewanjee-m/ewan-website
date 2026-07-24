@@ -1,7 +1,10 @@
 "use client";
 
 import { Instance, Instances } from "@react-three/drei";
-import { memo } from "react";
+import { useFrame } from "@react-three/fiber";
+import { memo, type RefObject, useRef } from "react";
+import type { MeshStandardMaterial } from "three";
+import type { RpgRegionPresentationState } from "./RpgRegionPresentation";
 import {
   RPG_COASTAL_ROCK_DETAILS,
   RPG_GYUKATSU_OUTDOOR_DETAILS,
@@ -15,7 +18,57 @@ const SHORELINE_ROCKS = [
   ...RPG_COASTLINE_RING_ROCKS
 ];
 
-export const RpgTownDetails = memo(function RpgTownDetails() {
+export const RPG_TOWN_DETAIL_BATCH_STATS = [
+  {
+    id: "shoreline-rocks",
+    drawUnits: 1,
+    triangleCount: SHORELINE_ROCKS.length * 36
+  },
+  {
+    id: "tokyo-crosswalk",
+    drawUnits: 1,
+    triangleCount: (RPG_TOKYO_CROSSWALK_DETAILS.length + 1) * 12
+  },
+  {
+    id: "gyukatsu-furniture",
+    drawUnits: 1,
+    triangleCount: RPG_GYUKATSU_OUTDOOR_DETAILS.length * 9 * 12
+  },
+  {
+    id: "gyukatsu-parasol-poles",
+    drawUnits: 1,
+    triangleCount: RPG_GYUKATSU_OUTDOOR_DETAILS.length * 40
+  },
+  {
+    id: "gyukatsu-parasol-canopies",
+    drawUnits: 1,
+    triangleCount: RPG_GYUKATSU_OUTDOOR_DETAILS.length * 24
+  }
+] as const;
+
+export const RpgTownDetails = memo(function RpgTownDetails({
+  presentation
+}: {
+  presentation: RefObject<RpgRegionPresentationState>;
+}) {
+  const tokyoMaterial = useRef<MeshStandardMaterial>(null);
+  const gyukatsuMaterials = useRef<Array<MeshStandardMaterial | null>>([]);
+  useFrame(() => {
+    const state = presentation.current;
+    const tokyoOpacity =
+      state.zoneWeights.tokyo * state.decorationDensity;
+    const gyukatsuOpacity =
+      state.zoneWeights.gyukatsu * state.decorationDensity;
+    if (tokyoMaterial.current) {
+      tokyoMaterial.current.opacity = tokyoOpacity;
+      tokyoMaterial.current.transparent = tokyoOpacity < 0.999;
+    }
+    for (const material of gyukatsuMaterials.current) {
+      if (!material) continue;
+      material.opacity = gyukatsuOpacity;
+      material.transparent = gyukatsuOpacity < 0.999;
+    }
+  }, -2);
   return (
     <group
       name="approved-town-concept-details"
@@ -48,7 +101,7 @@ export const RpgTownDetails = memo(function RpgTownDetails() {
         frustumCulled={false}
       >
         <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.92} />
+        <meshStandardMaterial ref={tokyoMaterial} color="#ffffff" roughness={0.92} />
         {[RPG_TOKYO_CROSSWALK_PAD, ...RPG_TOKYO_CROSSWALK_DETAILS].map(
           (stripe) => (
             <Instance
@@ -69,7 +122,11 @@ export const RpgTownDetails = memo(function RpgTownDetails() {
         frustumCulled={false}
       >
         <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.88} />
+        <meshStandardMaterial
+          ref={(material) => { gyukatsuMaterials.current[0] = material; }}
+          color="#ffffff"
+          roughness={0.88}
+        />
         {RPG_GYUKATSU_OUTDOOR_DETAILS.map((detail) => (
           <group
             key={detail.id}
@@ -114,7 +171,11 @@ export const RpgTownDetails = memo(function RpgTownDetails() {
         frustumCulled={false}
       >
         <cylinderGeometry args={[1, 1, 1, 10]} />
-        <meshStandardMaterial color="#4b302c" roughness={0.84} />
+        <meshStandardMaterial
+          ref={(material) => { gyukatsuMaterials.current[1] = material; }}
+          color="#4b302c"
+          roughness={0.84}
+        />
         {RPG_GYUKATSU_OUTDOOR_DETAILS.map((detail) => (
           <Instance
             key={`${detail.id}-parasol-pole`}
@@ -135,7 +196,11 @@ export const RpgTownDetails = memo(function RpgTownDetails() {
         frustumCulled={false}
       >
         <coneGeometry args={[1, 1, 12]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.9} />
+        <meshStandardMaterial
+          ref={(material) => { gyukatsuMaterials.current[2] = material; }}
+          color="#ffffff"
+          roughness={0.9}
+        />
         {RPG_GYUKATSU_OUTDOOR_DETAILS.map((detail) => (
           <Instance
             key={`${detail.id}-parasol-canopy`}

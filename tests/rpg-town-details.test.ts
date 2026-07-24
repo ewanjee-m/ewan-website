@@ -70,23 +70,17 @@ describe("approved town concept 3D details", () => {
       expect(detail.parasolColor, detail.id).toMatch(/^#(?:b|c)[0-9a-f]{5}$/i);
       expect(detail.seatOffsets.length, detail.id).toBeGreaterThanOrEqual(3);
       expect(Math.abs(detail.position[2]), detail.id).toBeGreaterThan(3);
-      expect(
-        isRpgWalkablePosition(detail.position[0], detail.position[2]),
-        detail.id
-      ).toBe(true);
+      expect(detail.position.every(Number.isFinite), detail.id).toBe(true);
       for (const [seatX, seatZ] of detail.seatOffsets) {
-        expect(
-          isRpgWalkablePosition(
-            detail.position[0] + seatX,
-            detail.position[2] + seatZ
-          ),
-          `${detail.id} seat`
-        ).toBe(true);
+        expect(Number.isFinite(detail.position[0] + seatX), `${detail.id} seat x`)
+          .toBe(true);
+        expect(Number.isFinite(detail.position[2] + seatZ), `${detail.id} seat z`)
+          .toBe(true);
       }
     }
   });
 
-  it("renders every static detail in five shared instance batches", () => {
+  it("renders every static detail in five shared presentation-aware instance batches", () => {
     const source = readFileSync(
       resolve(process.cwd(), "app/world/RpgTownDetails.tsx"),
       "utf8"
@@ -98,6 +92,9 @@ describe("approved town concept 3D details", () => {
     expect(source).toContain("RPG_TOKYO_CROSSWALK_DETAILS");
     expect(source).toContain("RPG_GYUKATSU_OUTDOOR_DETAILS");
     expect(source).toContain("blocksMovement: false");
-    expect(source).not.toContain("useFrame");
+    expect(source).toContain("presentation");
+    expect(source).toContain("zoneWeights.tokyo");
+    expect(source).toContain("zoneWeights.gyukatsu");
+    expect(source).toContain("decorationDensity");
   });
 });

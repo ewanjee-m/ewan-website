@@ -27,13 +27,8 @@ import {
   type RpgWorldBackdropHandle
 } from "../app/world/RpgWorldBackdrop";
 import {
-  RpgTownScene,
   resolveRpgTownSceneRenderContract
 } from "../app/world/RpgTownScene";
-import {
-  RpgTownAmbience,
-  resolveRpgTownAmbienceRenderContract
-} from "../app/world/RpgTownAmbience";
 
 afterEach(cleanup);
 
@@ -357,34 +352,18 @@ describe("RPG world depth bands", () => {
     expect(handle.current!.applyLayout(valid)).toBe(false);
   });
 
-  it("keeps the live scene and ambience transparent with no competing environment", () => {
+  it("owns the continuous visible 3D environment", () => {
     expect(resolveRpgTownSceneRenderContract()).toEqual({
-      approvedBackdropOwner: "RpgWorldBackdrop",
-      canonicalDepthForegroundOwner: "FlatWorldCanvas",
-      background: false,
-      fog: false,
-      lighting: false,
-      horizon: false,
-      ground: false,
-      buildings: false,
-      landmarkDuplicates: false,
+      renderer: "seamless-rpg",
+      technology: "webgl3d",
+      ground: true,
+      roads: true,
+      canal: true,
+      bridge: true,
+      buildings: true,
+      signatureLandmarks: true,
       npcCrowd: false
     });
-    expect(resolveRpgTownAmbienceRenderContract()).toEqual({
-      transparent: true,
-      background: null,
-      fog: null,
-      lights: 0,
-      colorOverlay: null,
-      particles: 0
-    });
-
-    const scene = render(createElement(RpgTownScene));
-    expect(scene.container.childElementCount).toBe(0);
-    const ambience = render(
-      createElement(RpgTownAmbience, { qualityLevel: "high" })
-    );
-    expect(ambience.container.childElementCount).toBe(0);
   });
 
   it("selects semantic approved-image bands plus three model-derived fixtures", () => {

@@ -1,59 +1,74 @@
 "use client";
 
-import { memo, type RefObject } from "react";
-import type { Vector3 } from "three";
-import type { RpgBusRuntime } from "./RpgBusRuntime";
+import { memo, type RefObject, useRef } from "react";
+import { RpgRegionAudio } from "./RpgRegionAudio";
+import { createRpgRegionPresentation } from "./RpgRegionPresentation";
+import { RpgSignatureLandmarks } from "./RpgSignatureLandmarks";
+import { RpgTownAmbience } from "./RpgTownAmbience";
+import { RpgTownArchitecture } from "./RpgTownArchitecture";
+import { RpgTownDetails } from "./RpgTownDetails";
+import { RpgWorldEffects } from "./RpgWorldEffects";
+import { RpgWorldSurfaces } from "./RpgWorldSurfaces";
 import type { SceneQualityLevel } from "./SceneQuality";
+import type { WorldNavigationSnapshot } from "./WorldNavigationState";
 
 export interface RpgTownSceneProps {
-  /** Retained for caller compatibility; the approved image owns time-of-day color. */
-  nightProgress?: number;
-  reducedMotion?: boolean;
-  /** Retained for caller compatibility; legacy environment rendering is disabled. */
-  includeEnvironment?: boolean;
-  showLandmarkFireworks?: boolean;
-  busRuntime?: RpgBusRuntime;
-  qualityLevel?: SceneQualityLevel;
-  playerPosition?: RefObject<Vector3 | null>;
+  readonly qualityLevel?: SceneQualityLevel;
+  readonly navigation: RefObject<WorldNavigationSnapshot>;
 }
 
 export interface RpgTownSceneRenderContract {
-  readonly approvedBackdropOwner: "RpgWorldBackdrop";
-  readonly canonicalDepthForegroundOwner: "FlatWorldCanvas";
-  readonly background: false;
-  readonly fog: false;
-  readonly lighting: false;
-  readonly horizon: false;
-  readonly ground: false;
-  readonly buildings: false;
-  readonly landmarkDuplicates: false;
-  readonly npcCrowd: false;
+  readonly renderer: "seamless-rpg";
+  readonly technology: "webgl3d";
+  readonly ground: boolean;
+  readonly roads: boolean;
+  readonly canal: boolean;
+  readonly bridge: boolean;
+  readonly buildings: boolean;
+  readonly signatureLandmarks: boolean;
+  readonly npcCrowd: boolean;
 }
 
 export const RPG_TOWN_SCENE_RENDER_CONTRACT: RpgTownSceneRenderContract = {
-  approvedBackdropOwner: "RpgWorldBackdrop",
-  canonicalDepthForegroundOwner: "FlatWorldCanvas",
-  background: false,
-  fog: false,
-  lighting: false,
-  horizon: false,
-  ground: false,
-  buildings: false,
-  landmarkDuplicates: false,
+  renderer: "seamless-rpg",
+  technology: "webgl3d",
+  ground: true,
+  roads: true,
+  canal: true,
+  bridge: true,
+  buildings: true,
+  signatureLandmarks: true,
   npcCrowd: false
-};
+} as const;
 
 export function resolveRpgTownSceneRenderContract() {
   return RPG_TOWN_SCENE_RENDER_CONTRACT;
 }
 
-/**
- * The approved image owns the visible town. Player, guide, and canonical
- * depth-foreground objects remain in `FlatWorldCanvas`, outside this component.
- */
-export const RpgTownScene = memo(function RpgTownScene(
-  props: RpgTownSceneProps
-) {
-  void props;
-  return null;
+export const RpgTownScene = memo(function RpgTownScene({
+  qualityLevel = "high",
+  navigation
+}: RpgTownSceneProps) {
+  const presentation = useRef(createRpgRegionPresentation());
+  return (
+    <group name="seamless-rpg-town">
+      <RpgTownAmbience
+        qualityLevel={qualityLevel}
+        navigation={navigation}
+        presentation={presentation}
+      />
+      <RpgWorldSurfaces />
+      <RpgTownArchitecture qualityLevel={qualityLevel} />
+      <RpgTownDetails presentation={presentation} />
+      <RpgSignatureLandmarks
+        qualityLevel={qualityLevel}
+        presentation={presentation}
+      />
+      <RpgWorldEffects
+        qualityLevel={qualityLevel}
+        presentation={presentation}
+      />
+      <RpgRegionAudio presentation={presentation} />
+    </group>
+  );
 });
