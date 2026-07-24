@@ -10,9 +10,75 @@ import {
   RPG_WORLD_SPAWN
 } from "../app/world/RpgWorldModel";
 import { createInitialWorldNavigationSnapshot } from "../app/world/WorldNavigationState";
+import {
+  advanceRpgBusRuntime,
+  createRpgBusRuntime
+} from "../app/world/RpgBusRuntime";
+import {
+  RPG_BUS_ROUTE_LENGTH,
+  evaluateRpgBusMotionInto,
+  isRpgPositionOutsideMovingBus
+} from "../app/world/RpgBusMotion";
 import { RPG_CANONICAL_ROUTE } from "./fixtures/rpg-canonical-route";
 
 describe("WorldRuntime", () => {
+  it("uses the same bus pose for rendering and dynamic player collision", () => {
+    const bus = createRpgBusRuntime();
+    const pose = bus.pose;
+    advanceRpgBusRuntime(bus, 1, false);
+    expect(bus.pose).toBe(pose);
+    evaluateRpgBusMotionInto(
+      {
+        routeProgress: (22 + Math.PI * 2) / RPG_BUS_ROUTE_LENGTH,
+        completedLoops: 0
+      },
+      bus.pose
+    );
+    const runtime = createWorldRuntime({
+      canOccupyDynamic: ([x, z]) =>
+        isRpgPositionOutsideMovingBus(x, z, bus.pose)
+    });
+    expect(
+      isRpgPositionOutsideMovingBus(
+        pose.position[0],
+        pose.position[2],
+        pose
+      )
+    ).toBe(false);
+    const spawn = runtime.getNavigationSnapshot().position;
+    const initialDistance = Math.hypot(
+      spawn[0] - pose.position[0],
+      spawn[2] - pose.position[2]
+    );
+    const maxFrames = Math.ceil(
+      (initialDistance / WORLD_WALK_SPEED + 2) * 120
+    );
+    for (let frame = 0; frame < maxFrames; frame += 1) {
+      const position = runtime.getNavigationSnapshot().position;
+      const dx = pose.position[0] - position[0];
+      const dz = pose.position[2] - position[2];
+      const length = Math.hypot(dx, dz);
+      runtime.setMovement({
+        x: dx / Math.max(length, 1e-8),
+        y: dz / Math.max(length, 1e-8),
+        runRequested: false
+      });
+      runtime.advance(1 / 120, 0);
+      const next = runtime.getNavigationSnapshot().position;
+      expect(
+        isRpgPositionOutsideMovingBus(next[0], next[2], pose)
+      ).toBe(true);
+    }
+    const stopped = runtime.getNavigationSnapshot().position;
+    expect(
+      Math.hypot(
+        stopped[0] - pose.position[0],
+        stopped[2] - pose.position[2]
+      )
+    ).toBeLessThan(4);
+    expect(runtime).not.toHaveProperty("setPosition");
+  });
+
   it("keeps the canonical route walkable at 0.1-unit samples", () => {
     let distance = 0;
     for (let index = 1; index < RPG_CANONICAL_ROUTE.length; index += 1) {

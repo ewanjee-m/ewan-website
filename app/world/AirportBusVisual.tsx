@@ -17,7 +17,7 @@ const LEFT_LANE_ANGLE = LEFT_LANE_OFFSET / WORLD_RADIUS;
 const BUS_GROUND_CLEARANCE = 0.035;
 const FULL_TURN = Math.PI * 2;
 
-const DOOR_CLOSED_POSITION = {
+export const AIRPORT_BUS_DOOR_CLOSED_POSITION = {
   x: -1.065,
   y: 1.5,
   z: -1.22
@@ -58,9 +58,17 @@ function setLeftLaneRouteFrame(progress: number, frame: RouteFrame) {
   frame.position.multiplyScalar(WORLD_RADIUS + BUS_GROUND_CLEARANCE);
 }
 
-function BusWheel({ x, z }: { x: number; z: number }) {
+function BusWheel({
+  x,
+  z,
+  wheelRef
+}: {
+  x: number;
+  z: number;
+  wheelRef?: (wheel: THREE.Group | null) => void;
+}) {
   return (
-    <group position={[x, 0.43, z]}>
+    <group ref={wheelRef} position={[x, 0.43, z]}>
       <mesh rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.43, 0.43, 0.24, 10]} />
         <meshStandardMaterial color="#182331" roughness={0.98} flatShading />
@@ -127,10 +135,12 @@ function SideWindow({
   );
 }
 
-function AirportBusModel({
-  leftDoor
+export function AirportBusModel({
+  leftDoor,
+  wheelRefs
 }: {
   leftDoor: React.RefObject<THREE.Group | null>;
+  wheelRefs?: React.RefObject<THREE.Group[]>;
 }) {
   return (
     <group>
@@ -251,9 +261,9 @@ function AirportBusModel({
       <group
         ref={leftDoor}
         position={[
-          DOOR_CLOSED_POSITION.x,
-          DOOR_CLOSED_POSITION.y,
-          DOOR_CLOSED_POSITION.z
+          AIRPORT_BUS_DOOR_CLOSED_POSITION.x,
+          AIRPORT_BUS_DOOR_CLOSED_POSITION.y,
+          AIRPORT_BUS_DOOR_CLOSED_POSITION.z
         ]}
       >
         <mesh>
@@ -301,8 +311,24 @@ function AirportBusModel({
       ))}
 
       {([-1, 1] as const).flatMap((side) =>
-        [-1.43, 1.43].map((z) => (
-          <BusWheel key={`${side}-${z}`} x={side * 1.04} z={z} />
+        [-1.43, 1.43].map((z, axleIndex) => (
+          <BusWheel
+            key={`${side}-${z}`}
+            x={side * 1.04}
+            z={z}
+            wheelRef={
+              wheelRefs
+                ? (wheel) => {
+                    const index = (side === -1 ? 0 : 2) + axleIndex;
+                    if (wheel) {
+                      wheelRefs.current[index] = wheel;
+                    } else {
+                      delete wheelRefs.current[index];
+                    }
+                  }
+                : undefined
+            }
+          />
         ))
       )}
     </group>
@@ -355,9 +381,9 @@ export function AirportBusVisual({
     if (leftDoor.current) {
       const openAmount = snapshot.leftDoorOpenAmount;
       leftDoor.current.position.set(
-        DOOR_CLOSED_POSITION.x - openAmount * 0.09,
-        DOOR_CLOSED_POSITION.y,
-        DOOR_CLOSED_POSITION.z + openAmount * 0.76
+        AIRPORT_BUS_DOOR_CLOSED_POSITION.x - openAmount * 0.09,
+        AIRPORT_BUS_DOOR_CLOSED_POSITION.y,
+        AIRPORT_BUS_DOOR_CLOSED_POSITION.z + openAmount * 0.76
       );
     }
   });

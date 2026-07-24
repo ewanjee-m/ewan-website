@@ -1,14 +1,15 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { RPG_LANDMARKS } from "../app/world/RpgTownSceneLayout";
 
 describe("rigged toon GLB NPC renderer", () => {
   const rendererSource = readFileSync(
     resolve(process.cwd(), "app/world/RpgNpcCharacter3d.tsx"),
     "utf8"
   );
-  const sceneSource = readFileSync(
-    resolve(process.cwd(), "app/world/RpgTownScene.tsx"),
+  const crowdSource = readFileSync(
+    resolve(process.cwd(), "app/world/RpgNpcCrowd.tsx"),
     "utf8"
   );
 
@@ -33,12 +34,19 @@ describe("rigged toon GLB NPC renderer", () => {
     expect(rendererSource).not.toContain("CapsuleGeometry");
   });
 
-  it("removes NPC texture loading from the town crowd and publishes the new renderer", () => {
-    expect(sceneSource).not.toContain("RPG_NPC_RUNTIME_ASSETS");
-    expect(sceneSource).not.toContain("getNpcRuntimeAsset");
-    expect(sceneSource).not.toContain("getNpcSpriteFootOffset");
-    expect(sceneSource).not.toContain("texture={texture}");
-    expect(sceneSource).not.toContain("footOffset={renderState.footOffset}");
-    expect(sceneSource).toContain('dataset.npcRenderer = "rigged-toon-glb"');
+  it("renders every authored NPC through RpgNpcCharacter3d", () => {
+    const npcIds = RPG_LANDMARKS
+      .filter(({ kind }) => kind === "npc")
+      .map(({ id }) => id);
+
+    expect(npcIds).toHaveLength(7);
+    expect(crowdSource).toContain("<RpgNpcCharacter3d");
+  });
+
+  it("removes a failed NPC asset obstacle without re-registering it from passive effects", () => {
+    expect(crowdSource).toContain("componentDidCatch");
+    expect(crowdSource).toContain("removeObstacle");
+    expect(crowdSource).toContain("delete(landmark.id)");
+    expect(crowdSource).not.toContain("assetFailed");
   });
 });

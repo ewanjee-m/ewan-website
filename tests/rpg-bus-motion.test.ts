@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createAirportBus } from "../app/world/AirportBus";
 import {
@@ -26,6 +28,32 @@ import {
 import { deriveNpcPatrolRoute } from "../app/world/NpcPatrolMotion";
 
 describe("RPG airport bus route motion", () => {
+  it("renders the shared runtime pose without creating a second bus controller", () => {
+    const actorSource = readFileSync(
+      resolve(process.cwd(), "app/world/RpgAirportBusActor.tsx"),
+      "utf8"
+    );
+    const visualSource = readFileSync(
+      resolve(process.cwd(), "app/world/AirportBusVisual.tsx"),
+      "utf8"
+    );
+
+    expect(actorSource).toContain("advanceRpgBusRuntime(runtime");
+    expect(actorSource).toContain("position={runtime.pose.position}");
+    expect(actorSource).toContain("runtime.pose.wheelRotation");
+    expect(actorSource).toContain("runtime.snapshot.leftDoorOpenAmount");
+    expect(actorSource).toContain("}, -2.5)");
+    expect(actorSource).toContain("position={[0, -1.075, 0]}");
+    expect(actorSource).not.toContain("createAirportBus(");
+    expect(visualSource).toContain("wheelRefs");
+    expect(visualSource).toContain("AIRPORT_BUS_DOOR_CLOSED_POSITION");
+    expect(visualSource).toContain("position={[x, 0.43, z]}");
+    expect(visualSource).toContain(
+      "<cylinderGeometry args={[0.43, 0.43, 0.24, 10]}"
+    );
+    expect(visualSource).toContain("<AirportBusModel leftDoor={leftDoor} />");
+  });
+
   it("advances one shared runtime for rendering, player collision, and camera collision", () => {
     const runtime = createRpgBusRuntime();
     const sharedPose = runtime.pose;

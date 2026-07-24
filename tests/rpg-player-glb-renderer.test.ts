@@ -42,4 +42,19 @@ describe("rigged toon GLB player renderer", () => {
     expect(source).not.toContain("ApprovedCharacterTextureProvider");
     expect(source).not.toMatch(/<\w+Geometry/);
   });
+
+  it("uses the selected GLB and applies the runtime pose at the surface height", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "app/world/RpgPlayerActor.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("<RpgPlayerCharacter3d");
+    expect(source).toContain("characterHandle.current?.applyPose");
+    expect(source).toContain("snapshot.position");
+    expect(source).toContain("snapshot.surfaceHeight");
+    expect(source).toContain("snapshot.jumpOffset");
+    expect(source).toContain("evaluateRpgCharacterMotion3dInto");
+    expect(source).toContain("createRpgCharacterMotion3dState");
+  });
 });

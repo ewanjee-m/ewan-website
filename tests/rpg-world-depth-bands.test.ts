@@ -362,7 +362,7 @@ describe("RPG world depth bands", () => {
       bridge: true,
       buildings: true,
       signatureLandmarks: true,
-      npcCrowd: false
+      npcCrowd: true
     });
   });
 

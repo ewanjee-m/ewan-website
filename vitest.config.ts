@@ -16,11 +16,7 @@ export const RETIRED_UNIT_SUITES = [
   "tests/rpg-town-street-life.test.ts"
 ] as const;
 
-export const ACTIVE_UNIT_EXCLUDES = [
-  "tests/rpg-npc-glb-renderer.test.ts",
-  "tests/npc-patrol-motion.test.ts",
-  "tests/rpg-bus-motion.test.ts"
-] as const;
+export const ACTIVE_UNIT_EXCLUDES = [] as const;
 
 export default defineConfig({
   plugins: [react()],

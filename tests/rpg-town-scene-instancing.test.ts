@@ -99,4 +99,21 @@ describe("RPG town scene static ownership", () => {
     expect(source).toContain('case "npc":');
     expect(source).toContain('case "hanabi":');
   });
+
+  it("owns the moving bus and NPC crowd only in their dynamic actor modules", () => {
+    const scene = read("RpgTownScene.tsx");
+    const landmarks = read("RpgSignatureLandmarks.tsx");
+    const busActor = read("RpgAirportBusActor.tsx");
+    const npcCrowd = read("RpgNpcCrowd.tsx");
+
+    expect(scene).toContain("<RpgAirportBusActor");
+    expect(scene).toContain("<RpgNpcCrowd");
+    expect(busActor).toContain("<AirportBusModel");
+    expect(busActor).toContain('name="rpg-airport-bus"');
+    expect(npcCrowd).toContain("<RpgNpcCharacter3d");
+    expect(landmarks).toMatch(/case "bus":\s+return null;/);
+    expect(landmarks).toMatch(/case "npc":\s+return null;/);
+    expect(landmarks).not.toContain("<AirportBusModel");
+    expect(landmarks).not.toContain("<RpgNpcCharacter3d");
+  });
 });

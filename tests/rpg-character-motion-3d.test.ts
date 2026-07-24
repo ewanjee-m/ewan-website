@@ -4,8 +4,66 @@ import {
   createRpgCharacterMotion3dState,
   evaluateRpgCharacterMotion3dInto
 } from "../app/world/RpgCharacterMotion3d";
+import {
+  WORLD_RUN_SPEED,
+  WORLD_WALK_SPEED
+} from "../app/world/WorldRuntime";
 
 describe("RPG 3D character locomotion", () => {
+  it("advances a run gait faster than a walk gait", () => {
+    const walkState = createRpgCharacterMotion3dState();
+    const runState = createRpgCharacterMotion3dState();
+    const walkPose = createRpgCharacterMotion3dPose();
+    const runPose = createRpgCharacterMotion3dPose();
+    const base = {
+      deltaSeconds: 1 / 60,
+      headingX: 1,
+      headingZ: 0,
+      moving: true,
+      grounded: true,
+      jumpHeight: 0,
+      reducedMotion: false
+    };
+
+    evaluateRpgCharacterMotion3dInto(
+      walkState,
+      { ...base, movementSpeedRatio: 1 },
+      walkPose
+    );
+    evaluateRpgCharacterMotion3dInto(
+      runState,
+      { ...base, movementSpeedRatio: WORLD_RUN_SPEED / WORLD_WALK_SPEED },
+      runPose
+    );
+
+    expect(runPose.stridePhase).toBeGreaterThan(walkPose.stridePhase);
+  });
+
+  it("sanitizes invalid gait speed ratios while preserving the default gait", () => {
+    const evaluate = (movementSpeedRatio?: number) => {
+      const pose = createRpgCharacterMotion3dPose();
+      evaluateRpgCharacterMotion3dInto(
+        createRpgCharacterMotion3dState(),
+        {
+          deltaSeconds: 1 / 60,
+          headingX: 0,
+          headingZ: 1,
+          moving: true,
+          grounded: true,
+          jumpHeight: 0,
+          reducedMotion: false,
+          movementSpeedRatio
+        },
+        pose
+      );
+      return pose.stridePhase;
+    };
+
+    expect(evaluate()).toBe(evaluate(Number.NaN));
+    expect(evaluate(0)).toBe(evaluate(0.5));
+    expect(evaluate(2)).toBe(evaluate(1.5));
+  });
+
   it("turns a +Z-forward model toward its world heading while reusing caller buffers", () => {
     const state = createRpgCharacterMotion3dState();
     const pose = createRpgCharacterMotion3dPose();

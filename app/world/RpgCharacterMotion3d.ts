@@ -20,6 +20,7 @@ export interface RpgCharacterMotion3dInput {
   moving: boolean;
   grounded: boolean;
   jumpHeight: number;
+  movementSpeedRatio?: number;
   reducedMotion: boolean;
 }
 
@@ -312,6 +313,11 @@ export function evaluateRpgCharacterMotion3dInto(
   const deltaSeconds = Number.isFinite(input.deltaSeconds)
     ? Math.min(0.1, Math.max(0, input.deltaSeconds))
     : 0;
+  const movementSpeedRatio =
+    typeof input.movementSpeedRatio === "number" &&
+    Number.isFinite(input.movementSpeedRatio)
+      ? Math.min(1.5, Math.max(0.5, input.movementSpeedRatio))
+      : 1;
   if (Number.isFinite(input.headingX) && Number.isFinite(input.headingZ)) {
     if (Math.abs(input.headingX) + Math.abs(input.headingZ) > 1e-6) {
       state.targetYawRadians = Math.atan2(input.headingX, input.headingZ);
@@ -367,7 +373,8 @@ export function evaluateRpgCharacterMotion3dInto(
       state.gaitPhaseRadians +
         deltaSeconds *
           GAIT_RADIANS_PER_SECOND *
-          (0.28 + state.movementBlend * 0.72)
+          (0.28 + state.movementBlend * 0.72) *
+          movementSpeedRatio
     );
   }
 

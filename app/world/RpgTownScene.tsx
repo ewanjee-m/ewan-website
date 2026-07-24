@@ -1,6 +1,11 @@
 "use client";
 
 import { memo, type RefObject, useRef } from "react";
+import { Vector3 } from "three";
+import { RpgAirportBusActor } from "./RpgAirportBusActor";
+import type { RpgBusRuntime } from "./RpgBusRuntime";
+import type { RpgCameraDynamicObstacle } from "./RpgCameraCollision";
+import { RpgNpcCrowd } from "./RpgNpcCrowd";
 import { RpgRegionAudio } from "./RpgRegionAudio";
 import { createRpgRegionPresentation } from "./RpgRegionPresentation";
 import { RpgSignatureLandmarks } from "./RpgSignatureLandmarks";
@@ -15,6 +20,10 @@ import type { WorldNavigationSnapshot } from "./WorldNavigationState";
 export interface RpgTownSceneProps {
   readonly qualityLevel?: SceneQualityLevel;
   readonly navigation: RefObject<WorldNavigationSnapshot>;
+  readonly playerPosition: RefObject<Vector3>;
+  readonly dynamicObstacles: RefObject<Map<string, RpgCameraDynamicObstacle>>;
+  readonly busRuntime: RpgBusRuntime;
+  readonly reducedMotion: boolean;
 }
 
 export interface RpgTownSceneRenderContract {
@@ -38,7 +47,7 @@ export const RPG_TOWN_SCENE_RENDER_CONTRACT: RpgTownSceneRenderContract = {
   bridge: true,
   buildings: true,
   signatureLandmarks: true,
-  npcCrowd: false
+  npcCrowd: true
 } as const;
 
 export function resolveRpgTownSceneRenderContract() {
@@ -47,7 +56,11 @@ export function resolveRpgTownSceneRenderContract() {
 
 export const RpgTownScene = memo(function RpgTownScene({
   qualityLevel = "high",
-  navigation
+  navigation,
+  playerPosition,
+  dynamicObstacles,
+  busRuntime,
+  reducedMotion
 }: RpgTownSceneProps) {
   const presentation = useRef(createRpgRegionPresentation());
   return (
@@ -63,6 +76,16 @@ export const RpgTownScene = memo(function RpgTownScene({
       <RpgSignatureLandmarks
         qualityLevel={qualityLevel}
         presentation={presentation}
+      />
+      <RpgAirportBusActor
+        runtime={busRuntime}
+        dynamicObstacles={dynamicObstacles}
+        reducedMotion={reducedMotion}
+      />
+      <RpgNpcCrowd
+        playerPosition={playerPosition}
+        dynamicObstacles={dynamicObstacles}
+        reducedMotion={reducedMotion}
       />
       <RpgWorldEffects
         qualityLevel={qualityLevel}
