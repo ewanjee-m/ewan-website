@@ -3831,6 +3831,7 @@ export const RPG_VISUAL_CAMERA_FIXTURES = {
 - renderer is `seamless-rpg` and technology is `webgl3d`;
 - `world-environment-concept.png` is not requested by the active Canvas or maps;
 - two isolated `120_000ms` browser tests drive the canonical route through real keyboard input with varied RAF timing: walk reaches all five regions in `75.8s ±5%`, reset, and run reaches them in `64.3s ±5%`;
+- the existing run-route `120_000ms` test, rather than a third long test, returns `404` for `npc-hanabi-yukata.glb`, reaches Hanabi through the canonical route, then uses real keyboard input to approach `[21, 0, -22]` facing `[0, 0, -1]`; it must expose the interaction prompt with `data-target-id="npc-hanabi-child"`, open and close it with `Escape`, preserve exact position/heading/revision across the interaction, report only the sanitized expected asset failure, and emit no `pageerror`;
 - mobile joystick moves and the right-side drag changes camera yaw;
 - camera recenters after `0.8 + 1.2` seconds;
 - yaw is unchanged at `0.799s`, is within `5°` of the movement-rear target by `2.0s`, camera boom stays `>=2.6`, camera-safe violation never exceeds `250ms`, and diagnostics remain `ok`;
@@ -3841,6 +3842,8 @@ export const RPG_VISUAL_CAMERA_FIXTURES = {
 - only reset returns to the airport.
 
 Put walk and run in separate tests and set only those two tests to `120_000`; do not combine them under one timeout.
+
+Install the `npc-hanabi-yukata.glb` `404` route before entering the world in the run test. After `driveCanonicalRoute(page, { runRequested: true })` reaches Hanabi, keep using the shared real-keyboard driving primitives to reach the stable child approach pose `[21, 0, -22]` with heading `[0, 0, -1]`. Confirm the missing yukata NPC never appears, the child prompt targets `npc-hanabi-child`, and opening then closing the child interaction with `Escape` leaves the full-precision renderer position, heading, and navigation revision byte-for-byte unchanged. Capture the expected NPC asset failure through the sanitized diagnostic surface and fail on any unsanitized error or `pageerror`.
 
 Create the shared helper in `tests/fixtures/rpg-playwright-world.ts`; do not export it from a spec file because importing a spec registers its tests. `driveCanonicalRoute(page, { runRequested })` rotates the camera so forward input follows each fixture segment, holds `W` plus optional `Shift`, polls the full-precision `data-player-position` on `.seamless-world-renderer`, and releases at `<=0.05 world units` from each vertex. It records browser `performance.now()` before the first keydown and after the Hanabi arrival, records every distinct `data-navigation-region` on `[data-testid="world-view"]` for diagnostics, validates the five-zone order from that node's `data-current-zone`, and releases every held key in `finally`. It fails immediately if `data-camera-boom < 2.6`, `data-camera-safe-violation-ms > 250`, or `data-camera-diagnostic !== "ok"`.
 
