@@ -10,7 +10,10 @@ import {
   type WorldPoint3
 } from "./RpgWorldModel";
 import type { WorldMovementIntent } from "./WorldInput";
-import type { WorldNavigationSnapshot } from "./WorldNavigationState";
+import {
+  freezeWorldNavigationRegion,
+  type WorldNavigationSnapshot
+} from "./WorldNavigationState";
 
 export const WORLD_WALK_SPEED = 1.61;
 export const WORLD_RUN_SPEED = 1.9;
@@ -24,8 +27,8 @@ export function resolveCameraRelativeDirection(
 ) {
   const length = Math.hypot(intent.x, intent.y);
   if (length <= 1e-8) return { x: 0, z: 0, strength: 0 };
-  const x = intent.x / Math.max(1, length);
-  const y = intent.y / Math.max(1, length);
+  const x = intent.x / length;
+  const y = intent.y / length;
   return {
     x: x * Math.cos(yaw) + y * Math.sin(yaw),
     z: -x * Math.sin(yaw) + y * Math.cos(yaw),
@@ -49,10 +52,11 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
     isWalkable(position) && (options.canOccupyDynamic?.(position) ?? true);
 
   const snapshot = (): WorldNavigationSnapshot => {
-    const region = getNavigationRegionAt([x, z]);
-    if (!region) {
+    const resolvedRegion = getNavigationRegionAt([x, z]);
+    if (!resolvedRegion) {
       throw new RangeError(`WorldRuntime escaped navigation space at ${x},${z}`);
     }
+    const region = freezeWorldNavigationRegion(resolvedRegion);
     const surfaceHeight = getSurfaceHeight([x, z]);
     const grounded = jumpOffset === 0;
     const speed = Math.hypot(movement.x, movement.y);
@@ -76,7 +80,7 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
       navigationRegionId: region.regionId,
       transitionProgress: region.kind === "transition" ? region.progress : null,
       currentZoneId: region.displayZoneId,
-      highlightedZoneIds: Object.freeze([...region.highlightedZoneIds]),
+      highlightedZoneIds: region.highlightedZoneIds,
       nearInteractionId: null
     });
   };
@@ -103,6 +107,7 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
       revision += 1;
     },
     advance(deltaSeconds: number, cameraYaw: number) {
+      if (!Number.isFinite(deltaSeconds)) return;
       const beforeX = x;
       const beforeZ = z;
       const beforeJumpOffset = jumpOffset;

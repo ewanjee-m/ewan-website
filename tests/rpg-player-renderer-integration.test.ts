@@ -9,7 +9,8 @@ import {
   applyRpgReferenceNavigationFrameInput,
   classifyRpgReferenceFrameUpdate,
   createFlatWorldPlayerSpriteFrameInput,
-  resolveFlatWorldViewportProfile
+  resolveFlatWorldViewportProfile,
+  shouldPublishFlatWorldNavigation
 } from "../app/world/FlatWorldCanvas";
 import { calculateRpgReferenceCameraPlacement } from "../app/world/RpgCameraPlacement";
 import {
@@ -180,6 +181,36 @@ function expectAtomicReferencePublication({
 }
 
 describe("RPG player sprite renderer integration", () => {
+  it("publishes continuous navigation within the 100ms binding limit", () => {
+    const publication = {
+      navigationRevision: 2,
+      lastNavigationRevision: 1,
+      lastNavigationUpdate: 1_000,
+      discreteReason: null
+    } as const;
+
+    expect(
+      shouldPublishFlatWorldNavigation({ ...publication, now: 1_099 })
+    ).toBe(false);
+    expect(
+      shouldPublishFlatWorldNavigation({ ...publication, now: 1_100 })
+    ).toBe(true);
+    expect(
+      shouldPublishFlatWorldNavigation({
+        ...publication,
+        lastNavigationRevision: 2,
+        now: 1_100
+      })
+    ).toBe(false);
+    expect(
+      shouldPublishFlatWorldNavigation({
+        ...publication,
+        discreteReason: "reset",
+        now: 1_001
+      })
+    ).toBe(true);
+  });
+
   it.each([
     [1440, 900, "desktop"],
     [800, 896, "desktop"],
@@ -823,6 +854,23 @@ describe("RPG player sprite renderer integration", () => {
 
     const navigation = adaptFlatWorldNavigationSnapshot(flat);
 
+    expect(navigation.navigationRegion).not.toBe(flat.navigationRegion);
+    expect(navigation.highlightedZoneIds).not.toBe(flat.highlightedZoneIds);
+    expect(Object.isFrozen(navigation)).toBe(true);
+    expect(Object.isFrozen(navigation.position)).toBe(true);
+    expect(Object.isFrozen(navigation.surfaceNormal)).toBe(true);
+    expect(Object.isFrozen(navigation.heading)).toBe(true);
+    expect(Object.isFrozen(navigation.navigationRegion)).toBe(true);
+    expect(
+      Object.isFrozen(navigation.navigationRegion.highlightedZoneIds)
+    ).toBe(true);
+    expect(Object.isFrozen(navigation.highlightedZoneIds)).toBe(true);
+    expect(navigation.highlightedZoneIds).toBe(
+      navigation.navigationRegion.highlightedZoneIds
+    );
+    expect(
+      Reflect.set(navigation.surfaceNormal, "0", Number.NaN)
+    ).toBe(false);
     expect(navigation.surfaceHeight).toBeCloseTo(
       getSurfaceHeight(flat.position),
       10

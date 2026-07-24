@@ -27,8 +27,22 @@ export interface WorldNavigationSnapshot {
   readonly nearInteractionId: string | null;
 }
 
+export function freezeWorldNavigationRegion(
+  region: NavigationRegion
+): NavigationRegion {
+  const highlightedZoneIds = Object.freeze([
+    ...region.highlightedZoneIds
+  ]) as readonly DestinationId[];
+  return Object.freeze({
+    ...region,
+    highlightedZoneIds
+  }) as NavigationRegion;
+}
+
 export function createInitialWorldNavigationSnapshot(): WorldNavigationSnapshot {
-  const navigationRegion = getNavigationRegionAt(RPG_WORLD_SPAWN)!;
+  const navigationRegion = freezeWorldNavigationRegion(
+    getNavigationRegionAt(RPG_WORLD_SPAWN)!
+  );
   return Object.freeze({
     revision: 0,
     position: Object.freeze([...RPG_WORLD_SPAWN] as WorldPoint3),

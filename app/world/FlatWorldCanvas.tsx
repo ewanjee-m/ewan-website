@@ -107,6 +107,28 @@ export function classifyRpgReferenceFrameUpdate({
   return "ordinary";
 }
 
+const MAX_NAVIGATION_PUBLICATION_DELAY_MS = 100;
+
+export function shouldPublishFlatWorldNavigation({
+  navigationRevision,
+  lastNavigationRevision,
+  now,
+  lastNavigationUpdate,
+  discreteReason
+}: {
+  readonly navigationRevision: number;
+  readonly lastNavigationRevision: number;
+  readonly now: number;
+  readonly lastNavigationUpdate: number;
+  readonly discreteReason: "reset" | null;
+}) {
+  return (
+    navigationRevision !== lastNavigationRevision &&
+    (discreteReason !== null ||
+      now - lastNavigationUpdate >= MAX_NAVIGATION_PUBLICATION_DELAY_MS)
+  );
+}
+
 export function applyRpgReferenceNavigationFrameInput({
   session,
   input,
@@ -820,11 +842,13 @@ function FlatWorldCanvas(props: FlatWorldCanvasProps) {
       };
       lastProfileRef.current = profileId;
       recoveryPendingRef.current = false;
-      if (
-        navigation.revision !== lastNavigationRevisionRef.current &&
-        (discreteReason !== null ||
-          now - lastNavigationUpdateRef.current >= 200)
-      ) {
+      if (shouldPublishFlatWorldNavigation({
+        navigationRevision: navigation.revision,
+        lastNavigationRevision: lastNavigationRevisionRef.current,
+        now,
+        lastNavigationUpdate: lastNavigationUpdateRef.current,
+        discreteReason
+      })) {
         lastNavigationRevisionRef.current = navigation.revision;
         lastNavigationUpdateRef.current = now;
         onNavigationChange(adaptFlatWorldNavigationSnapshot(navigation));

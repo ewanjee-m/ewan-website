@@ -9,6 +9,7 @@ import {
   RPG_WORLD_BOUNDS,
   RPG_WORLD_SPAWN
 } from "../app/world/RpgWorldModel";
+import { createInitialWorldNavigationSnapshot } from "../app/world/WorldNavigationState";
 import { RPG_CANONICAL_ROUTE } from "./fixtures/rpg-canonical-route";
 
 describe("WorldRuntime", () => {
@@ -110,6 +111,25 @@ describe("WorldRuntime", () => {
     expect(runtime).not.toHaveProperty("setPosition");
   });
 
+  it("ignores non-finite frame deltas without corrupting a queued jump", () => {
+    const runtime = createWorldRuntime();
+    runtime.jump();
+    const before = runtime.getNavigationSnapshot();
+
+    runtime.advance(Number.NaN, 0);
+
+    const ignored = runtime.getNavigationSnapshot();
+    expect(ignored.position).toEqual(before.position);
+    expect(ignored.jumpOffset).toBe(0);
+    expect(ignored.grounded).toBe(true);
+    expect(ignored.revision).toBe(before.revision);
+
+    runtime.advance(0.1, 0);
+    const airborne = runtime.getNavigationSnapshot();
+    expect(airborne.jumpOffset).toBeGreaterThan(0);
+    expect(airborne.position.every(Number.isFinite)).toBe(true);
+  });
+
   it("moves from active input and stops after input is released", () => {
     const runtime = createWorldRuntime();
     runtime.setMovement({ x: -1, y: 0, runRequested: false });
@@ -154,6 +174,23 @@ describe("WorldRuntime", () => {
       ),
       8
     );
+  });
+
+  it("moves at half speed for half-strength analog input with a unit heading", () => {
+    const full = createWorldRuntime();
+    const half = createWorldRuntime();
+    full.setMovement({ x: -1, y: 0, runRequested: false });
+    half.setMovement({ x: -0.5, y: 0, runRequested: false });
+
+    full.advance(0.1, 0);
+    half.advance(0.1, 0);
+
+    const fullSnapshot = full.getNavigationSnapshot();
+    const halfSnapshot = half.getNavigationSnapshot();
+    const fullDistance = RPG_WORLD_SPAWN[0] - fullSnapshot.position[0];
+    const halfDistance = RPG_WORLD_SPAWN[0] - halfSnapshot.position[0];
+    expect(halfDistance).toBeCloseTo(fullDistance * 0.5, 10);
+    expect(halfSnapshot.heading).toEqual([-1, 0, 0]);
   });
 
   it("never leaves the world boundary or walkable navigation space", () => {
@@ -260,6 +297,43 @@ describe("WorldRuntime", () => {
     expect(Object.isFrozen(moved.position)).toBe(true);
     expect(Object.isFrozen(moved.surfaceNormal)).toBe(true);
     expect(Object.isFrozen(moved.heading)).toBe(true);
+    expect(Object.isFrozen(moved.navigationRegion)).toBe(true);
+    expect(
+      Object.isFrozen(moved.navigationRegion.highlightedZoneIds)
+    ).toBe(true);
     expect(Object.isFrozen(moved.highlightedZoneIds)).toBe(true);
+    expect(moved.highlightedZoneIds).toBe(
+      moved.navigationRegion.highlightedZoneIds
+    );
+    expect(
+      Reflect.set(moved.navigationRegion, "regionId", "mutated")
+    ).toBe(false);
+    expect(
+      Reflect.set(
+        moved.navigationRegion.highlightedZoneIds,
+        "0",
+        "hanabi"
+      )
+    ).toBe(false);
+  });
+
+  it("deeply freezes the initial navigation snapshot", () => {
+    const initial = createInitialWorldNavigationSnapshot();
+
+    expect(Object.isFrozen(initial)).toBe(true);
+    expect(Object.isFrozen(initial.position)).toBe(true);
+    expect(Object.isFrozen(initial.surfaceNormal)).toBe(true);
+    expect(Object.isFrozen(initial.heading)).toBe(true);
+    expect(Object.isFrozen(initial.navigationRegion)).toBe(true);
+    expect(
+      Object.isFrozen(initial.navigationRegion.highlightedZoneIds)
+    ).toBe(true);
+    expect(Object.isFrozen(initial.highlightedZoneIds)).toBe(true);
+    expect(initial.highlightedZoneIds).toBe(
+      initial.navigationRegion.highlightedZoneIds
+    );
+    expect(
+      Reflect.set(initial.navigationRegion, "regionId", "mutated")
+    ).toBe(false);
   });
 });
