@@ -3,8 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getMessages } from "../app/i18n/messages";
 import {
-  RPG_CANONICAL_MAP_SOURCE_IDS,
-  RPG_MAP_TERRAIN_ASSET
+  RPG_CANONICAL_MAP_SOURCE_IDS
 } from "../app/world/RpgMiniMapProjection";
 import { createInitialWorldNavigationSnapshot } from "../app/world/WorldNavigationState";
 import {
@@ -87,10 +86,10 @@ describe("world mini-map integration", () => {
       [...RPG_CANONICAL_MAP_SOURCE_IDS].sort()
     );
     for (const map of [miniMap, dialog]) {
-      expect(map.querySelector('[data-map-layer="terrain"]')).toHaveAttribute(
-        "href",
-        RPG_MAP_TERRAIN_ASSET
-      );
+      expect(map.querySelector("image")).toBeNull();
+      expect(
+        map.querySelector('[data-map-layer="model-terrain"]')
+      ).not.toBeNull();
     }
     expect(
       miniMap.getAttribute("data-navigation-revision")
@@ -149,15 +148,20 @@ describe("world mini-map integration", () => {
 
     await user.keyboard("m");
     await user.click(
-      screen.getByRole("button", { name: "Travel to: Gyukatsu" })
+      screen.getByRole("button", { name: "Inspect: Gyukatsu" })
     );
 
     expect(
       screen.getByRole("dialog", { name: "World map" })
     ).toBeVisible();
     expect(
-      screen.getByRole("button", { name: "Travel to: Gyukatsu" })
-    ).toHaveAttribute("aria-current", "true");
+      screen.getByRole("button", { name: "Inspect: Gyukatsu" })
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByTestId("world-map-selected-description")
+    ).toHaveTextContent(
+      getMessages("en").worldMap.destinationDescriptions.gyukatsu
+    );
     expect(world).toHaveAttribute("data-player-position", position);
     expect(world).toHaveAttribute("data-navigation-revision", revision);
   });

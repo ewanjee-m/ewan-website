@@ -5,7 +5,11 @@ import {
   type WorldPoint3,
   type WorldPolygon
 } from "./RpgWorldModel";
-import { projectWorldToReference } from "./RpgWorldGeometry";
+import {
+  projectWorldToReference,
+  referenceToScene,
+  sceneToWorld
+} from "./RpgWorldGeometry";
 import type { DestinationId } from "../guide/GuideContract";
 
 export interface RpgMapViewBox {
@@ -68,8 +72,6 @@ export const RPG_REFERENCE_MAP_VIEW_BOX = {
 
 export const RPG_MINI_MAP_VIEW_BOX = RPG_REFERENCE_MAP_VIEW_BOX;
 export const RPG_WORLD_MAP_VIEW_BOX = RPG_REFERENCE_MAP_VIEW_BOX;
-export const RPG_MAP_TERRAIN_ASSET =
-  "/assets/world/world-environment-concept.png";
 
 export type RpgReferencePoint = readonly [x: number, y: number];
 
@@ -196,6 +198,25 @@ export function projectRpgReferenceMapPoint(point: WorldPoint3) {
   return { x: projection.pixel[0], y: projection.pixel[1] };
 }
 
+export function unprojectRpgReferenceMapPoint(
+  point: readonly [number, number]
+): WorldPoint3 | null {
+  const scene = referenceToScene(point);
+  return scene ? sceneToWorld(scene) : null;
+}
+
+export function projectRpgWorldPolygon(polygon: WorldPolygon) {
+  return polygon.map((point) => {
+    const projection = projectWorldToReference(point);
+    if (!projection) {
+      throw new RangeError(
+        `Map polygon point is outside registration: ${point}`
+      );
+    }
+    return projection.pixel;
+  });
+}
+
 export function projectRpgReferenceMapHeadingRotation(
   position: WorldPoint3,
   heading: readonly [number, number, number],
@@ -265,10 +286,6 @@ export const RPG_CANONICAL_MAP_GEOMETRY = Object.freeze({
     polygon: RPG_WORLD_MODEL.bridge.polygon,
     color: bridgeLandmark.color
   }),
-  terrain: Object.freeze({
-    sourceId: "approved-world-environment-concept",
-    asset: RPG_MAP_TERRAIN_ASSET
-  }),
   referenceCoastline: RPG_REFERENCE_MAP_COASTLINE,
   referenceTransitions: RPG_REFERENCE_MAP_TRANSITIONS,
   referenceNodes: RPG_REFERENCE_MAP_NODES,
@@ -282,7 +299,6 @@ export const RPG_CANONICAL_MAP_GEOMETRY = Object.freeze({
 
 export const RPG_CANONICAL_MAP_SOURCE_IDS = Object.freeze([
   ...new Set([
-    RPG_CANONICAL_MAP_GEOMETRY.terrain.sourceId,
     "approved-reference-coastline",
     ...RPG_REFERENCE_MAP_TRANSITIONS.map(({ id }) => id),
     ...RPG_REFERENCE_MAP_NODES.map(({ zoneId }) => zoneId),

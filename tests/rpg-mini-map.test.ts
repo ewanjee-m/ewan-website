@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { projectWorldToReference } from "../app/world/RpgWorldGeometry";
 import {
-  RPG_MAP_TERRAIN_ASSET,
+  isWalkable,
+  projectWorldToReference
+} from "../app/world/RpgWorldGeometry";
+import {
   RPG_MINI_MAP_VIEW_BOX,
   RPG_REFERENCE_MAP_COASTLINE,
   RPG_REFERENCE_MAP_NODES,
@@ -10,9 +12,16 @@ import {
   createRpgMapProjection,
   projectRpgReferenceMapHeadingRotation,
   projectRpgReferenceMapPoint,
+  projectRpgWorldPolygon,
+  unprojectRpgReferenceMapPoint,
   type RpgReferencePoint
 } from "../app/world/RpgMiniMapProjection";
-import { RPG_WORLD_ARRIVALS } from "../app/world/RpgWorldModel";
+import {
+  RPG_WORLD_ARRIVALS,
+  RPG_WORLD_BOUNDS,
+  RPG_WORLD_ZONES
+} from "../app/world/RpgWorldModel";
+import { RPG_CANONICAL_ROUTE } from "./fixtures/rpg-canonical-route";
 import { RPG_REFERENCE_MAP_GOLDEN } from "./fixtures/rpg-reference-registration-golden";
 
 const GOLDEN_COASTLINE = RPG_REFERENCE_MAP_GOLDEN.coastline;
@@ -66,14 +75,61 @@ function densify(line: readonly RpgReferencePoint[], step: number, closed = fals
 }
 
 describe("RPG terrain map projection", () => {
-  it("uses the approved terrain's native reference coordinate system", () => {
-    expect(RPG_MAP_TERRAIN_ASSET).toBe("/assets/world/world-environment-concept.png");
+  it("uses the registered reference coordinate system", () => {
     expect(RPG_MINI_MAP_VIEW_BOX).toEqual({
       width: RPG_REFERENCE_MAP_GOLDEN.imageSize[0],
       height: RPG_REFERENCE_MAP_GOLDEN.imageSize[1],
       padding: 0
     });
     expect(RPG_WORLD_MAP_VIEW_BOX).toBe(RPG_MINI_MAP_VIEW_BOX);
+  });
+
+  it("round-trips walkable map points within 0.1 world units", () => {
+    const samples: Array<readonly [number, number]> = [];
+    for (let index = 1; index < RPG_CANONICAL_ROUTE.length; index += 1) {
+      const from = RPG_CANONICAL_ROUTE[index - 1];
+      const to = RPG_CANONICAL_ROUTE[index];
+      const count = Math.ceil(
+        Math.hypot(to[0] - from[0], to[1] - from[1]) / 0.1
+      );
+      for (let sample = 0; sample <= count; sample += 1) {
+        const progress = sample / count;
+        samples.push([
+          from[0] + (to[0] - from[0]) * progress,
+          from[1] + (to[1] - from[1]) * progress
+        ]);
+      }
+    }
+    for (
+      let x = RPG_WORLD_BOUNDS.minimumX;
+      x <= RPG_WORLD_BOUNDS.maximumX;
+      x += 0.5
+    ) {
+      for (
+        let z = RPG_WORLD_BOUNDS.minimumZ;
+        z <= RPG_WORLD_BOUNDS.maximumZ;
+        z += 0.5
+      ) {
+        if (isWalkable([x, z])) samples.push([x, z]);
+      }
+    }
+    for (const [x, z] of samples) {
+      const pixel = projectRpgReferenceMapPoint([x, 0, z]);
+      const world = unprojectRpgReferenceMapPoint([pixel.x, pixel.y]);
+      expect(world, `${x},${z}`).not.toBeNull();
+      expect(
+        Math.hypot(world![0] - x, world![2] - z),
+        `${x},${z}`
+      ).toBeLessThanOrEqual(0.1);
+    }
+  });
+
+  it("projects world polygons into registered reference points", () => {
+    const polygon = RPG_WORLD_ZONES[0].displayPolygon;
+
+    expect(projectRpgWorldPolygon(polygon)).toEqual(
+      polygon.map((point) => projectWorldToReference(point)!.pixel)
+    );
   });
 
   it("keeps the independent coastline, transition, and five-node golden exact", () => {

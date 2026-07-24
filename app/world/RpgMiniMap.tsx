@@ -3,8 +3,6 @@
 import { useId, useState, useSyncExternalStore } from "react";
 import type { DestinationId } from "../guide/GuideContract";
 import {
-  RPG_CANONICAL_MAP_GEOMETRY,
-  RPG_MAP_TERRAIN_ASSET,
   RPG_MINI_MAP_VIEW_BOX,
   RPG_REFERENCE_MAP_COASTLINE,
   RPG_REFERENCE_MAP_NODES,
@@ -13,6 +11,7 @@ import {
   projectRpgReferenceMapPoint,
   serializeRpgReferencePoints
 } from "./RpgMiniMapProjection";
+import { RpgMapTerrain } from "./RpgMapTerrain";
 import type { WorldNavigationSnapshot } from "./WorldNavigationState";
 
 export interface RpgMiniMapLabels {
@@ -104,15 +103,7 @@ export function RpgMiniMap({
           data-current-zone={navigation.currentZoneId}
           data-highlighted-zones={navigation.highlightedZoneIds.join(",")}
         >
-          <image
-            className="rpg-mini-map-background rpg-mini-map-terrain"
-            data-map-layer="terrain"
-            data-map-source-id={RPG_CANONICAL_MAP_GEOMETRY.terrain.sourceId}
-            href={RPG_MAP_TERRAIN_ASSET}
-            width={RPG_MINI_MAP_VIEW_BOX.width}
-            height={RPG_MINI_MAP_VIEW_BOX.height}
-            preserveAspectRatio="none"
-          />
+          <RpgMapTerrain />
           <polygon
             className="rpg-mini-map-coastline"
             data-map-layer="coastline"

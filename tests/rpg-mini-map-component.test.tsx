@@ -9,13 +9,16 @@ import { createFlatWorldSession } from "../app/world/FlatWorldSession";
 import { RpgMiniMap } from "../app/world/RpgMiniMap";
 import {
   RPG_CANONICAL_MAP_SOURCE_IDS,
-  RPG_MAP_TERRAIN_ASSET,
   projectRpgReferenceMapHeadingRotation,
   projectRpgReferenceMapPoint
 } from "../app/world/RpgMiniMapProjection";
 import {
+  RPG_WORLD_BRIDGE,
   RPG_WORLD_BOUNDS,
+  RPG_WORLD_CANAL,
+  RPG_WORLD_ROUTES,
   RPG_WORLD_SPAWN,
+  RPG_WORLD_ZONES,
   RPG_WORLD_ZONE_IDS
 } from "../app/world/RpgWorldModel";
 import { RPG_REFERENCE_MAP_GOLDEN } from "./fixtures/rpg-reference-registration-golden";
@@ -104,10 +107,22 @@ describe("RPG mini-map", () => {
     ).toBeVisible();
     const canvas = container.querySelector(".rpg-mini-map-canvas");
     expect(canvas).toHaveAttribute("viewBox", "0 0 1817 866");
-    expect(container.querySelector('[data-map-layer="terrain"]')).toHaveAttribute(
-      "href",
-      RPG_MAP_TERRAIN_ASSET
+    expect(container.querySelector("image")).toBeNull();
+    expect(
+      container.querySelector('[data-map-layer="model-terrain"]')
+    ).not.toBeNull();
+    expect(container.querySelectorAll("[data-map-zone]")).toHaveLength(
+      RPG_WORLD_ZONES.length
     );
+    expect(container.querySelectorAll("[data-map-route]")).toHaveLength(
+      RPG_WORLD_ROUTES.length
+    );
+    expect(
+      container.querySelector(`[data-map-water="${RPG_WORLD_CANAL.id}"]`)
+    ).not.toBeNull();
+    expect(
+      container.querySelector(`[data-map-bridge="${RPG_WORLD_BRIDGE.id}"]`)
+    ).not.toBeNull();
     const sourceIds = [
       ...container.querySelectorAll<SVGElement>("[data-map-source-id]")
     ].map((element) => element.dataset.mapSourceId!);
@@ -115,7 +130,7 @@ describe("RPG mini-map", () => {
       [...RPG_CANONICAL_MAP_SOURCE_IDS].sort()
     );
     for (const layer of [
-      "terrain",
+      "model-terrain",
       "coastline",
       "bridge",
       "route",

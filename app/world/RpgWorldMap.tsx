@@ -3,8 +3,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { DestinationId } from "../guide/GuideContract";
 import {
-  RPG_CANONICAL_MAP_GEOMETRY,
-  RPG_MAP_TERRAIN_ASSET,
   RPG_REFERENCE_MAP_COASTLINE,
   RPG_REFERENCE_MAP_NODES,
   RPG_REFERENCE_MAP_TRANSITIONS,
@@ -13,6 +11,7 @@ import {
   projectRpgReferenceMapPoint,
   serializeRpgReferencePoints
 } from "./RpgMiniMapProjection";
+import { RpgMapTerrain } from "./RpgMapTerrain";
 import type { WorldNavigationSnapshot } from "./WorldNavigationState";
 
 export interface RpgWorldMapLabels {
@@ -20,7 +19,7 @@ export interface RpgWorldMapLabels {
   open: string;
   close: string;
   hint: string;
-  travelTo: string;
+  inspect: string;
   currentPosition: string;
   mainRoute: string;
   north: string;
@@ -30,6 +29,7 @@ export interface RpgWorldMapLabels {
   legendPlayer: string;
   scale: string;
   destinations: Readonly<Record<DestinationId, string>>;
+  destinationDescriptions: Readonly<Record<DestinationId, string>>;
 }
 
 interface RpgWorldMapProps {
@@ -166,15 +166,7 @@ export function RpgWorldMap({
           data-current-zone={navigation.currentZoneId}
           data-highlighted-zones={navigation.highlightedZoneIds.join(",")}
         >
-          <image
-            className="rpg-world-map-background rpg-world-map-terrain"
-            data-map-layer="terrain"
-            data-map-source-id={RPG_CANONICAL_MAP_GEOMETRY.terrain.sourceId}
-            href={RPG_MAP_TERRAIN_ASSET}
-            width={RPG_WORLD_MAP_VIEW_BOX.width}
-            height={RPG_WORLD_MAP_VIEW_BOX.height}
-            preserveAspectRatio="none"
-          />
+          <RpgMapTerrain />
           <polygon
             className="rpg-world-map-coastline"
             data-map-layer="coastline"
@@ -285,8 +277,8 @@ export function RpgWorldMap({
             className={`rpg-world-map-zone-button rpg-world-map-zone-button-${destinationId}`}
             type="button"
             style={{ left: `${left}%`, top: `${top}%` }}
-            aria-label={`${labels.travelTo}: ${labels.destinations[destinationId]}`}
-            aria-current={destinationId === selectedZoneId}
+            aria-label={`${labels.inspect}: ${labels.destinations[destinationId]}`}
+            aria-pressed={destinationId === selectedZoneId}
             data-map-layer="arrival"
             data-map-source-id={arrivalId}
             data-navigation-revision={navigation.revision}
@@ -305,6 +297,10 @@ export function RpgWorldMap({
           </button>
         ))}
       </div>
+
+      <p data-testid="world-map-selected-description">
+        {labels.destinationDescriptions[selectedZoneId]}
+      </p>
 
       <section className="rpg-world-map-legend" aria-label={labels.legendLabel}>
         <span className="rpg-world-map-legend-item rpg-world-map-legend-zone">

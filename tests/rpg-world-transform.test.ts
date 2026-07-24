@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  projectRpgReferenceMapHeadingRotation
+} from "../app/world/RpgMiniMapProjection";
+import {
   projectWorldToReference,
   referenceToScene,
   sceneToWorld
@@ -58,6 +61,31 @@ function angleDifferenceDegrees(first: number, second: number) {
 }
 
 describe("RPG logical-to-rendered world transform", () => {
+  it("keeps the rendered heading within 2 degrees of the registered direction", () => {
+    for (const arrival of RPG_WORLD_ARRIVALS) {
+      const heading = [arrival.heading[0], 0, arrival.heading[1]] as const;
+      const origin = projectWorldToReference(arrival.position)!;
+      const tip = projectWorldToReference([
+        arrival.position[0] + heading[0] * 0.25,
+        arrival.position[1],
+        arrival.position[2] + heading[2] * 0.25
+      ])!;
+      const expected =
+        (Math.atan2(
+          tip.pixel[1] - origin.pixel[1],
+          tip.pixel[0] - origin.pixel[0]
+        ) *
+          180) /
+        Math.PI;
+      const actual = projectRpgReferenceMapHeadingRotation(
+        arrival.position,
+        heading
+      );
+      const error = Math.abs(((actual - expected + 540) % 360) - 180);
+      expect(error, arrival.zoneId).toBeLessThanOrEqual(2);
+    }
+  });
+
   it("uses the canonical world orientation for scene rotation", () => {
     const origin = rotateRpgWorldPointInto(
       [0, 0, 0],

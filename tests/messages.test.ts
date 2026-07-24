@@ -33,6 +33,9 @@ describe("localized messages", () => {
       expect(Object.keys(dictionary.worldMap.destinations).sort()).toEqual(
         englishDestinationKeys
       );
+      expect(
+        Object.keys(dictionary.worldMap.destinationDescriptions).sort()
+      ).toEqual(englishDestinationKeys);
       for (const group of [dictionary.miniMap, dictionary.worldMap]) {
         for (const value of Object.values(group)) {
           if (typeof value === "string") {
@@ -42,6 +45,11 @@ describe("localized messages", () => {
         for (const value of Object.values(group.destinations)) {
           expect(value.trim()).not.toBe("");
         }
+      }
+      for (const value of Object.values(
+        dictionary.worldMap.destinationDescriptions
+      )) {
+        expect(value.trim()).not.toBe("");
       }
       for (const value of Object.values(dictionary)) {
         if (typeof value === "string") {
@@ -119,8 +127,8 @@ describe("localized messages", () => {
       title: "World map",
       open: "Open world map (M key)",
       close: "Close world map",
-      hint: "Choose a place to travel straight there. Press M to open or close, Esc to close.",
-      travelTo: "Travel to",
+      hint: "Select a place to inspect it. Walk there through the world.",
+      inspect: "Inspect",
       currentPosition: "Current position",
       mainRoute: "Main route",
       north: "North is up",
@@ -135,6 +143,13 @@ describe("localized messages", () => {
         gyukatsu: "Gyukatsu",
         sakura: "Sakura",
         hanabi: "Hanabi"
+      },
+      destinationDescriptions: {
+        airport: "Airport terminal and limousine bus plaza",
+        tokyo: "Tokyo boulevard and shopfront district",
+        gyukatsu: "Gyukatsu alleys and outdoor grills",
+        sakura: "Sakura canal, promenade, and bridge",
+        hanabi: "Hanabi torii, stalls, lanterns, and fireworks"
       }
     });
     expect(getMessages("ko").worldMap.title).toBe("월드 지도");

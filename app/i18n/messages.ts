@@ -51,8 +51,8 @@ const messages = {
       title: "월드 지도",
       open: "월드 지도 열기 (M 키)",
       close: "월드 지도 닫기",
-      hint: "가고 싶은 장소를 누르면 그곳으로 바로 이동합니다. M 키로 열고 닫고, Esc 키로 닫습니다.",
-      travelTo: "이동",
+      hint: "살펴볼 장소를 선택하세요. 월드 안에서 직접 걸어가세요.",
+      inspect: "살펴보기",
       currentPosition: "현재 위치",
       mainRoute: "주 경로",
       north: "위쪽이 북쪽",
@@ -67,6 +67,13 @@ const messages = {
         gyukatsu: "규카츠",
         sakura: "벚꽃",
         hanabi: "하나비"
+      },
+      destinationDescriptions: {
+        airport: "공항 터미널과 리무진 버스 광장",
+        tokyo: "도쿄 대로와 상점가",
+        gyukatsu: "규카츠 골목과 야외 화로",
+        sakura: "벚꽃 수로, 산책로와 다리",
+        hanabi: "하나비 도리이, 노점, 등불과 불꽃놀이"
       }
     },
     guide: {
@@ -199,8 +206,8 @@ const messages = {
       title: "ワールドマップ",
       open: "ワールドマップを開く (Mキー)",
       close: "ワールドマップを閉じる",
-      hint: "行きたい場所を選ぶと、そこへすぐ移動します。Mキーで開閉、Escキーで閉じます。",
-      travelTo: "移動",
+      hint: "場所を選んで詳しく見てください。ワールド内を歩いて向かいましょう。",
+      inspect: "詳しく見る",
       currentPosition: "現在地",
       mainRoute: "メインルート",
       north: "上が北",
@@ -215,6 +222,13 @@ const messages = {
         gyukatsu: "牛カツ",
         sakura: "桜",
         hanabi: "花火"
+      },
+      destinationDescriptions: {
+        airport: "空港ターミナルとリムジンバス広場",
+        tokyo: "東京の大通りと商店街",
+        gyukatsu: "牛カツの路地と屋外グリル",
+        sakura: "桜の運河、遊歩道、橋",
+        hanabi: "花火会場の鳥居、屋台、提灯、花火"
       }
     },
     guide: {
@@ -348,8 +362,8 @@ const messages = {
       title: "World map",
       open: "Open world map (M key)",
       close: "Close world map",
-      hint: "Choose a place to travel straight there. Press M to open or close, Esc to close.",
-      travelTo: "Travel to",
+      hint: "Select a place to inspect it. Walk there through the world.",
+      inspect: "Inspect",
       currentPosition: "Current position",
       mainRoute: "Main route",
       north: "North is up",
@@ -364,6 +378,13 @@ const messages = {
         gyukatsu: "Gyukatsu",
         sakura: "Sakura",
         hanabi: "Hanabi"
+      },
+      destinationDescriptions: {
+        airport: "Airport terminal and limousine bus plaza",
+        tokyo: "Tokyo boulevard and shopfront district",
+        gyukatsu: "Gyukatsu alleys and outdoor grills",
+        sakura: "Sakura canal, promenade, and bridge",
+        hanabi: "Hanabi torii, stalls, lanterns, and fireworks"
       }
     },
     guide: {

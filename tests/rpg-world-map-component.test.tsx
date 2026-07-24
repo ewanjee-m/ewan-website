@@ -1,27 +1,31 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { adaptFlatWorldNavigationSnapshot } from "../app/world/FlatWorldNavigationAdapter";
 import { createFlatWorldSession } from "../app/world/FlatWorldSession";
 import {
   RPG_CANONICAL_MAP_SOURCE_IDS,
-  RPG_MAP_TERRAIN_ASSET,
   projectRpgReferenceMapHeadingRotation,
   projectRpgReferenceMapPoint
 } from "../app/world/RpgMiniMapProjection";
 import {
+  RPG_WORLD_BRIDGE,
   RPG_WORLD_BOUNDS,
-  RPG_WORLD_SPAWN
+  RPG_WORLD_CANAL,
+  RPG_WORLD_ROUTES,
+  RPG_WORLD_SPAWN,
+  RPG_WORLD_ZONES
 } from "../app/world/RpgWorldModel";
 import { RpgWorldMap } from "../app/world/RpgWorldMap";
+import { createWorldRuntime } from "../app/world/WorldRuntime";
 import { RPG_REFERENCE_MAP_GOLDEN } from "./fixtures/rpg-reference-registration-golden";
 
 const labels = {
   title: "World map",
   open: "Open world map (M key)",
   close: "Close world map",
-  hint: "Choose a place to travel straight there.",
-  travelTo: "Travel to",
+  hint: "Select a place to inspect it. Walk there through the world.",
+  inspect: "Inspect",
   currentPosition: "Current position",
   mainRoute: "Main route",
   north: "North is up",
@@ -36,6 +40,13 @@ const labels = {
     gyukatsu: "Gyukatsu",
     sakura: "Sakura",
     hanabi: "Hanabi"
+  },
+  destinationDescriptions: {
+    airport: "Airport terminal and limousine bus plaza",
+    tokyo: "Tokyo boulevard and shopfront district",
+    gyukatsu: "Gyukatsu alleys and outdoor grills",
+    sakura: "Sakura canal, promenade, and bridge",
+    hanabi: "Hanabi torii, stalls, lanterns, and fireworks"
   }
 };
 
@@ -93,19 +104,19 @@ describe("RPG world map", () => {
     expect(screen.getByText("Current position: Airport")).toBeVisible();
   });
 
-  it("offers every zone as a travel target and reports the visitor's zone", () => {
+  it("offers every zone for inspection and reports the visitor's zone", () => {
     const { container } = renderWorldMap({
       navigation: navigationAt([28, 0, -24], [1, 0, 0])
     });
 
     for (const destination of Object.values(labels.destinations)) {
       expect(
-        screen.getByRole("button", { name: `Travel to: ${destination}` })
+        screen.getByRole("button", { name: `Inspect: ${destination}` })
       ).toBeVisible();
     }
     expect(
-      screen.getByRole("button", { name: "Travel to: Hanabi" })
-    ).toHaveAttribute("aria-current", "true");
+      screen.getByRole("button", { name: "Inspect: Hanabi" })
+    ).toHaveAttribute("aria-pressed", "true");
     expect(
       container.querySelectorAll('.rpg-world-map-zone[data-current="true"]')
     ).toHaveLength(1);
@@ -130,20 +141,47 @@ describe("RPG world map", () => {
     ).toHaveLength(5);
   });
 
-  it("selects a destination without changing navigation", async () => {
+  it("selects a place without moving the player", async () => {
     const user = userEvent.setup();
-    const navigation = navigationAt();
+    const navigation = navigationAt(RPG_WORLD_SPAWN, [1, 0, 0]);
+    const before = navigation.position.join(",");
     renderWorldMap({ navigation });
 
-    await user.click(
-      screen.getByRole("button", { name: "Travel to: Sakura" })
-    );
+    await user.click(screen.getByRole("button", { name: "Inspect: Hanabi" }));
 
     expect(
-      screen.getByRole("button", { name: "Travel to: Sakura" })
-    ).toHaveAttribute("aria-current", "true");
-    expect(navigation.position).toEqual(RPG_WORLD_SPAWN);
-    expect(navigation.revision).toBe(0);
+      screen.getByTestId("world-map-selected-description")
+    ).toHaveTextContent(labels.destinationDescriptions.hanabi);
+    expect(navigation.position.join(",")).toBe(before);
+  });
+
+  it("keeps runtime position and revision fixed for 500ms after map selection", async () => {
+    const runtime = createWorldRuntime();
+    const user = userEvent.setup();
+    renderWorldMap({ navigation: runtime.getNavigationSnapshot() });
+    const before = runtime.getNavigationSnapshot();
+
+    await user.click(screen.getByRole("button", { name: "Inspect: Hanabi" }));
+
+    vi.useFakeTimers();
+    try {
+      for (let frame = 0; frame < 30; frame += 1) {
+        runtime.advance(1 / 60, 0);
+        await vi.advanceTimersByTimeAsync(1000 / 60);
+      }
+
+      const after = runtime.getNavigationSnapshot();
+      expect(after.position).toEqual(before.position);
+      expect(after.revision).toBe(before.revision);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not expose a travel callback", () => {
+    expectTypeOf<Parameters<typeof RpgWorldMap>[0]>().not.toHaveProperty(
+      "onTravel"
+    );
   });
 
   it("closes the read-only map on Escape without changing navigation", async () => {
@@ -167,7 +205,7 @@ describe("RPG world map", () => {
     renderWorldMap();
 
     const close = screen.getByRole("button", { name: "Close world map" });
-    const last = screen.getByRole("button", { name: "Travel to: Hanabi" });
+    const last = screen.getByRole("button", { name: "Inspect: Hanabi" });
 
     await user.tab({ shift: true });
     expect(last).toHaveFocus();
@@ -196,10 +234,22 @@ describe("RPG world map", () => {
       "viewBox",
       "0 0 1817 866"
     );
-    expect(container.querySelector('[data-map-layer="terrain"]')).toHaveAttribute(
-      "href",
-      RPG_MAP_TERRAIN_ASSET
+    expect(container.querySelector("image")).toBeNull();
+    expect(
+      container.querySelector('[data-map-layer="model-terrain"]')
+    ).not.toBeNull();
+    expect(container.querySelectorAll("[data-map-zone]")).toHaveLength(
+      RPG_WORLD_ZONES.length
     );
+    expect(container.querySelectorAll("[data-map-route]")).toHaveLength(
+      RPG_WORLD_ROUTES.length
+    );
+    expect(
+      container.querySelector(`[data-map-water="${RPG_WORLD_CANAL.id}"]`)
+    ).not.toBeNull();
+    expect(
+      container.querySelector(`[data-map-bridge="${RPG_WORLD_BRIDGE.id}"]`)
+    ).not.toBeNull();
     const navigation = navigationAt([8, 0, 0], [0, 0, -1]);
     const playerPoint = projectRpgReferenceMapPoint(navigation.position);
     const rotation = projectRpgReferenceMapHeadingRotation(
@@ -217,7 +267,7 @@ describe("RPG world map", () => {
       [...RPG_CANONICAL_MAP_SOURCE_IDS].sort()
     );
     for (const layer of [
-      "terrain",
+      "model-terrain",
       "coastline",
       "bridge",
       "route",
