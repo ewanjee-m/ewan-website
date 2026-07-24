@@ -972,6 +972,7 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
         page, evidenceDirectory, viewportName, id, selectedCharacter: "male", rows
       });
       if (id === "gyukatsu") {
+        await driveTo(page, [8, 0]);
         assertUninterruptedRoute(
           await driveContinuousTrustedRoute(
             page,
