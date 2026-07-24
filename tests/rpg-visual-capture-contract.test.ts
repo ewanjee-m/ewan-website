@@ -34,4 +34,12 @@ describe("RPG visual capture execution contract", () => {
     expect(source).toContain("primaryCaptureError");
     expect(source).toContain("primaryViewportError");
   });
+
+  it("waits for the rendered camera to face the player after fixture turns", () => {
+    expect(source).toContain("const facingResolved");
+    expect(source).toContain("cameraFacingDot >= 0.98");
+    expect(
+      source.match(/await waitForCameraFixture\(/g)
+    ).toHaveLength(3);
+  });
 });

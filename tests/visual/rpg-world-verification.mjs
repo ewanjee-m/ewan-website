@@ -544,7 +544,10 @@ function parseTuple(value, label) {
   return tuple;
 }
 
-async function telemetry(page) {
+async function telemetry(
+  page,
+  { requireFacing = true } = {}
+) {
   const data = await page.locator(".seamless-world-renderer").evaluate((renderer) => {
     const world = document.querySelector('[data-testid="world-view"]');
     return {
@@ -600,9 +603,9 @@ async function telemetry(page) {
       parsed.cameraSafeViolationMs
     ].every(Number.isFinite) ||
     parsed.cameraBoom < 2.6 ||
-    parsed.cameraFacingDot < 0.98 ||
     parsed.cameraSafeViolationMs > 250 ||
-    parsed.cameraDiagnostic !== "ok"
+    parsed.cameraDiagnostic !== "ok" ||
+    (requireFacing && parsed.cameraFacingDot < 0.98)
   ) {
     fail("E_CAMERA", `unsafe camera telemetry: ${JSON.stringify(parsed)}`);
   }
@@ -626,7 +629,9 @@ async function drag(page, deltaX, deltaY) {
 
 async function setCamera(page, targetYaw, targetPitchDegrees) {
   for (let index = 0; index < 20; index += 1) {
-    const current = await telemetry(page);
+    const current = await telemetry(page, {
+      requireFacing: false
+    });
     const yawDelta = yawError(current.cameraYaw, targetYaw);
     const pitchDelta = targetPitchDegrees * Math.PI / 180 - current.cameraPitch;
     if (Math.abs(yawDelta) <= 0.004 && Math.abs(pitchDelta) <= 0.004) return;
@@ -646,7 +651,7 @@ async function waitForCameraFixture(
   targetDistance
 ) {
   const deadline = performance.now() + 5_000;
-  let current = await telemetry(page);
+  let current = await telemetry(page, { requireFacing: false });
   let previousBoom = current.cameraBoom;
   let stableSamples = 0;
   while (performance.now() < deadline) {
@@ -657,9 +662,11 @@ async function waitForCameraFixture(
     const boomResolved =
       current.cameraBoom >= 2.6 &&
       current.cameraBoom <= targetDistance + 0.25;
+    const facingResolved = current.cameraFacingDot >= 0.98;
     if (
       pitchMatches &&
       boomResolved &&
+      facingResolved &&
       Math.abs(current.cameraBoom - previousBoom) <= 0.005
     ) {
       stableSamples += 1;
@@ -671,7 +678,7 @@ async function waitForCameraFixture(
     }
     previousBoom = current.cameraBoom;
     await page.waitForTimeout(25);
-    current = await telemetry(page);
+    current = await telemetry(page, { requireFacing: false });
   }
   fail(
     "E_CAMERA_FIXTURE",
@@ -957,21 +964,31 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
         ) {
           fail("E_NARROW_CAMERA", "narrow-camera predicate failed");
         }
+        const requestedDistance =
+          viewportName === "mobile"
+            ? CAMERA_FIXTURES.gyukatsu.mobileDistance
+            : CAMERA_FIXTURES.gyukatsu.desktopDistance;
         await setCamera(
           page,
           Math.atan2(narrow.heading[0], narrow.heading[2]) - 20 * Math.PI / 180,
           38
+        );
+        await waitForCameraFixture(
+          page,
+          38,
+          requestedDistance
         );
         await captureRow({
           page, evidenceDirectory, viewportName, id: "narrow-camera", selectedCharacter: "male", rows
         });
 
         await setCamera(page, Math.PI / 2, 38);
+        await waitForCameraFixture(
+          page,
+          38,
+          requestedDistance
+        );
         const obstacle = await telemetry(page);
-        const requestedDistance =
-          viewportName === "mobile"
-            ? CAMERA_FIXTURES.gyukatsu.mobileDistance
-            : CAMERA_FIXTURES.gyukatsu.desktopDistance;
         if (
           obstacle.cameraBoom < 2.6 ||
           obstacle.cameraBoom > requestedDistance + 0.1 ||
