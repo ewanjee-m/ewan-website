@@ -140,9 +140,12 @@ describe("world mini-map integration", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("closes the full world map after choosing a fast travel destination", async () => {
+  it("keeps the read-only map open without moving after choosing a destination", async () => {
     const user = userEvent.setup();
     renderWorld();
+    const world = screen.getByTestId("world-view");
+    const position = world.getAttribute("data-player-position");
+    const revision = world.getAttribute("data-navigation-revision");
 
     await user.keyboard("m");
     await user.click(
@@ -150,7 +153,12 @@ describe("world mini-map integration", () => {
     );
 
     expect(
-      screen.queryByRole("dialog", { name: "World map" })
-    ).not.toBeInTheDocument();
+      screen.getByRole("dialog", { name: "World map" })
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Travel to: Gyukatsu" })
+    ).toHaveAttribute("aria-current", "true");
+    expect(world).toHaveAttribute("data-player-position", position);
+    expect(world).toHaveAttribute("data-navigation-revision", revision);
   });
 });

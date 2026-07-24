@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createElement, createRef } from "react";
 import { act, render } from "@testing-library/react";
@@ -83,7 +85,7 @@ function createReferenceNavigationFrameHarness() {
     canMoveTo: (x, z) => isWalkable([x, z])
   });
   const input = createInputController();
-  const screenMovement = createRpgMovementBuffer();
+  const screenMovement = { x: 0, y: 0, runRequested: false };
   const worldMovement = createRpgMovementBuffer();
   const movementTelemetry = createRpgScreenMovementTelemetry();
   return {
@@ -115,7 +117,7 @@ function expectAtomicReferencePublication({
 }: {
   readonly previousNavigation: FlatWorldNavigationSnapshot;
   readonly navigation: FlatWorldNavigationSnapshot;
-  readonly discreteReason: "reset" | "fast-travel";
+  readonly discreteReason: "reset";
   readonly expectedReferenceFoot: readonly [number, number];
 }) {
   for (const profile of ["desktop", "mobile"] as const) {
@@ -390,49 +392,22 @@ describe("RPG player sprite renderer integration", () => {
     }
   );
 
-  it("publishes fast travel before held keyboard movement and queued jump", () => {
-    const harness = createReferenceNavigationFrameHarness();
-    const previousNavigation = harness.session.getNavigationSnapshot();
-    const readMovement = vi.spyOn(harness.input, "readMovement");
-    const consumeJump = vi.spyOn(harness.input, "consumeJump");
-    const advance = vi.spyOn(harness.session, "advance");
-    const hanabi = RPG_WORLD_ARRIVALS.find(
-      ({ zoneId }) => zoneId === "hanabi"
-    )!;
-    harness.input.pressKey("ArrowLeft");
-    harness.input.queueJump();
-    harness.input.queueTravel("hanabi");
-
-    const committed = harness.run();
-    expect(committed.discreteReason).toBe("fast-travel");
-    expect(committed.navigation.revision).toBe(previousNavigation.revision + 1);
-    expect(committed.navigation.position).toEqual(hanabi.position);
-    expect(committed.navigation.moving).toBe(false);
-    expect(committed.navigation.grounded).toBe(true);
-    expect(committed.rawMovement).toEqual({ x: 0, y: 0 });
-    expect(readMovement).not.toHaveBeenCalled();
-    expect(consumeJump).not.toHaveBeenCalled();
-    expect(advance).not.toHaveBeenCalled();
-    expectAtomicReferencePublication({
-      previousNavigation,
-      navigation: committed.navigation,
-      discreteReason: "fast-travel",
-      expectedReferenceFoot: hanabi.approvedReferenceFoot.pixel
-    });
-
-    const ordinary = harness.run();
-    expect(ordinary.discreteReason).toBeNull();
-    expect(ordinary.rawMovement).toEqual({ x: -1, y: 0 });
-    expect(ordinary.navigation.revision).toBeGreaterThan(
-      committed.navigation.revision
+  it("keeps both canvas compatibility paths on the shared input contract", () => {
+    const flatCanvasSource = readFileSync(
+      resolve(process.cwd(), "app/world/FlatWorldCanvas.tsx"),
+      "utf8"
     );
-    expect(ordinary.navigation.position[0]).toBeLessThan(hanabi.position[0]);
-    expect(ordinary.navigation.position[1]).toBeGreaterThan(0);
-    expect(ordinary.navigation.moving).toBe(true);
-    expect(ordinary.navigation.grounded).toBe(false);
-    expect(readMovement).toHaveBeenCalledTimes(1);
-    expect(consumeJump).toHaveBeenCalledTimes(1);
-    expect(advance).toHaveBeenCalledTimes(1);
+    const historicalCanvasSource = readFileSync(
+      resolve(process.cwd(), "app/world/WorldCanvas.tsx"),
+      "utf8"
+    );
+
+    for (const source of [flatCanvasSource, historicalCanvasSource]) {
+      expect(source).toContain(
+        'import type { InputController } from "./InputController";'
+      );
+      expect(source).toContain("runRequested: false");
+    }
   });
 
   it("publishes reset before held touch movement and queued jump", () => {
@@ -442,7 +417,7 @@ describe("RPG player sprite renderer integration", () => {
     const readMovement = vi.spyOn(harness.input, "readMovement");
     const consumeJump = vi.spyOn(harness.input, "consumeJump");
     const advance = vi.spyOn(harness.session, "advance");
-    harness.input.setTouchMovement({ x: 1, y: 0 });
+    harness.input.setTouchMovement({ x: 1, y: 0, runRequested: false });
     harness.input.queueJump();
     harness.input.queueReset();
 
@@ -452,7 +427,11 @@ describe("RPG player sprite renderer integration", () => {
     expect(committed.navigation.position).toEqual(RPG_WORLD_SPAWN);
     expect(committed.navigation.moving).toBe(false);
     expect(committed.navigation.grounded).toBe(true);
-    expect(committed.rawMovement).toEqual({ x: 0, y: 0 });
+    expect(committed.rawMovement).toEqual({
+      x: 0,
+      y: 0,
+      runRequested: false
+    });
     expect(readMovement).not.toHaveBeenCalled();
     expect(consumeJump).not.toHaveBeenCalled();
     expect(advance).not.toHaveBeenCalled();
@@ -465,7 +444,11 @@ describe("RPG player sprite renderer integration", () => {
 
     const ordinary = harness.run();
     expect(ordinary.discreteReason).toBeNull();
-    expect(ordinary.rawMovement).toEqual({ x: 1, y: 0 });
+    expect(ordinary.rawMovement).toEqual({
+      x: 1,
+      y: 0,
+      runRequested: false
+    });
     expect(ordinary.navigation.revision).toBeGreaterThan(
       committed.navigation.revision
     );

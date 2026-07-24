@@ -8,6 +8,27 @@ type KeyboardInputController = Pick<
 const TEXT_ENTRY_SELECTOR =
   "input, select, textarea, [contenteditable='true'], [data-world-input-block='true']";
 const ACTIVATION_SELECTOR = "button, a, [role='button'], [role='link']";
+const WORLD_KEYS = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "w",
+  "W",
+  "a",
+  "A",
+  "s",
+  "S",
+  "d",
+  "D",
+  "Shift",
+  " ",
+  "e",
+  "E",
+  "Enter",
+  "r",
+  "R"
+]);
 
 // Typing and menus take the whole keyboard. A button keeps the focus ring
 // after it is pressed, though, and blocking everything for it left a visitor
@@ -20,7 +41,10 @@ function blocksWorldInput(target: EventTarget | null, key: string) {
   if (target.closest(TEXT_ENTRY_SELECTOR)) {
     return true;
   }
-  return key === " " && Boolean(target.closest(ACTIVATION_SELECTOR));
+  return (
+    (key === " " || key === "Enter") &&
+    Boolean(target.closest(ACTIVATION_SELECTOR))
+  );
 }
 
 export function attachWorldKeyboardInput(input: KeyboardInputController) {
@@ -28,8 +52,8 @@ export function attachWorldKeyboardInput(input: KeyboardInputController) {
     if (blocksWorldInput(event.target, event.key)) {
       return;
     }
-    if (event.key.startsWith("Arrow") || event.key === " ") {
-      event.preventDefault();
+    if (WORLD_KEYS.has(event.key)) {
+      if (event.key !== "Shift") event.preventDefault();
       input.pressKey(event.key);
     }
   };

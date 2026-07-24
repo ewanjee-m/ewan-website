@@ -49,7 +49,9 @@ import {
 } from "./RpgWorldBackdrop";
 import { isWalkable } from "./RpgWorldGeometry";
 import { RPG_WORLD_BOUNDS, RPG_WORLD_SPAWN } from "./RpgWorldModel";
-import type { InputController, PlayerCharacter } from "./WorldView";
+import type { InputController } from "./InputController";
+import type { PlayerCharacter } from "./WorldView";
+import type { WorldMovementIntent } from "./WorldInput";
 import type { MovementIntent } from "./WorldSession";
 
 interface FlatWorldCanvasProps {
@@ -113,27 +115,20 @@ export function applyRpgReferenceNavigationFrameInput({
 }: {
   readonly session: FlatWorldSession;
   readonly input: InputController;
-  readonly screenMovement: MovementIntent;
+  readonly screenMovement: WorldMovementIntent;
   readonly worldMovement: MovementIntent;
   readonly movementTelemetry: RpgScreenMovementTelemetry;
   readonly deltaSeconds: number;
-}): "reset" | "fast-travel" | null {
-  let discreteReason: "reset" | "fast-travel" | null = null;
+}): "reset" | null {
+  let discreteReason: "reset" | null = null;
   if (input.consumeReset()) {
     session.reset();
     discreteReason = "reset";
   }
-  const travelDestinationId = input.consumeTravel();
-  if (travelDestinationId) {
-    const beforeRevision = session.getNavigationSnapshot().revision;
-    const travelled = session.fastTravel(travelDestinationId);
-    if (travelled.revision !== beforeRevision) {
-      discreteReason = "fast-travel";
-    }
-  }
   if (discreteReason) {
     screenMovement.x = 0;
     screenMovement.y = 0;
+    screenMovement.runRequested = false;
     worldMovement.x = 0;
     worldMovement.y = 0;
     movementTelemetry.usedCompatibilityWorldPosition = false;
@@ -313,7 +308,11 @@ function FlatWorldCanvas(props: FlatWorldCanvasProps) {
   const lastValidFrameRef = useRef<ValidFrame | null>(null);
   const lastProfileRef = useRef<FlatCameraProfileId | null>(null);
   const recoveryPendingRef = useRef(false);
-  const screenMovementRef = useRef(createRpgMovementBuffer());
+  const screenMovementRef = useRef<WorldMovementIntent>({
+    x: 0,
+    y: 0,
+    runRequested: false
+  });
   const worldMovementRef = useRef(createRpgMovementBuffer());
   const movementTelemetryRef = useRef(createRpgScreenMovementTelemetry());
   const lastNavigationRevisionRef = useRef(-1);

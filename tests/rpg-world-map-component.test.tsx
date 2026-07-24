@@ -66,18 +66,16 @@ function navigationAt(
 function renderWorldMap(
   overrides: Partial<Parameters<typeof RpgWorldMap>[0]> = {}
 ) {
-  const onTravel = vi.fn();
   const onClose = vi.fn();
   const result = render(
     <RpgWorldMap
       labels={labels}
       navigation={navigationAt()}
-      onTravel={onTravel}
       onClose={onClose}
       {...overrides}
     />
   );
-  return { ...result, onClose, onTravel };
+  return { ...result, onClose };
 }
 
 describe("RPG world map", () => {
@@ -131,24 +129,33 @@ describe("RPG world map", () => {
     ).toHaveLength(5);
   });
 
-  it("reports the chosen destination when a zone is activated", async () => {
+  it("selects a destination without changing navigation", async () => {
     const user = userEvent.setup();
-    const { onTravel } = renderWorldMap();
+    const navigation = navigationAt();
+    renderWorldMap({ navigation });
 
     await user.click(
       screen.getByRole("button", { name: "Travel to: Sakura" })
     );
 
-    expect(onTravel).toHaveBeenCalledTimes(1);
-    expect(onTravel).toHaveBeenCalledWith("sakura");
+    expect(
+      screen.getByRole("button", { name: "Travel to: Sakura" })
+    ).toHaveAttribute("aria-current", "true");
+    expect(navigation.position).toEqual(RPG_WORLD_SPAWN);
+    expect(navigation.revision).toBe(0);
   });
 
-  it("closes on Escape and on the close control", async () => {
+  it("closes the read-only map on Escape without changing navigation", async () => {
     const user = userEvent.setup();
-    const { onClose } = renderWorldMap();
+    const navigation = navigationAt([28, 0, -24], [0, 0, -1]);
+    const position = [...navigation.position];
+    const revision = navigation.revision;
+    const { onClose } = renderWorldMap({ navigation });
 
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(navigation.position).toEqual(position);
+    expect(navigation.revision).toBe(revision);
 
     await user.click(screen.getByRole("button", { name: "Close world map" }));
     expect(onClose).toHaveBeenCalledTimes(2);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { DestinationId } from "../guide/GuideContract";
 import {
   RPG_CANONICAL_MAP_GEOMETRY,
@@ -35,7 +35,6 @@ export interface RpgWorldMapLabels {
 interface RpgWorldMapProps {
   labels: RpgWorldMapLabels;
   navigation: FlatWorldNavigationSnapshot;
-  onTravel: (destinationId: DestinationId) => void;
   onClose: () => void;
 }
 
@@ -65,12 +64,14 @@ const ZONE_MARKERS = RPG_REFERENCE_MAP_NODES.map((arrival) => {
 export function RpgWorldMap({
   labels,
   navigation,
-  onTravel,
   onClose
 }: RpgWorldMapProps) {
   const dialog = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const titleId = useId();
+  const [selectedZoneId, setSelectedZoneId] = useState<DestinationId>(
+    navigation.currentZoneId
+  );
   const playerPoint = projectRpgReferenceMapPoint(navigation.position);
   const headingRotation = projectRpgReferenceMapHeadingRotation(
     navigation.position,
@@ -285,7 +286,7 @@ export function RpgWorldMap({
             type="button"
             style={{ left: `${left}%`, top: `${top}%` }}
             aria-label={`${labels.travelTo}: ${labels.destinations[destinationId]}`}
-            aria-current={destinationId === navigation.currentZoneId}
+            aria-current={destinationId === selectedZoneId}
             data-map-layer="arrival"
             data-map-source-id={arrivalId}
             data-navigation-revision={navigation.revision}
@@ -294,8 +295,8 @@ export function RpgWorldMap({
             data-touch-target-min-css="44x44"
             data-touch-rect-mobile-css="76x44"
             data-label-font-target-css-px="12"
-            data-current={destinationId === navigation.currentZoneId}
-            onClick={() => onTravel(destinationId)}
+            data-current={destinationId === selectedZoneId}
+            onClick={() => setSelectedZoneId(destinationId)}
           >
             <span className="rpg-world-map-zone-dot" aria-hidden="true" />
             <span className="rpg-world-map-zone-name">

@@ -1,95 +1,73 @@
 import { describe, expect, it } from "vitest";
 import { createInputController } from "../app/world/InputController";
 
-describe("player input", () => {
-  it("maps arrow keys to movement and clears input on release or focus loss", () => {
+describe("RPG input controller", () => {
+  it("supports WASD, arrows, run, jump, reset, and interaction", () => {
     const input = createInputController();
+    const movement = { x: 0, y: 0, runRequested: false };
 
-    input.pressKey("ArrowUp");
-    input.pressKey("ArrowRight");
-    expect(input.getMovement()).toEqual({ x: 1, y: 1 });
+    input.pressKey("w");
+    input.pressKey("d");
+    input.pressKey("Shift");
+    expect(input.readMovement(movement)).toEqual({
+      x: Math.SQRT1_2,
+      y: Math.SQRT1_2,
+      runRequested: true
+    });
 
-    input.releaseKey("ArrowUp");
-    expect(input.getMovement()).toEqual({ x: 1, y: 0 });
+    input.pressKey(" ");
+    input.pressKey("e");
+    input.pressKey("r");
+    expect(input.consumeJump()).toBe(true);
+    expect(input.consumeInteraction()).toBe(true);
+    expect(input.consumeReset()).toBe(true);
+    expect(input).not.toHaveProperty("queueTravel");
+    expect(input).not.toHaveProperty("consumeTravel");
+  });
 
-    input.reset();
-    expect(input.getMovement()).toEqual({ x: 0, y: 0 });
+  it("accumulates and clears one camera drag frame", () => {
+    const input = createInputController();
+    const drag = { deltaX: 0, deltaY: 0, pointerKind: "mouse" as const };
+
+    input.addCameraDrag(10, -4, "mouse");
+    input.addCameraDrag(2, 1, "mouse");
+    expect(input.consumeCameraDrag(drag)).toEqual({
+      deltaX: 12,
+      deltaY: -3,
+      pointerKind: "mouse"
+    });
+    expect(input.consumeCameraDrag(drag)).toEqual({
+      deltaX: 0,
+      deltaY: 0,
+      pointerKind: "mouse"
+    });
   });
 
   it("uses the mobile drag as the same movement intent and stops on release", () => {
     const input = createInputController();
+    const movement = { x: 0, y: 0, runRequested: false };
 
-    input.setTouchMovement({ x: -0.5, y: 0.75 });
-    expect(input.getMovement()).toEqual({ x: -0.5, y: 0.75 });
+    input.setTouchMovement({ x: -0.5, y: 0.75, runRequested: true });
+    expect(input.readMovement(movement)).toEqual({
+      x: -0.5,
+      y: 0.75,
+      runRequested: true
+    });
 
     input.setTouchMovement(null);
-    expect(input.getMovement()).toEqual({ x: 0, y: 0 });
-  });
-
-  it("queues one jump for a Space press", () => {
-    const input = createInputController();
-
-    input.pressKey(" ");
-    expect(input.consumeJump()).toBe(true);
-    expect(input.consumeJump()).toBe(false);
-
-    input.releaseKey(" ");
-    input.pressKey(" ");
-    expect(input.consumeJump()).toBe(true);
-  });
-
-  it("queues the same jump from the mobile control", () => {
-    const input = createInputController();
-
-    input.queueJump();
-
-    expect(input.consumeJump()).toBe(true);
-    expect(input.consumeJump()).toBe(false);
-  });
-
-  it("queues one return to the safe starting point", () => {
-    const input = createInputController();
-
-    input.queueReset();
-
-    expect(input.consumeReset()).toBe(true);
-    expect(input.consumeReset()).toBe(false);
-  });
-
-  it("queues one fast travel destination from the world map", () => {
-    const input = createInputController();
-
-    expect(input.consumeTravel()).toBeNull();
-
-    input.queueTravel("sakura");
-    expect(input.consumeTravel()).toBe("sakura");
-    expect(input.consumeTravel()).toBeNull();
-  });
-
-  it("keeps only the latest queued fast travel destination", () => {
-    const input = createInputController();
-
-    input.queueTravel("tokyo");
-    input.queueTravel("hanabi");
-
-    expect(input.consumeTravel()).toBe("hanabi");
-  });
-
-  it("drops a queued fast travel destination on focus loss", () => {
-    const input = createInputController();
-
-    input.queueTravel("gyukatsu");
-    input.reset();
-
-    expect(input.consumeTravel()).toBeNull();
+    expect(input.readMovement(movement)).toEqual({
+      x: 0,
+      y: 0,
+      runRequested: false
+    });
   });
 
   it("reuses a caller-owned movement intent during the animation loop", () => {
     const input = createInputController();
-    const movement = { x: 0, y: 0 };
+    const movement = { x: 0, y: 0, runRequested: false };
     input.pressKey("ArrowLeft");
 
     expect(input.readMovement(movement)).toBe(movement);
-    expect(movement).toEqual({ x: -1, y: 0 });
+    expect(movement).toEqual({ x: -1, y: 0, runRequested: false });
   });
 });

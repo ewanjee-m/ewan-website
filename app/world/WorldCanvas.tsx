@@ -52,9 +52,10 @@ import {
 } from "../guide/WorldNavigation";
 import type {
   CameraRigController,
-  InputController,
   PlayerCharacter
 } from "./WorldView";
+import type { InputController } from "./InputController";
+import type { WorldMovementIntent } from "./WorldInput";
 
 interface WorldCanvasProps {
   character: PlayerCharacter;
@@ -471,7 +472,11 @@ function PlayerController({
     heading: [0, 0, -1],
     destinationId: "airport" as DestinationId
   });
-  const movement = useRef({ x: 0, y: 0 });
+  const movement = useRef<WorldMovementIntent>({
+    x: 0,
+    y: 0,
+    runRequested: false
+  });
   const orbitSnapshot = useRef({ yaw: 0, pitch: -8 });
   const cameraPlacement = useRef(createCameraPlacementBuffer());
   const cameraPlacementInput = useRef({

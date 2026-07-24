@@ -10,7 +10,6 @@ import {
   type PointerEvent as ReactPointerEvent
 } from "react";
 import type { Locale } from "../i18n/messages";
-import type { DestinationId } from "../guide/GuideContract";
 import {
   GuidePanel,
   type ActiveGuideRecommendation,
@@ -36,7 +35,6 @@ const WorldCanvas = dynamic(() => import("./FlatWorldCanvas"), {
 });
 
 export type PlayerCharacter = PlayerCharacterId;
-export type InputController = ReturnType<typeof createInputController>;
 export type CameraRigController = ReturnType<typeof createCameraRig>;
 
 interface WorldLabels {
@@ -54,19 +52,6 @@ interface WorldLabels {
   worldMap: RpgWorldMapLabels;
   guide: GuideLabels;
   portfolioItems: readonly PortfolioEntry[];
-}
-
-interface FastTravelController {
-  queueTravel(destinationId: DestinationId): void;
-}
-
-function supportsFastTravel(
-  controller: InputController
-): controller is InputController & FastTravelController {
-  return (
-    typeof (controller as InputController & Partial<FastTravelController>)
-      .queueTravel === "function"
-  );
 }
 
 function blocksWorldMapShortcut(target: EventTarget | null) {
@@ -129,16 +114,6 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
     setWorldMapOpen(false);
     worldMapTrigger.current?.focus();
   }, []);
-  const travelToDestination = useCallback(
-    (destinationId: DestinationId) => {
-      if (supportsFastTravel(input)) {
-        input.queueTravel(destinationId);
-      }
-      closeWorldMap();
-    },
-    [closeWorldMap, input]
-  );
-
   useEffect(() => {
     const detachKeyboard = attachWorldKeyboardInput(input);
     return detachKeyboard;
@@ -174,7 +149,12 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
     const y = -(event.clientY - (bounds.top + bounds.height / 2)) / radius;
     const magnitude = Math.hypot(x, y);
     const scale = magnitude > 1 ? 1 / magnitude : 1;
-    const movement = { x: x * scale, y: y * scale };
+    const strength = Math.min(1, magnitude);
+    const movement = {
+      x: x * scale,
+      y: y * scale,
+      runRequested: strength >= 0.85
+    };
     if (movementKnob.current) {
       movementKnob.current.style.transform = `translate(${movement.x * 34}px, ${-movement.y * 34}px)`;
     }
@@ -301,7 +281,6 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
         <RpgWorldMap
           labels={labels.worldMap}
           navigation={sharedNavigation.worldMap}
-          onTravel={travelToDestination}
           onClose={closeWorldMap}
         />
       ) : null}
