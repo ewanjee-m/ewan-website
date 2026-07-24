@@ -40,6 +40,12 @@ export interface WorldRuntimeOptions {
   canOccupyDynamic?: (position: readonly [number, number]) => boolean;
 }
 
+export function isWorldRuntimeWalkablePosition(
+  position: readonly [number, number]
+) {
+  return isWalkable(position);
+}
+
 export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
   const movement: WorldMovementIntent = { x: 0, y: 0, runRequested: false };
   let x = RPG_WORLD_SPAWN[0];
@@ -49,7 +55,8 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
   let jumpVelocity = 0;
   let revision = 0;
   const canOccupy = (position: readonly [number, number]) =>
-    isWalkable(position) && (options.canOccupyDynamic?.(position) ?? true);
+    isWorldRuntimeWalkablePosition(position) &&
+    (options.canOccupyDynamic?.(position) ?? true);
 
   const snapshot = (): WorldNavigationSnapshot => {
     const resolvedRegion = getNavigationRegionAt([x, z]);

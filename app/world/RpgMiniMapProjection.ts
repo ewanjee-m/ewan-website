@@ -6,6 +6,7 @@ import {
   type WorldPolygon
 } from "./RpgWorldModel";
 import {
+  isWalkable,
   projectWorldToReference,
   referenceToScene,
   sceneToWorld
@@ -203,6 +204,13 @@ export function unprojectRpgReferenceMapPoint(
 ): WorldPoint3 | null {
   const scene = referenceToScene(point);
   return scene ? sceneToWorld(scene) : null;
+}
+
+export function isRpgReferenceMapPointWalkable(
+  point: readonly [number, number]
+) {
+  const world = unprojectRpgReferenceMapPoint(point);
+  return world !== null && isWalkable(world);
 }
 
 export function projectRpgWorldPolygon(polygon: WorldPolygon) {

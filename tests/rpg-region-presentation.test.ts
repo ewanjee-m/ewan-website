@@ -21,6 +21,8 @@ import {
 import { applyRpgSakuraVisibility } from "../app/world/RpgSignatureLandmarks";
 import type { NavigationRegion } from "../app/world/RpgWorldGeometry";
 
+const ZONE_IDS = ["airport", "tokyo", "gyukatsu", "sakura", "hanabi"] as const;
+
 const originalAudioContext = Object.getOwnPropertyDescriptor(
   window,
   "AudioContext"
@@ -139,9 +141,17 @@ describe("RPG region presentation", () => {
     resolveRpgRegionPresentation(transition(0.25), target);
 
     expect(t).toBe(0.15625);
-    expect(target.zoneWeights.airport).toBeCloseTo(1 - t);
-    expect(target.zoneWeights.tokyo).toBeCloseTo(t);
-    expect(target.zoneWeights.gyukatsu).toBe(0);
+    for (const zoneId of ZONE_IDS) {
+      const expectedWeight =
+        zoneId === "airport" ? 1 - t : zoneId === "tokyo" ? t : 0;
+      expect(target.zoneWeights[zoneId], `${zoneId}:weight`).toBeCloseTo(
+        expectedWeight
+      );
+      expect(target.audioGains[zoneId], `${zoneId}:gain`).toBeCloseTo(
+        expectedWeight *
+          RPG_REGION_PRESENTATION_PROFILES[zoneId].ambienceVolume
+      );
+    }
     expect(target.sky.getHexString()).toBe(expectedColor(from.sky, to.sky, t));
     expect(target.fog.getHexString()).toBe(expectedColor(from.fog, to.fog, t));
     expect(target.key.getHexString()).toBe(expectedColor(from.key, to.key, t));
@@ -188,7 +198,20 @@ describe("RPG region presentation", () => {
       expect(target.vegetationDensity).toBe(profile.vegetationDensity);
       expect(target.effectIntensity).toBe(profile.effectIntensity);
       expect(target.ambienceVolume).toBe(profile.ambienceVolume);
-      expect(target.audioGains[expectedZone]).toBe(profile.ambienceVolume);
+      for (const zoneId of ZONE_IDS) {
+        const expectedWeight = zoneId === expectedZone ? 1 : 0;
+        expect(
+          target.zoneWeights[zoneId],
+          `${progress}:${zoneId}:weight`
+        ).toBe(expectedWeight);
+        expect(
+          target.audioGains[zoneId],
+          `${progress}:${zoneId}:gain`
+        ).toBe(
+          expectedWeight *
+            RPG_REGION_PRESENTATION_PROFILES[zoneId].ambienceVolume
+        );
+      }
     }
   });
 

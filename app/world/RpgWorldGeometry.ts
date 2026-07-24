@@ -2,7 +2,6 @@ import type { DestinationId } from "../guide/GuideContract";
 import {
   RPG_REFERENCE_CALIBRATION_INPUT,
   RPG_REFERENCE_REGISTRATION,
-  RPG_PLAYER_COLLISION_RADIUS,
   RPG_WORLD_ARRIVALS,
   RPG_WORLD_ATOMIC_CELLS,
   RPG_WORLD_BOUNDS,
@@ -10,11 +9,12 @@ import {
   RPG_WORLD_CANAL,
   RPG_WORLD_COLLISIONS,
   RPG_WORLD_ORIENTATION,
-  RPG_WORLD_ROUTES,
   RPG_WORLD_CELLS,
   RPG_WORLD_ZONE_IDS,
   RPG_WORLD_TRANSITIONS,
   RPG_WORLD_ZONES,
+  getRpgWorldModelNavigationZoneId,
+  isRpgWorldModelWalkable,
   type ReferenceAnchor,
   type ReferenceCalibrationControl,
   type ReferenceControlPoint,
@@ -172,8 +172,22 @@ export function getNavigationRegionAt(position: WorldPoint2 | WorldPoint3): Navi
     };
   }
   const zone = getZoneAt(position);
-  return zone
-    ? { kind: "zone", regionId: zone.id, displayZoneId: zone.id, highlightedZoneIds: [zone.id] }
+  const worldPoint = point2(position);
+  if (
+    polygonContainsPoint(RPG_WORLD_CANAL.polygon, worldPoint) &&
+    !polygonContainsPoint(RPG_WORLD_BRIDGE.polygon, worldPoint)
+  ) {
+    return null;
+  }
+  const zoneId =
+    zone?.id ?? getRpgWorldModelNavigationZoneId(worldPoint);
+  return zoneId
+    ? {
+        kind: "zone",
+        regionId: zoneId,
+        displayZoneId: zoneId,
+        highlightedZoneIds: [zoneId]
+      }
     : null;
 }
 
@@ -181,25 +195,9 @@ export function getArrival(zoneId: DestinationId) {
   return RPG_WORLD_ARRIVALS.find((arrival) => arrival.zoneId === zoneId)!;
 }
 
-function pointInCollision([x, z]: WorldPoint2) {
-  return RPG_WORLD_COLLISIONS.some(({ center, halfSize }) =>
-    Math.abs(x - center[0]) <= halfSize[0] + RPG_PLAYER_COLLISION_RADIUS &&
-    Math.abs(z - center[1]) <= halfSize[1] + RPG_PLAYER_COLLISION_RADIUS
-  );
-}
-
 export function isWalkable(position: WorldPoint2 | WorldPoint3) {
   if (!hasFiniteWorldCoordinates(position)) return false;
-  const [x, z] = point2(position);
-  if (x < RPG_WORLD_BOUNDS.minimumX || x > RPG_WORLD_BOUNDS.maximumX || z < RPG_WORLD_BOUNDS.minimumZ || z > RPG_WORLD_BOUNDS.maximumZ) return false;
-  if (!RPG_WORLD_ROUTES.some(({ polygon }) => polygonContainsPoint(polygon, [x, z]))) {
-    return false;
-  }
-  const onBridge = polygonContainsPoint(RPG_WORLD_BRIDGE.polygon, [x, z]);
-  if (!onBridge && polygonContainsPoint(RPG_WORLD_CANAL.polygon, [x, z])) {
-    return false;
-  }
-  return !pointInCollision([x, z]);
+  return isRpgWorldModelWalkable(point2(position));
 }
 
 export function getSurfaceHeight(position: WorldPoint2 | WorldPoint3) {

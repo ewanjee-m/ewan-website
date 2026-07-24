@@ -18,6 +18,89 @@ const richToriis = RPG_RENDERED_RICH_LANDMARKS.filter(
   ({ kind }) => kind === "torii"
 );
 
+export interface RpgRepeatedLandmarkInstance {
+  readonly landmarkId: string;
+  readonly part: "pole" | "light" | "post" | "beam";
+  readonly position: readonly [number, number, number];
+  readonly rotation: readonly [number, number, number];
+  readonly scale: readonly [number, number, number];
+  readonly color: string;
+}
+
+function rotateLandmarkOffset(
+  landmark: RpgLandmark,
+  localX: number,
+  localY: number,
+  localZ: number
+): readonly [number, number, number] {
+  const rotationY = landmark.rotationY ?? 0;
+  const cosine = Math.cos(rotationY);
+  const sine = Math.sin(rotationY);
+  return [
+    landmark.position[0] + cosine * localX + sine * localZ,
+    landmark.position[1] + localY,
+    landmark.position[2] - sine * localX + cosine * localZ
+  ];
+}
+
+export function createRpgRepeatedLandmarkInstances(
+  landmarks: readonly RpgLandmark[]
+): readonly RpgRepeatedLandmarkInstance[] {
+  return landmarks.flatMap<RpgRepeatedLandmarkInstance>((landmark) => {
+    const rotation = [0, landmark.rotationY ?? 0, 0] as const;
+    const [width, height, depth] = landmark.size;
+    if (landmark.kind === "lantern") {
+      return [
+        {
+          landmarkId: landmark.id,
+          part: "pole" as const,
+          position: rotateLandmarkOffset(landmark, 0, -height * 0.18, 0),
+          rotation,
+          scale: [width / 3, height * 0.64, width / 3] as const,
+          color: landmark.color
+        },
+        {
+          landmarkId: landmark.id,
+          part: "light" as const,
+          position: rotateLandmarkOffset(landmark, 0, height * 0.24, 0),
+          rotation,
+          scale: [width * 4 / 3, height * 0.28, width * 4 / 3] as const,
+          color: landmark.accent
+        }
+      ];
+    }
+    if (landmark.kind === "torii") {
+      return [
+        ...[-1, 1].map((side) => ({
+          landmarkId: landmark.id,
+          part: "post" as const,
+          position: rotateLandmarkOffset(
+            landmark,
+            side * width * 0.34,
+            0,
+            0
+          ),
+          rotation,
+          scale: [width * 0.1, height, depth * 0.25] as const,
+          color: landmark.color
+        })),
+        ...[0.28, 0.45].map((ratio) => ({
+          landmarkId: landmark.id,
+          part: "beam" as const,
+          position: rotateLandmarkOffset(landmark, 0, height * ratio, 0),
+          rotation,
+          scale: [width, height * 0.1, depth * 0.32] as const,
+          color: landmark.accent
+        }))
+      ];
+    }
+    return [];
+  });
+}
+
+const richLanternInstances = createRpgRepeatedLandmarkInstances(richLanterns);
+const richToriiInstances = createRpgRepeatedLandmarkInstances(richToriis);
+
 interface LandmarkProps {
   landmark: RpgLandmark;
   qualityLevel: SceneQualityLevel;
@@ -179,17 +262,14 @@ function RepeatedLandmarkBatches() {
       <Instances limit={richLanterns.length} frames={1}>
         <cylinderGeometry args={[1, 1, 1, 8]} />
         <meshStandardMaterial color="#ffffff" roughness={0.78} />
-        {richLanterns.map((landmark) => (
+        {richLanternInstances.filter(({ part }) => part === "pole").map((instance) => (
           <Instance
-            key={`${landmark.id}-pole`}
-            position={[
-              landmark.position[0],
-              landmark.position[1] - landmark.size[1] * 0.18,
-              landmark.position[2]
-            ]}
-            rotation={[0, landmark.rotationY ?? 0, 0]}
-            scale={[0.06, landmark.size[1] * 0.64, 0.06]}
-            color={landmark.color}
+            key={`${instance.landmarkId}-pole`}
+            position={instance.position}
+            rotation={instance.rotation}
+            scale={instance.scale}
+            color={instance.color}
+            userData={{ landmarkId: instance.landmarkId }}
           />
         ))}
       </Instances>
@@ -200,54 +280,30 @@ function RepeatedLandmarkBatches() {
           emissive="#ffb14e"
           emissiveIntensity={1.4}
         />
-        {richLanterns.map((landmark) => (
+        {richLanternInstances.filter(({ part }) => part === "light").map((instance) => (
           <Instance
-            key={`${landmark.id}-light`}
-            position={[
-              landmark.position[0],
-              landmark.position[1] + landmark.size[1] * 0.24,
-              landmark.position[2]
-            ]}
-            rotation={[0, landmark.rotationY ?? 0, 0]}
-            scale={[0.24, landmark.size[1] * 0.28, 0.24]}
-            color={landmark.accent}
+            key={`${instance.landmarkId}-light`}
+            position={instance.position}
+            rotation={instance.rotation}
+            scale={instance.scale}
+            color={instance.color}
+            userData={{ landmarkId: instance.landmarkId }}
           />
         ))}
       </Instances>
       <Instances limit={richToriis.length * 4} frames={1}>
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial color="#ffffff" roughness={0.84} />
-        {richToriis.flatMap((landmark) => {
-          const [width, height, depth] = landmark.size;
-          return [
-            ...[-1, 1].map((side) => (
-              <Instance
-                key={`${landmark.id}-post-${side}`}
-                position={[
-                  landmark.position[0] + side * width * 0.34,
-                  landmark.position[1],
-                  landmark.position[2]
-                ]}
-                rotation={[0, landmark.rotationY ?? 0, 0]}
-                scale={[width * 0.1, height, depth * 0.25]}
-                color={landmark.color}
-              />
-            )),
-            ...[0.28, 0.45].map((ratio) => (
-              <Instance
-                key={`${landmark.id}-beam-${ratio}`}
-                position={[
-                  landmark.position[0],
-                  landmark.position[1] + height * ratio,
-                  landmark.position[2]
-                ]}
-                rotation={[0, landmark.rotationY ?? 0, 0]}
-                scale={[width, height * 0.1, depth * 0.32]}
-                color={landmark.accent}
-              />
-            ))
-          ];
-        })}
+        {richToriiInstances.map((instance, index) => (
+          <Instance
+            key={`${instance.landmarkId}-${instance.part}-${index}`}
+            position={instance.position}
+            rotation={instance.rotation}
+            scale={instance.scale}
+            color={instance.color}
+            userData={{ landmarkId: instance.landmarkId }}
+          />
+        ))}
       </Instances>
     </>
   );
@@ -316,7 +372,12 @@ export const RpgSignatureLandmarks = memo(function RpgSignatureLandmarks({
   return (
     <group name="rpg-signature-landmarks">
       {RPG_RENDERED_RICH_LANDMARKS
-        .filter((landmark) => landmark.kind !== "npc")
+        .filter(
+          (landmark) =>
+            landmark.kind !== "npc" &&
+            landmark.kind !== "lantern" &&
+            landmark.kind !== "torii"
+        )
         .map((landmark) => (
           <Landmark
             key={landmark.id}

@@ -15,6 +15,7 @@ import {
 } from "../app/world/RpgWorldGeometry";
 import {
   RPG_WORLD_ARRIVALS,
+  RPG_WORLD_BOUNDS,
   RPG_WORLD_BRIDGE,
   RPG_WORLD_CANAL,
   RPG_WORLD_CELLS,
@@ -229,25 +230,30 @@ describe("WORLD-02 through WORLD-05 world geometry", () => {
     expect(getSurfaceHeight([16.6, -17])).toBeCloseTo(RPG_WORLD_BRIDGE.surfaceHeight + RPG_WORLD_BRIDGE.archRise, 8);
   });
 
-  it("accepts only the route union after collision and canal subtraction", () => {
+  it("accepts model-authored outdoor surfaces after collision and canal subtraction", () => {
     for (const point of [
       [-35, -30],
       [0, 15],
       [30, -10],
-      [0, -10],
-      [16.6, -15]
+      [26, -18],
+      [28, -24]
+    ] as const) {
+      expect(isWalkable(point), String(point)).toBe(true);
+    }
+    for (const point of [
+      [16.6, -15],
+      [16.6, 0],
+      [RPG_WORLD_BOUNDS.maximumX + 0.1, 0]
     ] as const) {
       expect(isWalkable(point), String(point)).toBe(false);
     }
-    expect(isWalkable([26, -18])).toBe(true);
-    expect(isWalkable([28, -24])).toBe(false);
   });
 
   it("WORLD-03 flood-fills from spawn to all arrivals and crosses the canal only on the bridge", () => {
     expect(RPG_WORLD_COLLISIONS.map(({ sourceId }) => sourceId)).toContain(
       "sakura-tree-05"
     );
-    expect(RPG_WORLD_COLLISIONS.map(({ sourceId }) => sourceId)).not.toContain(
+    expect(RPG_WORLD_COLLISIONS.map(({ sourceId }) => sourceId)).toContain(
       "district-volume-sakura-tree-east-north"
     );
     const extents = (polygon: readonly (readonly [number, number])[]) => ({

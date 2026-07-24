@@ -96,6 +96,7 @@ export interface WorldSceneLandmark {
   readonly variant?: number;
   readonly sourceRouteId?: string;
   readonly navigationRegionId?: string;
+  readonly collisionPadding?: WorldPoint2;
 }
 
 export interface WorldArrival {
@@ -522,7 +523,8 @@ const createSakuraTree = (
   position: readonly [number, number, number],
   size: readonly [number, number, number],
   variant: number,
-  blocksMovement = true
+  blocksMovement = true,
+  collisionPadding?: WorldPoint2
 ): WorldSceneLandmark => ({
   id,
   kind: "sakuraTree",
@@ -532,7 +534,8 @@ const createSakuraTree = (
   color: variant % 2 === 0 ? "#6f4d43" : "#795246",
   accent: variant % 2 === 0 ? "#f5abc5" : "#ffc1d4",
   blocksMovement,
-  variant
+  variant,
+  collisionPadding
 });
 
 const createLantern = (
@@ -689,7 +692,8 @@ export const RPG_WORLD_SCENE_LANDMARKS: readonly WorldSceneLandmark[] = [
     color: "#645367",
     accent: "#f2a269",
     blocksMovement: true,
-    variant: 6
+    variant: 6,
+    collisionPadding: [0, 0.5]
   },
   {
     id: "district-volume-tokyo-terrace-tower",
@@ -750,7 +754,7 @@ export const RPG_WORLD_SCENE_LANDMARKS: readonly WorldSceneLandmark[] = [
     id: "district-volume-gyukatsu-lantern-machiya",
     kind: "machiya",
     zoneId: "gyukatsu",
-    position: [16.5, 1.6, 6.8],
+    position: [14, 1.6, 6.8],
     size: [5, 3.2, 3.2],
     color: "#3f5a57",
     accent: "#e7c37e",
@@ -783,7 +787,9 @@ export const RPG_WORLD_SCENE_LANDMARKS: readonly WorldSceneLandmark[] = [
     "sakura-tree-01",
     RPG_PRIMARY_LANDMARK_POSITIONS.sakura,
     [4.8, 6.6, 4.8],
-    0
+    0,
+    true,
+    [0, 0.5]
   ),
   createSakuraTree(
     "sakura-tree-02",
@@ -823,10 +829,9 @@ export const RPG_WORLD_SCENE_LANDMARKS: readonly WorldSceneLandmark[] = [
   ),
   createSakuraTree(
     "district-volume-sakura-tree-east-north",
-    [13, 1.95, -18.9],
+    [13, 1.95, -21.5],
     [2.1, 3.9, 2.1],
-    7,
-    false
+    7
   ),
   createSakuraTree(
     "district-volume-sakura-tree-west-south",
@@ -1133,8 +1138,11 @@ export const RPG_WORLD_COLLISIONS: readonly WorldCollisionShape[] = [
       sourceId: landmark.id,
       kind: "orientedRect" as const,
       center: [landmark.position[0], landmark.position[2]] as const,
-      halfSize: [landmark.size[0] / 2, landmark.size[2] / 2] as const,
-      rotationRadians: 0
+      halfSize: [
+        landmark.size[0] / 2 + (landmark.collisionPadding?.[0] ?? 0),
+        landmark.size[2] / 2 + (landmark.collisionPadding?.[1] ?? 0)
+      ] as const,
+      rotationRadians: landmark.rotationY ?? 0
     })),
   ...RPG_WORLD_STATIC_BLOCKERS.map(({ collision }) => collision)
 ];
@@ -1159,14 +1167,91 @@ function modelTransitionAt(position: WorldPoint2) {
     );
 }
 
+function distanceToZonePolygon(
+  { polygon }: WorldZone,
+  [x, z]: WorldPoint2
+) {
+  const xs = polygon.map(([pointX]) => pointX);
+  const zs = polygon.map(([, pointZ]) => pointZ);
+  const minimumX = Math.min(...xs);
+  const maximumX = Math.max(...xs);
+  const minimumZ = Math.min(...zs);
+  const maximumZ = Math.max(...zs);
+  return Math.hypot(
+    Math.max(minimumX - x, 0, x - maximumX),
+    Math.max(minimumZ - z, 0, z - maximumZ)
+  );
+}
+
+export function getRpgWorldModelNavigationZoneId(
+  position: WorldPoint2
+): DestinationId | null {
+  const [x, z] = position;
+  if (
+    !Number.isFinite(x) ||
+    !Number.isFinite(z) ||
+    x < RPG_WORLD_BOUNDS.minimumX ||
+    x > RPG_WORLD_BOUNDS.maximumX ||
+    z < RPG_WORLD_BOUNDS.minimumZ ||
+    z > RPG_WORLD_BOUNDS.maximumZ
+  ) {
+    return null;
+  }
+  const zoneOwner = RPG_WORLD_ZONES.find(({ polygon }) =>
+    rectangleContainsPoint(polygon, position)
+  );
+  if (zoneOwner) return zoneOwner.id;
+  return [...RPG_WORLD_ZONES]
+    .sort(
+      (first, second) =>
+        distanceToZonePolygon(first, position) -
+          distanceToZonePolygon(second, position) ||
+        RPG_WORLD_ZONE_IDS.indexOf(first.id) -
+          RPG_WORLD_ZONE_IDS.indexOf(second.id)
+    )[0].id;
+}
+
 function modelRegionAt(position: WorldPoint2) {
   const transitionOwner = modelTransitionAt(position);
   if (transitionOwner) return { kind: "transition" as const, regionId: transitionOwner.id };
-  const zone = RPG_WORLD_ZONES.find(({ polygon }) => rectangleContainsPoint(polygon, position));
-  return zone ? { kind: "zone" as const, regionId: zone.id } : null;
+  const regionId = getRpgWorldModelNavigationZoneId(position);
+  return regionId ? { kind: "zone" as const, regionId } : null;
 }
 
-function modelPointIsWalkable(position: WorldPoint2) {
+function sceneSurfaceContainsPoint(
+  surface: WorldSceneSurface,
+  [x, z]: WorldPoint2
+) {
+  const halfWidth = surface.size[0] / 2;
+  const halfDepth = surface.size[2] / 2;
+  if (surface.shape === "circle") {
+    const normalizedX = (x - surface.position[0]) / halfWidth;
+    const normalizedZ = (z - surface.position[2]) / halfDepth;
+    return normalizedX ** 2 + normalizedZ ** 2 <= 1;
+  }
+  return (
+    Math.abs(x - surface.position[0]) <= halfWidth &&
+    Math.abs(z - surface.position[2]) <= halfDepth
+  );
+}
+
+function collisionContainsPoint(
+  { center, halfSize, rotationRadians }: WorldCollisionShape,
+  [x, z]: WorldPoint2
+) {
+  const dx = x - center[0];
+  const dz = z - center[1];
+  const cosine = Math.cos(rotationRadians);
+  const sine = Math.sin(rotationRadians);
+  const localX = cosine * dx - sine * dz;
+  const localZ = sine * dx + cosine * dz;
+  return (
+    Math.abs(localX) <= halfSize[0] + RPG_PLAYER_COLLISION_RADIUS &&
+    Math.abs(localZ) <= halfSize[1] + RPG_PLAYER_COLLISION_RADIUS
+  );
+}
+
+export function isRpgWorldModelWalkable(position: WorldPoint2) {
   const [x, z] = position;
   if (
     x < RPG_WORLD_BOUNDS.minimumX ||
@@ -1174,16 +1259,19 @@ function modelPointIsWalkable(position: WorldPoint2) {
     z < RPG_WORLD_BOUNDS.minimumZ ||
     z > RPG_WORLD_BOUNDS.maximumZ
   ) return false;
-  if (!RPG_WORLD_ROUTES.some(({ polygon }) => rectangleContainsPoint(polygon, position))) {
+  const onBridge = rectangleContainsPoint(RPG_WORLD_BRIDGE.polygon, position);
+  const onAuthoredSurface = RPG_WORLD_SCENE_SURFACES.some(
+    (surface) =>
+      surface.kind !== "water" && sceneSurfaceContainsPoint(surface, position)
+  );
+  if (!onBridge && !onAuthoredSurface) {
     return false;
   }
-  const onBridge = rectangleContainsPoint(RPG_WORLD_BRIDGE.polygon, position);
   if (!onBridge && rectangleContainsPoint(RPG_WORLD_CANAL.polygon, position)) {
     return false;
   }
-  return !RPG_WORLD_COLLISIONS.some(({ center, halfSize }) =>
-    Math.abs(x - center[0]) <= halfSize[0] + RPG_PLAYER_COLLISION_RADIUS &&
-    Math.abs(z - center[1]) <= halfSize[1] + RPG_PLAYER_COLLISION_RADIUS
+  return !RPG_WORLD_COLLISIONS.some((collision) =>
+    collisionContainsPoint(collision, position)
   );
 }
 
@@ -1243,7 +1331,7 @@ export const RPG_WORLD_ATOMIC_CELLS = RPG_WORLD_TOPOLOGY_X.slice(0, -1).flatMap(
       const maximumZ = RPG_WORLD_TOPOLOGY_Z[zIndex + 1];
       const center: WorldPoint2 = [(minimumX + maximumX) / 2, (minimumZ + maximumZ) / 2];
       const region = modelRegionAt(center);
-      const walkable = modelPointIsWalkable(center);
+      const walkable = isRpgWorldModelWalkable(center);
       if (!region && walkable) {
         throw new Error(`Walkable world gap at ${center[0]},${center[1]}`);
       }

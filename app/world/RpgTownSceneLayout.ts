@@ -4,14 +4,13 @@ import {
   RPG_WORLD_BRIDGE,
   RPG_WORLD_CANAL,
   RPG_WORLD_CANAL_WATER_LEVEL,
-  RPG_WORLD_COLLISIONS,
   RPG_PLAYER_COLLISION_RADIUS as CANONICAL_PLAYER_COLLISION_RADIUS,
   RPG_WORLD_ROUTES,
   RPG_WORLD_SCENE_LANDMARKS,
   RPG_WORLD_SCENE_SURFACES,
   RPG_WORLD_ZONES
 } from "./RpgWorldModel";
-import { getSurfaceHeight } from "./RpgWorldGeometry";
+import { getSurfaceHeight, isWalkable } from "./RpgWorldGeometry";
 
 export interface RpgTownBounds {
   minimumX: number;
@@ -76,6 +75,7 @@ export interface RpgLandmark {
   rotationY?: number;
   variant?: number;
   navigationRegionId?: string;
+  collisionPadding?: readonly [number, number];
 }
 
 export const RPG_TOWN_BOUNDS: RpgTownBounds = RPG_WORLD_BOUNDS;
@@ -159,49 +159,8 @@ export function rectanglesTouchOrOverlap(
 
 export const RPG_PLAYER_COLLISION_RADIUS = CANONICAL_PLAYER_COLLISION_RADIUS;
 
-const boundsOf = (polygon: readonly (readonly [number, number])[]) => ({
-  minimumX: Math.min(...polygon.map(([x]) => x)),
-  maximumX: Math.max(...polygon.map(([x]) => x)),
-  minimumZ: Math.min(...polygon.map(([, z]) => z)),
-  maximumZ: Math.max(...polygon.map(([, z]) => z))
-});
-const RPG_CANAL_BOUNDS = boundsOf(RPG_WORLD_CANAL.polygon);
-const RPG_BRIDGE_BOUNDS = boundsOf(RPG_WORLD_BRIDGE.polygon);
-
-function rectangleContains(
-  bounds: ReturnType<typeof boundsOf>,
-  x: number,
-  z: number
-) {
-  return (
-    x >= bounds.minimumX &&
-    x <= bounds.maximumX &&
-    z >= bounds.minimumZ &&
-    z <= bounds.maximumZ
-  );
-}
-
 export function isRpgWalkablePosition(x: number, z: number): boolean {
-  if (!Number.isFinite(x) || !Number.isFinite(z)) return false;
-  if (
-    x < RPG_TOWN_BOUNDS.minimumX ||
-    x > RPG_TOWN_BOUNDS.maximumX ||
-    z < RPG_TOWN_BOUNDS.minimumZ ||
-    z > RPG_TOWN_BOUNDS.maximumZ
-  ) {
-    return false;
-  }
-  if (
-    !rectangleContains(RPG_BRIDGE_BOUNDS, x, z) &&
-    rectangleContains(RPG_CANAL_BOUNDS, x, z)
-  ) {
-    return false;
-  }
-  return !RPG_WORLD_COLLISIONS.some(
-    ({ center, halfSize }) =>
-      Math.abs(x - center[0]) <= halfSize[0] + RPG_PLAYER_COLLISION_RADIUS &&
-      Math.abs(z - center[1]) <= halfSize[1] + RPG_PLAYER_COLLISION_RADIUS
-  );
+  return isWalkable([x, z]);
 }
 
 export function getRpgWalkSurfaceHeight(x: number, z: number): number {

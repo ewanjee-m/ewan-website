@@ -16,7 +16,9 @@ import {
   RPG_WORLD_BOUNDS,
   RPG_WORLD_ROUTES,
   RPG_WORLD_SCENE_LANDMARKS,
-  RPG_WORLD_SCENE_SURFACES
+  RPG_WORLD_SCENE_SURFACES,
+  RPG_WORLD_ZONES,
+  isRpgWorldModelWalkable
 } from "../app/world/RpgWorldModel";
 import {
   getNavigationRegionAt,
@@ -27,6 +29,12 @@ import {
   createRpgBridgeDeckSegments,
   resolveRpgSurfaceMeshPosition
 } from "../app/world/RpgWorldSurfaces";
+import { isWorldRuntimeWalkablePosition } from "../app/world/WorldRuntime";
+import {
+  isRpgReferenceMapPointWalkable,
+  projectRpgReferenceMapPoint,
+  unprojectRpgReferenceMapPoint
+} from "../app/world/RpgMiniMapProjection";
 
 describe("RPG town scene layout", () => {
   it("composes the modular 3D scene without the fixed backdrop", () => {
@@ -59,6 +67,25 @@ describe("RPG town scene layout", () => {
     for (const point of [[-30, 0], [16.6, 0], [16.6, -24], [-8, 14]] as const) {
       expect(isRpgWalkablePosition(point[0], point[1])).toBe(isWalkable(point));
       expect(getRpgWalkSurfaceHeight(point[0], point[1])).toBe(getSurfaceHeight(point));
+    }
+  });
+  it("keeps model, geometry, runtime, scene, and map walkability identical on a dense grid", () => {
+    for (let x = RPG_WORLD_BOUNDS.minimumX + 0.25; x < RPG_WORLD_BOUNDS.maximumX; x += 0.5) {
+      for (let z = RPG_WORLD_BOUNDS.minimumZ + 0.25; z < RPG_WORLD_BOUNDS.maximumZ; z += 0.5) {
+        const point = [x, z] as const;
+        const canonical = isRpgWorldModelWalkable(point);
+        expect(isWalkable(point), `geometry:${x},${z}`).toBe(canonical);
+        expect(isWorldRuntimeWalkablePosition(point), `runtime:${x},${z}`).toBe(
+          canonical
+        );
+        expect(isRpgWalkablePosition(x, z), `scene:${x},${z}`).toBe(canonical);
+        const pixel = projectRpgReferenceMapPoint([x, 0, z]);
+        const mapWorld = unprojectRpgReferenceMapPoint([pixel.x, pixel.y])!;
+        expect(
+          isRpgReferenceMapPointWalkable([pixel.x, pixel.y]),
+          `map:${x},${z}`
+        ).toBe(isRpgWorldModelWalkable([mapWorld[0], mapWorld[2]]));
+      }
     }
   });
   it("provides a broad explorable town instead of a narrow stage", () => {
@@ -465,7 +492,7 @@ describe("RPG town scene layout", () => {
         motif.minimumCount
       );
       for (const landmark of landmarks) {
-        expect(typeof landmark.blocksMovement, landmark.id).toBe("boolean");
+        expect(landmark.blocksMovement, landmark.id).toBe(true);
         expect(landmark.size.every((value) => value > 0), landmark.id).toBe(
           true
         );
@@ -492,6 +519,7 @@ describe("RPG town scene layout", () => {
 
     expect(addedDistrictVolumes.length).toBeGreaterThanOrEqual(17);
     for (const landmark of addedDistrictVolumes) {
+      const zone = RPG_TOWN_ZONES.find(({ id }) => id === landmark.zoneId)!;
       const footprint = {
         minimumX: landmark.position[0] - landmark.size[0] / 2,
         maximumX: landmark.position[0] + landmark.size[0] / 2,
@@ -499,22 +527,36 @@ describe("RPG town scene layout", () => {
         maximumZ: landmark.position[2] + landmark.size[2] / 2
       };
 
-      expect(landmark.position[0], landmark.id).toBeGreaterThanOrEqual(
-        RPG_TOWN_BOUNDS.minimumX
-      );
-      expect(landmark.position[0], landmark.id).toBeLessThanOrEqual(
-        RPG_TOWN_BOUNDS.maximumX
-      );
-      expect(landmark.position[2], landmark.id).toBeGreaterThanOrEqual(
-        RPG_TOWN_BOUNDS.minimumZ
-      );
-      expect(landmark.position[2], landmark.id).toBeLessThanOrEqual(
-        RPG_TOWN_BOUNDS.maximumZ
+      const canonicalZone = RPG_WORLD_ZONES.find(({ id }) => id === zone.id)!;
+      const navigationRegion = getNavigationRegionAt([
+        landmark.position[0],
+        landmark.position[2]
+      ]);
+      expect(navigationRegion?.regionId, landmark.id).toBe(
+        landmark.navigationRegionId ?? canonicalZone.id
       );
 
-      expect(Number.isFinite(footprint.minimumX), landmark.id).toBe(true);
-      expect(Number.isFinite(footprint.maximumX), landmark.id).toBe(true);
-      expect(pedestrianSurfaces.length).toBeGreaterThan(0);
+      expect(
+        RPG_MAIN_ROUTE.some((route) =>
+          rectanglesTouchOrOverlap(footprint, route, -0.05)
+        ),
+        landmark.id
+      ).toBe(false);
+      expect(
+        pedestrianSurfaces.some((surface) =>
+          rectanglesTouchOrOverlap(
+            footprint,
+            {
+              minimumX: surface.position[0] - surface.size[0] / 2,
+              maximumX: surface.position[0] + surface.size[0] / 2,
+              minimumZ: surface.position[2] - surface.size[2] / 2,
+              maximumZ: surface.position[2] + surface.size[2] / 2
+            },
+            -0.05
+          )
+        ),
+        landmark.id
+      ).toBe(false);
     }
   });
 
