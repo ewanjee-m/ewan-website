@@ -114,6 +114,11 @@ describe("RPG visual camera fixtures", () => {
   it("frames the Tokyo tower from the open center connector", () => {
     const fixture = RPG_VISUAL_CAMERA_FIXTURES.tokyo;
     expect(fixture.capturePosition).toEqual([-8, 12]);
+    expect(fixture.captureRoute).toEqual([
+      [-7, 20],
+      [-7, 12],
+      [-8, 12]
+    ]);
     expect(fixture.screenOffsetDegrees).toBe(0);
     expect(fixture.pitchDegrees).toBe(18);
   });

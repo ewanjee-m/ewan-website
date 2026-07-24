@@ -34,7 +34,12 @@ export const RPG_VISUAL_CAMERA_FIXTURES: Readonly<
     pitchDegrees: 18,
     desktopDistance: 7.8,
     mobileDistance: 7.02,
-    capturePosition: [-8, 12]
+    capturePosition: [-8, 12],
+    captureRoute: [
+      [-7, 20],
+      [-7, 12],
+      [-8, 12]
+    ]
   },
   gyukatsu: {
     focusLandmarkIds: ["gyukatsu-main-machiya"],
