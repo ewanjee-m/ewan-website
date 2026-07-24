@@ -1701,9 +1701,13 @@ git push fork HEAD:agent/visual-fidelity-map-alignment
 - Create: `app/world/RpgRegionPresentation.ts`
 - Create: `app/world/RpgWorldEffects.tsx`
 - Create: `app/world/RpgRegionAudio.tsx`
+- Create: `app/world/RpgTownRenderStats.ts`
 - Modify: `app/world/RpgTownScene.tsx:1-61`
 - Modify: `app/world/RpgTownAmbience.tsx:1-28`
 - Modify: `app/world/RpgTownDetails.tsx`
+- Modify: `app/world/RpgTownSceneLayout.ts`
+- Modify: `app/world/RpgWorldModel.ts`
+- Modify: `app/world/RpgWorldGeometry.ts`
 - Modify: `vitest.config.ts:5-20`
 - Create: `tests/rpg-region-presentation.test.ts`
 - Test: `tests/rpg-town-scene-layout.test.ts`
@@ -1712,12 +1716,16 @@ git push fork HEAD:agent/visual-fidelity-map-alignment
 - Test: `tests/rpg-town-street-life.test.ts`
 - Test: `tests/rpg-town-draw-budget.test.ts`
 - Test: `tests/rpg-town-scene-instancing.test.ts`
+- Test: `tests/rpg-world-geometry.test.ts`
+- Test: `tests/world-runtime.test.ts`
+- Test: `tests/rpg-mini-map.test.ts`
 - Modify: `tests/rpg-world-depth-bands.test.ts`
 
 **Interfaces:**
 - Consumes: `RPG_TOWN_SURFACES`, `RPG_MAIN_ROUTE`, `RPG_LANDMARKS`, mutable `RefObject<WorldNavigationSnapshot>`.
 - Produces: `<RpgWorldSurfaces />`, `<RpgSignatureLandmarks />`, `<RpgWorldEffects />`, `<RpgRegionAudio />`, active `<RpgTownScene />`.
 - Produces: `resolveRpgRegionPresentation(region, target)` with smoothstep weights for every visual/audio channel.
+- Preserves one canonical walkability contract: walkable model ground/plaza/road/sidewalk/bridge minus canal water and collision volumes; `isRpgWalkablePosition(x, z)` delegates directly to `isWalkable([x, z])`.
 - Defers: NPC mounting to Task 6 so this task compiles independently.
 
 - [ ] **Step 1: Change the scene contract test from transparent to visible 3D**
@@ -1832,9 +1840,13 @@ export function RpgWorldSurfaces() {
 
 `createRpgBridgeDeckSegments(24)` samples `getSurfaceHeight` at both ends of every segment, places the deck top at their average, and rotates each box by `atan2(endHeight - startHeight, endX - startX)`. Add a geometry test that samples each segment center and both seams; rendered deck-top height must differ from `getSurfaceHeight([x, -17])` by at most `0.02 world units`. Do not render a second flat bridge under the arched deck.
 
+Expand the canonical `RpgWorldModel`/`RpgWorldGeometry.isWalkable` contract from route-only movement to outdoor exploration on model-authored ground, plazas, roads, sidewalks, and the bridge. Continue rejecting out-of-bounds points, canal water outside the bridge, and all collision volumes. Do not add a compatibility-only rectangle policy in `RpgTownSceneLayout`; it must remain a direct adapter to `isWalkable`. Cross-check a dense town grid so runtime, scene layout, map samples, and route reachability return the same result for every point.
+
 - [ ] **Step 4: Render signature landmarks from authored data**
 
 `RpgSignatureLandmarks.tsx` filters `getRpgLandmarkRenderTier(landmark) === "rich"` and renders every kind with one reusable component. Every root writes `userData.landmarkId`, takes position/size/color/rotation only from the landmark record, and adds detail as local offsets:
+
+When repeated rich landmarks use `<Instances>`, the rendered `<Instance>` itself carries the matching `userData.landmarkId` and the landmark record's rotation-correct transform. Metadata on an empty sibling/parent group does not satisfy ownership.
 
 | kind | geometry ownership |
 | --- | --- |
@@ -1988,7 +2000,7 @@ export const RPG_REGION_PRESENTATION_PROFILES = {
 
 `RpgRegionPresentationState` contains mutable `Color` values, the four scalar density/intensity values, and `zoneWeights`/`audioGains` records with all five `DestinationId` keys. `resolveRpgRegionPresentation(region, target)` uses `t = progress * progress * (3 - 2 * progress)` for transitions, linearly blends every color/scalar, sets the source/destination zone weights to `1 - t`/`t`, and sets each audio gain to `zoneWeight * profile.ambienceVolume`. A zone sets its own weight to `1` and all others to `0`.
 
-Add a pure test with transition progress `0.5` that expects source/destination weights `0.5`, every unrelated weight `0`, decoration/vegetation/effect values equal to the arithmetic midpoint, and both source/destination audio gains equal to half their profile volumes. Add endpoint tests at `0` and `1`; no channel may jump at the boundary.
+Add a pure midpoint test with transition progress `0.5`, plus a non-midpoint `0.25` case that proves the smoothstep value rather than linear interpolation. Assert complete five-key `zoneWeights` and `audioGains` records, every color, both light intensities, and every scalar at the non-midpoint and at endpoints `0` and `1`; no channel may jump or retain a stale unrelated-zone value.
 
 `RpgTownAmbience` uses exactly one `<color attach="background">`, one `<fog attach="fog">`, one hemisphere light and one directional light. Its `useFrame` runs at priority `-3`, resolves the shared presentation from `navigation.current.navigationRegion`, and mutates the existing color/fog/light refs with frame-time damping. `RpgTownDetails` multiplies the Tokyo and Gyukatsu material opacity by their zone weight and `decorationDensity`; Sakura vegetation in `RpgSignatureLandmarks` uses the Sakura weight and `vegetationDensity`. `RpgWorldEffects` applies the Sakura weight to petals and the Hanabi weight to fireworks, then multiplies both by `effectIntensity` and the current quality budget.
 
@@ -2016,7 +2028,7 @@ exclude: [...configDefaults.exclude, ...ACTIVE_UNIT_EXCLUDES]
 Run:
 
 ```bash
-npm run test:unit -- --run tests/rpg-region-presentation.test.ts tests/rpg-town-scene-layout.test.ts tests/rpg-town-architecture.test.ts tests/rpg-town-details.test.ts tests/rpg-town-street-life.test.ts tests/rpg-town-draw-budget.test.ts tests/rpg-town-scene-instancing.test.ts tests/rpg-town-render-tier.test.ts tests/rpg-hanabi-layout.test.ts tests/rpg-world-depth-bands.test.ts
+npm run test:unit -- --run tests/rpg-region-presentation.test.ts tests/rpg-town-scene-layout.test.ts tests/rpg-town-architecture.test.ts tests/rpg-town-details.test.ts tests/rpg-town-street-life.test.ts tests/rpg-town-draw-budget.test.ts tests/rpg-town-scene-instancing.test.ts tests/rpg-town-render-tier.test.ts tests/rpg-hanabi-layout.test.ts tests/rpg-world-depth-bands.test.ts tests/rpg-world-geometry.test.ts tests/world-runtime.test.ts tests/rpg-mini-map.test.ts
 ```
 
 Expected: PASS; all scene suites run through the active include/exclude contract, the historical G007 constant remains unchanged, the old transparent contract is gone, and every presentation channel has a continuous transition test.
@@ -2024,7 +2036,7 @@ Expected: PASS; all scene suites run through the active include/exclude contract
 - [ ] **Step 8: Commit and push**
 
 ```bash
-git add app/world/RpgWorldSurfaces.tsx app/world/RpgSignatureLandmarks.tsx app/world/RpgRegionPresentation.ts app/world/RpgWorldEffects.tsx app/world/RpgRegionAudio.tsx app/world/RpgTownScene.tsx app/world/RpgTownAmbience.tsx app/world/RpgTownDetails.tsx vitest.config.ts tests/rpg-region-presentation.test.ts tests/rpg-town-scene-layout.test.ts tests/rpg-town-architecture.test.ts tests/rpg-town-details.test.ts tests/rpg-town-street-life.test.ts tests/rpg-town-draw-budget.test.ts tests/rpg-town-scene-instancing.test.ts tests/rpg-world-depth-bands.test.ts
+git add app/world/RpgWorldSurfaces.tsx app/world/RpgSignatureLandmarks.tsx app/world/RpgRegionPresentation.ts app/world/RpgWorldEffects.tsx app/world/RpgRegionAudio.tsx app/world/RpgTownRenderStats.ts app/world/RpgTownScene.tsx app/world/RpgTownAmbience.tsx app/world/RpgTownDetails.tsx app/world/RpgTownSceneLayout.ts app/world/RpgWorldModel.ts app/world/RpgWorldGeometry.ts vitest.config.ts tests/rpg-region-presentation.test.ts tests/rpg-town-scene-layout.test.ts tests/rpg-town-architecture.test.ts tests/rpg-town-details.test.ts tests/rpg-town-street-life.test.ts tests/rpg-town-draw-budget.test.ts tests/rpg-town-scene-instancing.test.ts tests/rpg-world-geometry.test.ts tests/world-runtime.test.ts tests/rpg-mini-map.test.ts tests/rpg-world-depth-bands.test.ts
 git commit -m "Build the continuous 3D town scene" \
   -m "Generated with Codex" \
   -m "Co-Authored-By: OpenAI Codex <noreply@openai.com>"
