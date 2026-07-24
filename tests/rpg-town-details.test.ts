@@ -70,12 +70,18 @@ describe("approved town concept 3D details", () => {
       expect(detail.parasolColor, detail.id).toMatch(/^#(?:b|c)[0-9a-f]{5}$/i);
       expect(detail.seatOffsets.length, detail.id).toBeGreaterThanOrEqual(3);
       expect(Math.abs(detail.position[2]), detail.id).toBeGreaterThan(3);
-      expect(detail.position.every(Number.isFinite), detail.id).toBe(true);
+      expect(
+        isRpgWalkablePosition(detail.position[0], detail.position[2]),
+        detail.id
+      ).toBe(true);
       for (const [seatX, seatZ] of detail.seatOffsets) {
-        expect(Number.isFinite(detail.position[0] + seatX), `${detail.id} seat x`)
-          .toBe(true);
-        expect(Number.isFinite(detail.position[2] + seatZ), `${detail.id} seat z`)
-          .toBe(true);
+        expect(
+          isRpgWalkablePosition(
+            detail.position[0] + seatX,
+            detail.position[2] + seatZ
+          ),
+          `${detail.id} seat`
+        ).toBe(true);
       }
     }
   });

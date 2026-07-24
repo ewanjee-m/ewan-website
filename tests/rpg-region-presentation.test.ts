@@ -1,14 +1,41 @@
-import { describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Color, MeshStandardMaterial } from "three";
+
+vi.mock("@react-three/fiber", () => ({
+  useFrame: vi.fn()
+}));
+
 import {
   applyRpgRegionAudioGains,
-  createRpgRegionAudioGraph
+  createRpgRegionAudioGraph,
+  RpgRegionAudio
 } from "../app/world/RpgRegionAudio";
 import {
   createRpgRegionPresentation,
   resolveRpgRegionPresentation,
+  RPG_REGION_PRESENTATION_COLORS,
   RPG_REGION_PRESENTATION_PROFILES
 } from "../app/world/RpgRegionPresentation";
+import { applyRpgSakuraVisibility } from "../app/world/RpgSignatureLandmarks";
 import type { NavigationRegion } from "../app/world/RpgWorldGeometry";
+
+const originalAudioContext = Object.getOwnPropertyDescriptor(
+  window,
+  "AudioContext"
+);
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  FakeAudioContext.instances.length = 0;
+  if (originalAudioContext) {
+    Object.defineProperty(window, "AudioContext", originalAudioContext);
+  } else {
+    Reflect.deleteProperty(window, "AudioContext");
+  }
+});
 
 const transition = (progress: number): NavigationRegion => ({
   kind: "transition",
@@ -21,29 +48,127 @@ const transition = (progress: number): NavigationRegion => ({
   highlightedZoneIds: ["airport", "tokyo"]
 });
 
+class FakeAudioParam {
+  value = 0;
+  readonly setTargetAtTime = vi.fn();
+}
+
+class FakeGainNode {
+  readonly gain = new FakeAudioParam();
+  readonly connect = vi.fn();
+}
+
+class FakeBiquadFilterNode {
+  type: BiquadFilterType = "lowpass";
+  readonly frequency = new FakeAudioParam();
+  readonly connect = vi.fn();
+}
+
+class FakeAudioBuffer {
+  readonly samples: Float32Array;
+
+  constructor(length: number) {
+    this.samples = new Float32Array(length);
+  }
+
+  getChannelData() {
+    return this.samples;
+  }
+}
+
+class FakeAudioBufferSourceNode {
+  buffer: AudioBuffer | null = null;
+  loop = false;
+  readonly connect = vi.fn();
+  readonly start = vi.fn();
+  readonly stop = vi.fn();
+}
+
+class FakeAudioContext {
+  static readonly instances: FakeAudioContext[] = [];
+  readonly sampleRate = 48_000;
+  readonly currentTime = 12;
+  readonly destination = {};
+  readonly buffers: FakeAudioBuffer[] = [];
+  readonly gains: FakeGainNode[] = [];
+  readonly filters: FakeBiquadFilterNode[] = [];
+  readonly sources: FakeAudioBufferSourceNode[] = [];
+  readonly close = vi.fn().mockResolvedValue(undefined);
+
+  constructor() {
+    FakeAudioContext.instances.push(this);
+  }
+
+  createBuffer(_channels: number, length: number, _sampleRate: number) {
+    void _sampleRate;
+    const buffer = new FakeAudioBuffer(length);
+    this.buffers.push(buffer);
+    return buffer as unknown as AudioBuffer;
+  }
+
+  createGain() {
+    const gain = new FakeGainNode();
+    this.gains.push(gain);
+    return gain as unknown as GainNode;
+  }
+
+  createBiquadFilter() {
+    const filter = new FakeBiquadFilterNode();
+    this.filters.push(filter);
+    return filter as unknown as BiquadFilterNode;
+  }
+
+  createBufferSource() {
+    const source = new FakeAudioBufferSourceNode();
+    this.sources.push(source);
+    return source as unknown as AudioBufferSourceNode;
+  }
+}
+
+function expectedColor(from: string, to: string, amount: number) {
+  return new Color(from).lerp(new Color(to), amount).getHexString();
+}
+
 describe("RPG region presentation", () => {
-  it("uses smoothstep to blend every transition channel", () => {
+  it("uses smoothstep at 0.25 for every color, light, scalar, weight, and gain", () => {
     const target = createRpgRegionPresentation();
+    const from = RPG_REGION_PRESENTATION_PROFILES.airport;
+    const to = RPG_REGION_PRESENTATION_PROFILES.tokyo;
+    const t = 0.25 * 0.25 * (3 - 2 * 0.25);
 
-    resolveRpgRegionPresentation(transition(0.5), target);
+    resolveRpgRegionPresentation(transition(0.25), target);
 
-    expect(target.zoneWeights).toEqual({
-      airport: 0.5,
-      tokyo: 0.5,
-      gyukatsu: 0,
-      sakura: 0,
-      hanabi: 0
-    });
-    expect(target.decorationDensity).toBeCloseTo((0.55 + 1) / 2);
-    expect(target.vegetationDensity).toBeCloseTo((0.15 + 0.25) / 2);
-    expect(target.effectIntensity).toBeCloseTo((0.05 + 0.12) / 2);
-    expect(target.ambienceVolume).toBeCloseTo((0.18 + 0.24) / 2);
-    expect(target.audioGains.airport).toBeCloseTo(0.18 / 2);
-    expect(target.audioGains.tokyo).toBeCloseTo(0.24 / 2);
-    expect(target.audioGains.gyukatsu).toBe(0);
+    expect(t).toBe(0.15625);
+    expect(target.zoneWeights.airport).toBeCloseTo(1 - t);
+    expect(target.zoneWeights.tokyo).toBeCloseTo(t);
+    expect(target.zoneWeights.gyukatsu).toBe(0);
+    expect(target.sky.getHexString()).toBe(expectedColor(from.sky, to.sky, t));
+    expect(target.fog.getHexString()).toBe(expectedColor(from.fog, to.fog, t));
+    expect(target.key.getHexString()).toBe(expectedColor(from.key, to.key, t));
+    expect(target.fill.getHexString()).toBe(expectedColor(from.fill, to.fill, t));
+    expect(target.keyIntensity).toBeCloseTo(
+      from.keyIntensity + (to.keyIntensity - from.keyIntensity) * t
+    );
+    expect(target.fillIntensity).toBeCloseTo(
+      from.fillIntensity + (to.fillIntensity - from.fillIntensity) * t
+    );
+    expect(target.decorationDensity).toBeCloseTo(
+      from.decorationDensity + (to.decorationDensity - from.decorationDensity) * t
+    );
+    expect(target.vegetationDensity).toBeCloseTo(
+      from.vegetationDensity + (to.vegetationDensity - from.vegetationDensity) * t
+    );
+    expect(target.effectIntensity).toBeCloseTo(
+      from.effectIntensity + (to.effectIntensity - from.effectIntensity) * t
+    );
+    expect(target.ambienceVolume).toBeCloseTo(
+      from.ambienceVolume + (to.ambienceVolume - from.ambienceVolume) * t
+    );
+    expect(target.audioGains.airport).toBeCloseTo((1 - t) * from.ambienceVolume);
+    expect(target.audioGains.tokyo).toBeCloseTo(t * to.ambienceVolume);
   });
 
-  it("keeps all channels continuous at both transition endpoints", () => {
+  it("matches every source and destination channel at transition endpoints", () => {
     for (const [progress, expectedZone] of [
       [0, "airport"],
       [1, "tokyo"]
@@ -55,6 +180,10 @@ describe("RPG region presentation", () => {
       expect(target.zoneWeights[expectedZone]).toBe(1);
       expect(target.sky.getHexString()).toBe(profile.sky.slice(1));
       expect(target.fog.getHexString()).toBe(profile.fog.slice(1));
+      expect(target.key.getHexString()).toBe(profile.key.slice(1));
+      expect(target.fill.getHexString()).toBe(profile.fill.slice(1));
+      expect(target.keyIntensity).toBe(profile.keyIntensity);
+      expect(target.fillIntensity).toBe(profile.fillIntensity);
       expect(target.decorationDensity).toBe(profile.decorationDensity);
       expect(target.vegetationDensity).toBe(profile.vegetationDensity);
       expect(target.effectIntensity).toBe(profile.effectIntensity);
@@ -63,8 +192,44 @@ describe("RPG region presentation", () => {
     }
   });
 
-  it("gives a zone full ownership and silences every unrelated channel", () => {
+  it("reuses caller-owned and precomputed Color identities across frames", () => {
     const target = createRpgRegionPresentation();
+    const targetColors = [target.sky, target.fog, target.key, target.fill];
+    const profileColors = RPG_REGION_PRESENTATION_COLORS.airport;
+    const profileIdentities = [
+      profileColors.sky,
+      profileColors.fog,
+      profileColors.key,
+      profileColors.fill
+    ];
+    const profileHex = profileIdentities.map((color) => color.getHexString());
+
+    for (const progress of [0.1, 0.25, 0.6, 0.9]) {
+      resolveRpgRegionPresentation(transition(progress), target);
+    }
+
+    expect(target.sky).toBe(targetColors[0]);
+    expect(target.fog).toBe(targetColors[1]);
+    expect(target.key).toBe(targetColors[2]);
+    expect(target.fill).toBe(targetColors[3]);
+    expect(profileColors.sky).toBe(profileIdentities[0]);
+    expect(profileColors.fog).toBe(profileIdentities[1]);
+    expect(profileColors.key).toBe(profileIdentities[2]);
+    expect(profileColors.fill).toBe(profileIdentities[3]);
+    expect(profileIdentities.map((color) => color.getHexString())).toEqual(profileHex);
+  });
+
+  it("sets Sakura trunk and canopy opacity to the exact presentation visibility", () => {
+    const trunk = new MeshStandardMaterial();
+    const canopy = new MeshStandardMaterial();
+    const presentation = createRpgRegionPresentation();
+
+    applyRpgSakuraVisibility([trunk, canopy], presentation);
+    expect(trunk.opacity).toBe(0);
+    expect(canopy.opacity).toBe(0);
+    expect(trunk.transparent).toBe(true);
+    expect(canopy.transparent).toBe(true);
+
     resolveRpgRegionPresentation(
       {
         kind: "zone",
@@ -72,97 +237,78 @@ describe("RPG region presentation", () => {
         displayZoneId: "sakura",
         highlightedZoneIds: ["sakura"]
       },
-      target
+      presentation
     );
+    applyRpgSakuraVisibility([trunk, canopy], presentation);
+    expect(trunk.opacity).toBe(1);
+    expect(canopy.opacity).toBe(1);
+    expect(trunk.transparent).toBe(false);
+    expect(canopy.transparent).toBe(false);
+  });
 
-    expect(target.zoneWeights).toEqual({
-      airport: 0,
-      tokyo: 0,
-      gyukatsu: 0,
-      sakura: 1,
-      hanabi: 0
-    });
-    expect(target.audioGains.sakura).toBe(
-      RPG_REGION_PRESENTATION_PROFILES.sakura.ambienceVolume
+  it("builds one deterministic five-band graph and applies smoothstep gains", () => {
+    const context = new FakeAudioContext();
+    const graph = createRpgRegionAudioGraph(context as unknown as AudioContext);
+    const presentation = createRpgRegionPresentation();
+    resolveRpgRegionPresentation(transition(0.25), presentation);
+    applyRpgRegionAudioGains(graph, presentation);
+
+    expect(context.buffers[0].samples).toHaveLength(96_000);
+    expect(context.filters.map(({ frequency }) => frequency.value)).toEqual([
+      180, 260, 340, 520, 760
+    ]);
+    expect(context.sources.every(({ loop, start }) =>
+      loop && start.mock.calls.length === 1
+    )).toBe(true);
+    expect(context.gains[0].gain.value).toBe(0.35);
+    expect(graph.gains.airport.gain.setTargetAtTime).toHaveBeenCalledWith(
+      presentation.audioGains.airport, 12, 0.08
+    );
+    expect(graph.gains.tokyo.gain.setTargetAtTime).toHaveBeenCalledWith(
+      presentation.audioGains.tokyo, 12, 0.08
     );
   });
 
-  it("builds one procedural five-band graph and follows presentation gains", () => {
-    const gainNodes: Array<{
-      gain: { value: number; setTargetAtTime: ReturnType<typeof vi.fn> };
-      connect: ReturnType<typeof vi.fn>;
-    }> = [];
-    const filters: Array<{
-      type: BiquadFilterType;
-      frequency: { value: number };
-      connect: ReturnType<typeof vi.fn>;
-    }> = [];
-    const sources: Array<{
-      buffer: AudioBuffer | null;
-      loop: boolean;
-      connect: ReturnType<typeof vi.fn>;
-      start: ReturnType<typeof vi.fn>;
-      stop: ReturnType<typeof vi.fn>;
-    }> = [];
-    const samples = new Float32Array(96_000);
-    const context = {
-      sampleRate: 48_000,
-      currentTime: 12,
-      destination: {},
-      createBuffer: vi.fn(() => ({
-        getChannelData: () => samples
-      })),
-      createGain: vi.fn(() => {
-        const node = {
-          gain: { value: 0, setTargetAtTime: vi.fn() },
-          connect: vi.fn()
-        };
-        gainNodes.push(node);
-        return node;
-      }),
-      createBiquadFilter: vi.fn(() => {
-        const node = {
-          type: "lowpass" as BiquadFilterType,
-          frequency: { value: 0 },
-          connect: vi.fn()
-        };
-        filters.push(node);
-        return node;
-      }),
-      createBufferSource: vi.fn(() => {
-        const node = {
-          buffer: null as AudioBuffer | null,
-          loop: false,
-          connect: vi.fn(),
-          start: vi.fn(),
-          stop: vi.fn()
-        };
-        sources.push(node);
-        return node;
-      })
-    } as unknown as AudioContext;
-
-    const graph = createRpgRegionAudioGraph(context);
+  it("stays silent before a gesture and stops/closes the graph on unmount", () => {
+    Object.defineProperty(window, "AudioContext", {
+      configurable: true,
+      value: FakeAudioContext
+    });
     const presentation = createRpgRegionPresentation();
-    resolveRpgRegionPresentation(transition(0.5), presentation);
-    applyRpgRegionAudioGains(graph, presentation);
+    const view = render(
+      createElement(RpgRegionAudio, {
+        presentation: { current: presentation }
+      })
+    );
 
-    expect(context.createBuffer).toHaveBeenCalledWith(1, 96_000, 48_000);
-    expect(filters.map(({ frequency }) => frequency.value)).toEqual([
-      180, 260, 340, 520, 760
-    ]);
-    expect(sources).toHaveLength(5);
-    expect(sources.every(({ loop, start }) => loop && start.mock.calls.length === 1))
+    expect(FakeAudioContext.instances).toHaveLength(0);
+    fireEvent.pointerDown(window);
+    expect(FakeAudioContext.instances).toHaveLength(1);
+    const context = FakeAudioContext.instances[0];
+    expect(context.sources).toHaveLength(5);
+
+    view.unmount();
+    expect(context.sources.every(({ stop }) => stop.mock.calls.length === 1))
       .toBe(true);
-    expect(gainNodes[0].gain.value).toBe(0.35);
-    expect(graph.gains.airport.gain.setTargetAtTime).toHaveBeenCalledWith(
-      0.09, 12, 0.08
+    expect(context.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes both gesture listeners when unmounted before activation", () => {
+    Object.defineProperty(window, "AudioContext", {
+      configurable: true,
+      value: FakeAudioContext
+    });
+    const remove = vi.spyOn(window, "removeEventListener");
+    const view = render(
+      createElement(RpgRegionAudio, {
+        presentation: { current: createRpgRegionPresentation() }
+      })
     );
-    expect(graph.gains.tokyo.gain.setTargetAtTime).toHaveBeenCalledWith(
-      0.12, 12, 0.08
-    );
-    expect(graph.gains.gyukatsu.gain.setTargetAtTime).toHaveBeenCalledWith(
-      0, 12, 0.08
-    );
+
+    view.unmount();
+    expect(remove).toHaveBeenCalledWith("pointerdown", expect.any(Function));
+    expect(remove).toHaveBeenCalledWith("keydown", expect.any(Function));
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(FakeAudioContext.instances).toHaveLength(0);
   });
 });

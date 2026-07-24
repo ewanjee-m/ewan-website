@@ -202,7 +202,7 @@ describe("RPG town scene layout", () => {
         const [x, z] = pointKey.split(",").map(Number);
         const distanceX = Math.max(minimumX - x, 0, x - maximumX);
         const distanceZ = Math.max(minimumZ - z, 0, z - maximumZ);
-        return Math.hypot(distanceX, distanceZ) <= 16;
+        return Math.hypot(distanceX, distanceZ) <= 3;
       });
       expect(hasReachableApproach, landmark.id).toBe(true);
     }
@@ -353,10 +353,15 @@ describe("RPG town scene layout", () => {
     );
   });
 
-  it("keeps every authored destination on the connected route network", () => {
-    for (const zone of RPG_TOWN_ZONES) {
-      const [x, , z] = getDestinationPosition(zone.id);
-      expect(isRpgWalkablePosition(x, z), zone.id).toBe(true);
+  it("opens the full square town floor while preserving real obstacles and water", () => {
+    for (const [zone, x, z] of [
+      ["airport", -35, 30],
+      ["tokyo", 0, 35],
+      ["gyukatsu", 19, 9],
+      ["sakura", -19, -35],
+      ["hanabi", 35, -35]
+    ] as const) {
+      expect(isRpgWalkablePosition(x, z), zone).toBe(true);
     }
 
     const bridge = RPG_LANDMARKS.find(
@@ -366,7 +371,7 @@ describe("RPG town scene layout", () => {
     expect(isRpgWalkablePosition(bridge.position[0], 0)).toBe(false);
   });
 
-  it("makes the authored route footprint one reachable floor component", () => {
+  it("makes at least 85 percent of the square a single reachable floor component", () => {
     const gridScale = 2;
     const minimumX = RPG_TOWN_BOUNDS.minimumX * gridScale;
     const maximumX = RPG_TOWN_BOUNDS.maximumX * gridScale;
@@ -402,7 +407,7 @@ describe("RPG town scene layout", () => {
 
     const totalGridPoints =
       (maximumX - minimumX + 1) * (maximumZ - minimumZ + 1);
-    expect(walkable.size / totalGridPoints).toBeGreaterThanOrEqual(0.15);
+    expect(walkable.size / totalGridPoints).toBeGreaterThanOrEqual(0.85);
     expect(visited.size).toBe(walkable.size);
   });
 

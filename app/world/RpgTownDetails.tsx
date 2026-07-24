@@ -18,34 +18,6 @@ const SHORELINE_ROCKS = [
   ...RPG_COASTLINE_RING_ROCKS
 ];
 
-export const RPG_TOWN_DETAIL_BATCH_STATS = [
-  {
-    id: "shoreline-rocks",
-    drawUnits: 1,
-    triangleCount: SHORELINE_ROCKS.length * 36
-  },
-  {
-    id: "tokyo-crosswalk",
-    drawUnits: 1,
-    triangleCount: (RPG_TOKYO_CROSSWALK_DETAILS.length + 1) * 12
-  },
-  {
-    id: "gyukatsu-furniture",
-    drawUnits: 1,
-    triangleCount: RPG_GYUKATSU_OUTDOOR_DETAILS.length * 9 * 12
-  },
-  {
-    id: "gyukatsu-parasol-poles",
-    drawUnits: 1,
-    triangleCount: RPG_GYUKATSU_OUTDOOR_DETAILS.length * 40
-  },
-  {
-    id: "gyukatsu-parasol-canopies",
-    drawUnits: 1,
-    triangleCount: RPG_GYUKATSU_OUTDOOR_DETAILS.length * 24
-  }
-] as const;
-
 export const RpgTownDetails = memo(function RpgTownDetails({
   presentation
 }: {

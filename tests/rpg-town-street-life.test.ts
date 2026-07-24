@@ -134,12 +134,10 @@ describe("RPG town street life", () => {
     for (const lantern of RPG_HANGING_LANTERNS) {
       expect(lantern.blocksMovement, lantern.id).toBe(false);
       expect(lantern.position[1], lantern.id).toBeGreaterThan(2.2);
-      expect(Math.abs(lantern.position[0]), lantern.id).toBeLessThanOrEqual(
-        RPG_TOWN_BOUNDS.maximumX
-      );
-      expect(Math.abs(lantern.position[2]), lantern.id).toBeLessThanOrEqual(
-        RPG_TOWN_BOUNDS.maximumZ
-      );
+      expect(
+        isRpgWalkablePosition(lantern.position[0], lantern.position[2]),
+        lantern.id
+      ).toBe(true);
     }
 
     for (const wire of RPG_LANTERN_STRING_WIRES) {
@@ -159,12 +157,10 @@ describe("RPG town street life", () => {
 
     for (const pole of RPG_UTILITY_POLES) {
       expect(pole.size[1], pole.id).toBeGreaterThan(4.5);
-      expect(Math.abs(pole.position[0]), pole.id).toBeLessThanOrEqual(
-        RPG_TOWN_BOUNDS.maximumX
-      );
-      expect(Math.abs(pole.position[2]), pole.id).toBeLessThanOrEqual(
-        RPG_TOWN_BOUNDS.maximumZ
-      );
+      expect(
+        isRpgWalkablePosition(pole.position[0], pole.position[2]),
+        pole.id
+      ).toBe(true);
     }
     for (const wire of RPG_UTILITY_WIRES) {
       expect(wire.position[1], wire.id).toBeGreaterThan(4);
@@ -175,8 +171,10 @@ describe("RPG town street life", () => {
     for (const [group, instances] of GROUND_LEVEL_DECOR) {
       expect(instances.length, group).toBeGreaterThan(0);
       for (const instance of instances) {
-        expect(instance.position.every(Number.isFinite), `${group}:${instance.id}`)
-          .toBe(true);
+        expect(
+          isRpgWalkablePosition(instance.position[0], instance.position[2]),
+          `${group}:${instance.id}`
+        ).toBe(true);
         expect(
           isInsideBusRoute(instance.position[0], instance.position[2]),
           `${group}:${instance.id}`
@@ -366,7 +364,7 @@ describe("RPG town street life", () => {
       }
     }
 
-    expect(visited.size).toBeGreaterThan(800);
+    expect(visited.size).toBeGreaterThan(1000);
     for (const destinationId of [
       "airport",
       "tokyo",
@@ -378,10 +376,11 @@ describe("RPG town street life", () => {
         destinationId,
         FLAT_WORLD_HALF_WIDTH
       );
-      expect(
-        isRpgWalkablePosition(destination[0], destination[2]),
-        destinationId
-      ).toBe(true);
+      const reached = [...visited].some((key) => {
+        const [x, z] = key.split(",").map(Number);
+        return Math.hypot(x - destination[0], z - destination[2]) <= 1.5;
+      });
+      expect(reached, destinationId).toBe(true);
     }
   });
 

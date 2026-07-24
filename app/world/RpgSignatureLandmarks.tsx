@@ -1,35 +1,22 @@
 "use client";
 
+import { Instance, Instances } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { memo, type RefObject, useRef } from "react";
 import type { MeshStandardMaterial } from "three";
 import type { RpgRegionPresentationState } from "./RpgRegionPresentation";
 import {
-  RPG_LANDMARKS,
   type RpgLandmark
 } from "./RpgTownSceneLayout";
-import { getRpgLandmarkRenderTier } from "./RpgTownRenderTier";
-import type { RpgProceduralBatchStat } from "./RpgWorldSurfaces";
+import { RPG_RENDERED_RICH_LANDMARKS } from "./RpgTownRenderStats";
 import type { SceneQualityLevel } from "./SceneQuality";
 
-const richLandmarks = RPG_LANDMARKS.filter(
-  (landmark) => getRpgLandmarkRenderTier(landmark) === "rich"
+const richLanterns = RPG_RENDERED_RICH_LANDMARKS.filter(
+  ({ kind }) => kind === "lantern"
 );
-
-export const RPG_SIGNATURE_LANDMARK_BATCH_STATS: readonly RpgProceduralBatchStat[] =
-  richLandmarks
-    .filter(({ kind }) => !["bus", "npc", "hanabi"].includes(kind))
-    .map((landmark) => ({
-      id: landmark.id,
-      drawUnits:
-        landmark.kind === "sakuraTree" ? 6 :
-        landmark.kind === "bridge" ? 5 :
-        landmark.kind === "canal" ? 3 : 4,
-      triangleCount:
-        landmark.kind === "sakuraTree" ? 960 :
-        landmark.kind === "bridge" ? 180 :
-        landmark.kind === "canal" ? 72 : 420
-    }));
+const richToriis = RPG_RENDERED_RICH_LANDMARKS.filter(
+  ({ kind }) => kind === "torii"
+);
 
 interface LandmarkProps {
   landmark: RpgLandmark;
@@ -39,6 +26,19 @@ interface LandmarkProps {
 
 function assertNever(value: never): never {
   throw new Error(`Unhandled RPG landmark kind: ${String(value)}`);
+}
+
+export function applyRpgSakuraVisibility(
+  materials: readonly (MeshStandardMaterial | null)[],
+  presentation: RpgRegionPresentationState
+) {
+  const visibility =
+    presentation.zoneWeights.sakura * presentation.vegetationDensity;
+  for (const material of materials) {
+    if (!material) continue;
+    material.opacity = visibility;
+    material.transparent = visibility < 1;
+  }
 }
 
 function BuildingLandmark({ landmark }: { landmark: RpgLandmark }) {
@@ -72,24 +72,28 @@ function SakuraLandmark({
   qualityLevel,
   presentation
 }: LandmarkProps) {
-  const canopyMaterials = useRef<Array<MeshStandardMaterial | null>>([]);
+  const materials = useRef<Array<MeshStandardMaterial | null>>([]);
   useFrame(() => {
-    const visibility =
-      presentation.current.zoneWeights.sakura *
-      presentation.current.vegetationDensity;
-    for (const material of canopyMaterials.current) {
-      if (!material) continue;
-      material.opacity = Math.max(0.08, visibility);
-      material.transparent = visibility < 0.999;
-    }
+    applyRpgSakuraVisibility(materials.current, presentation.current);
   }, -2);
   const [width, height] = landmark.size;
   const crownCount = qualityLevel === "low" ? 3 : 5;
+  const initialVisibility =
+    presentation.current.zoneWeights.sakura *
+    presentation.current.vegetationDensity;
   return (
     <>
       <mesh castShadow position={[0, -height * 0.27, 0]}>
         <cylinderGeometry args={[width * 0.08, width * 0.12, height * 0.54, 10]} />
-        <meshStandardMaterial color="#6f4c43" roughness={0.94} />
+        <meshStandardMaterial
+          ref={(material) => {
+            materials.current[0] = material;
+          }}
+          color="#6f4c43"
+          roughness={0.94}
+          opacity={initialVisibility}
+          transparent={initialVisibility < 1}
+        />
       </mesh>
       {Array.from({ length: crownCount }, (_, index) => {
         const angle = (index / crownCount) * Math.PI * 2;
@@ -106,10 +110,12 @@ function SakuraLandmark({
             <sphereGeometry args={[width * 0.3, 12, 8]} />
             <meshStandardMaterial
               ref={(material) => {
-                canopyMaterials.current[index] = material;
+                materials.current[index + 1] = material;
               }}
               color={landmark.color}
               roughness={0.9}
+              opacity={initialVisibility}
+              transparent={initialVisibility < 1}
             />
           </mesh>
         );
@@ -121,14 +127,17 @@ function SakuraLandmark({
 function CanalDetails({ landmark }: { landmark: RpgLandmark }) {
   const [width, , depth] = landmark.size;
   return (
-    <>
+    <Instances limit={2} frames={1}>
+      <boxGeometry args={[1, 1, 1]} />
+      <meshStandardMaterial color={landmark.accent} roughness={0.86} />
       {[-1, 1].map((side) => (
-        <mesh key={side} position={[side * width * 0.72, 0.08, 0]}>
-          <boxGeometry args={[0.22, 0.16, depth]} />
-          <meshStandardMaterial color={landmark.accent} roughness={0.86} />
-        </mesh>
+        <Instance
+          key={side}
+          position={[side * width * 0.72, 0.08, 0]}
+          scale={[0.22, 0.16, depth]}
+        />
       ))}
-    </>
+    </Instances>
   );
 }
 
@@ -136,56 +145,110 @@ function BridgeDetails({ landmark }: { landmark: RpgLandmark }) {
   const [width, , depth] = landmark.size;
   return (
     <>
-      {[-1, 1].map((side) => (
-        <group key={side} position={[0, 0.46, side * depth * 0.44]}>
-          <mesh>
-            <boxGeometry args={[width, 0.11, 0.1]} />
-            <meshStandardMaterial color={landmark.accent} roughness={0.82} />
-          </mesh>
-          {[-0.42, 0, 0.42].map((offset) => (
-            <mesh key={offset} position={[offset * width, -0.22, 0]}>
-              <boxGeometry args={[0.1, 0.55, 0.1]} />
-              <meshStandardMaterial color={landmark.accent} roughness={0.82} />
-            </mesh>
-          ))}
-        </group>
-      ))}
+      <Instances limit={2} frames={1}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color={landmark.accent} roughness={0.82} />
+        {[-1, 1].map((side) => (
+          <Instance
+            key={side}
+            position={[0, 0.46, side * depth * 0.44]}
+            scale={[width, 0.11, 0.1]}
+          />
+        ))}
+      </Instances>
+      <Instances limit={6} frames={1}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color={landmark.accent} roughness={0.82} />
+        {[-1, 1].flatMap((side) =>
+          [-0.42, 0, 0.42].map((offset) => (
+            <Instance
+              key={`${side}-${offset}`}
+              position={[offset * width, 0.24, side * depth * 0.44]}
+              scale={[0.1, 0.55, 0.1]}
+            />
+          ))
+        )}
+      </Instances>
     </>
   );
 }
 
-function LanternLandmark({ landmark }: { landmark: RpgLandmark }) {
-  const [, height] = landmark.size;
+function RepeatedLandmarkBatches() {
   return (
     <>
-      <mesh position={[0, -height * 0.18, 0]}>
-        <cylinderGeometry args={[0.06, 0.08, height * 0.64, 8]} />
-        <meshStandardMaterial color={landmark.color} roughness={0.78} />
-      </mesh>
-      <mesh position={[0, height * 0.24, 0]}>
-        <cylinderGeometry args={[0.24, 0.24, height * 0.28, 12]} />
-        <meshStandardMaterial color={landmark.accent} emissive={landmark.accent} emissiveIntensity={1.4} />
-      </mesh>
-    </>
-  );
-}
-
-function ToriiLandmark({ landmark }: { landmark: RpgLandmark }) {
-  const [width, height, depth] = landmark.size;
-  return (
-    <>
-      {[-1, 1].map((side) => (
-        <mesh key={side} position={[side * width * 0.34, 0, 0]}>
-          <boxGeometry args={[width * 0.1, height, depth * 0.25]} />
-          <meshStandardMaterial color={landmark.color} roughness={0.84} />
-        </mesh>
-      ))}
-      {[0.28, 0.45].map((ratio) => (
-        <mesh key={ratio} position={[0, height * ratio, 0]}>
-          <boxGeometry args={[width, height * 0.1, depth * 0.32]} />
-          <meshStandardMaterial color={landmark.accent} roughness={0.84} />
-        </mesh>
-      ))}
+      <Instances limit={richLanterns.length} frames={1}>
+        <cylinderGeometry args={[1, 1, 1, 8]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.78} />
+        {richLanterns.map((landmark) => (
+          <Instance
+            key={`${landmark.id}-pole`}
+            position={[
+              landmark.position[0],
+              landmark.position[1] - landmark.size[1] * 0.18,
+              landmark.position[2]
+            ]}
+            rotation={[0, landmark.rotationY ?? 0, 0]}
+            scale={[0.06, landmark.size[1] * 0.64, 0.06]}
+            color={landmark.color}
+          />
+        ))}
+      </Instances>
+      <Instances limit={richLanterns.length} frames={1}>
+        <cylinderGeometry args={[1, 1, 1, 12]} />
+        <meshStandardMaterial
+          color="#ffffff"
+          emissive="#ffb14e"
+          emissiveIntensity={1.4}
+        />
+        {richLanterns.map((landmark) => (
+          <Instance
+            key={`${landmark.id}-light`}
+            position={[
+              landmark.position[0],
+              landmark.position[1] + landmark.size[1] * 0.24,
+              landmark.position[2]
+            ]}
+            rotation={[0, landmark.rotationY ?? 0, 0]}
+            scale={[0.24, landmark.size[1] * 0.28, 0.24]}
+            color={landmark.accent}
+          />
+        ))}
+      </Instances>
+      <Instances limit={richToriis.length * 4} frames={1}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.84} />
+        {richToriis.flatMap((landmark) => {
+          const [width, height, depth] = landmark.size;
+          return [
+            ...[-1, 1].map((side) => (
+              <Instance
+                key={`${landmark.id}-post-${side}`}
+                position={[
+                  landmark.position[0] + side * width * 0.34,
+                  landmark.position[1],
+                  landmark.position[2]
+                ]}
+                rotation={[0, landmark.rotationY ?? 0, 0]}
+                scale={[width * 0.1, height, depth * 0.25]}
+                color={landmark.color}
+              />
+            )),
+            ...[0.28, 0.45].map((ratio) => (
+              <Instance
+                key={`${landmark.id}-beam-${ratio}`}
+                position={[
+                  landmark.position[0],
+                  landmark.position[1] + height * ratio,
+                  landmark.position[2]
+                ]}
+                rotation={[0, landmark.rotationY ?? 0, 0]}
+                scale={[width, height * 0.1, depth * 0.32]}
+                color={landmark.accent}
+              />
+            ))
+          ];
+        })}
+      </Instances>
     </>
   );
 }
@@ -210,10 +273,10 @@ function Landmark(props: LandmarkProps) {
       content = <BridgeDetails landmark={landmark} />;
       break;
     case "lantern":
-      content = <LanternLandmark landmark={landmark} />;
+      content = null;
       break;
     case "torii":
-      content = <ToriiLandmark landmark={landmark} />;
+      content = null;
       break;
     case "bus":
       return null;
@@ -252,8 +315,7 @@ export const RpgSignatureLandmarks = memo(function RpgSignatureLandmarks({
 }) {
   return (
     <group name="rpg-signature-landmarks">
-      {RPG_LANDMARKS
-        .filter((landmark) => getRpgLandmarkRenderTier(landmark) === "rich")
+      {RPG_RENDERED_RICH_LANDMARKS
         .filter((landmark) => landmark.kind !== "npc")
         .map((landmark) => (
           <Landmark
@@ -263,6 +325,7 @@ export const RpgSignatureLandmarks = memo(function RpgSignatureLandmarks({
             presentation={presentation}
           />
         ))}
+      <RepeatedLandmarkBatches />
     </group>
   );
 });

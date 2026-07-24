@@ -1,17 +1,15 @@
 "use client";
 
+import { Instance, Instances } from "@react-three/drei";
 import { getSurfaceHeight } from "./RpgWorldGeometry";
 import {
-  RPG_TOWN_SURFACES,
   type RpgTownSurface
 } from "./RpgTownSceneLayout";
 import { RPG_WORLD_BRIDGE, RPG_WORLD_CANAL } from "./RpgWorldModel";
-
-export interface RpgProceduralBatchStat {
-  readonly id: string;
-  readonly drawUnits: number;
-  readonly triangleCount: number;
-}
+import {
+  RPG_BRIDGE_DECK_SEGMENT_COUNT,
+  RPG_RENDERED_SURFACE_GROUPS
+} from "./RpgTownRenderStats";
 
 export interface RpgBridgeDeckSegment {
   readonly id: string;
@@ -58,70 +56,90 @@ export function createRpgBridgeDeckSegments(
   });
 }
 
-const bridgeSegments = createRpgBridgeDeckSegments(24);
-export const RPG_WORLD_SURFACE_BATCH_STATS: readonly RpgProceduralBatchStat[] = [
-  {
-    id: "authored-surfaces",
-    drawUnits: RPG_TOWN_SURFACES.length,
-    triangleCount: RPG_TOWN_SURFACES.reduce(
-      (sum, surface) => sum + (surface.shape === "circle" ? 192 : 12),
-      0
-    )
-  },
-  { id: "canal-water", drawUnits: 1, triangleCount: 12 },
-  {
-    id: "arched-bridge-deck",
-    drawUnits: bridgeSegments.length,
-    triangleCount: bridgeSegments.length * 12
-  }
-] as const;
+const bridgeSegments = createRpgBridgeDeckSegments(
+  RPG_BRIDGE_DECK_SEGMENT_COUNT
+);
 
 export function RpgWorldSurfaces() {
   return (
     <group name="rpg-world-surfaces">
-      {RPG_TOWN_SURFACES.filter(
-        ({ id }) => id !== RPG_WORLD_BRIDGE.id && id !== RPG_WORLD_CANAL.id
-      ).map((surface) => (
-        <mesh
-          key={surface.id}
-          position={resolveRpgSurfaceMeshPosition(surface)}
-          receiveShadow
-          userData={{ surfaceId: surface.id, surfaceKind: surface.kind }}
-        >
-          {surface.shape === "circle" ? (
-            <cylinderGeometry args={[surface.size[0] / 2, surface.size[0] / 2, surface.size[1], 48]} />
-          ) : (
-            <boxGeometry args={surface.size} />
-          )}
-          <meshStandardMaterial
-            color={surface.color}
-            roughness={surface.kind === "water" ? 0.28 : 0.92}
-            metalness={surface.kind === "water" ? 0.08 : 0}
-          />
-        </mesh>
-      ))}
-      <mesh
-        position={[
-          (RPG_WORLD_CANAL.polygon[0][0] + RPG_WORLD_CANAL.polygon[1][0]) / 2,
-          RPG_WORLD_CANAL.waterLevel,
-          0
-        ]}
-        userData={{ surfaceId: RPG_WORLD_CANAL.id }}
+      <Instances
+        limit={RPG_RENDERED_SURFACE_GROUPS.rectangularWater.length}
+        frames={1}
+        receiveShadow
       >
-        <boxGeometry args={[2.2, 0.3, 72]} />
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.28} metalness={0.08} />
+        {RPG_RENDERED_SURFACE_GROUPS.rectangularWater.map((surface) => (
+          <Instance
+            key={surface.id}
+            position={resolveRpgSurfaceMeshPosition(surface)}
+            scale={surface.size}
+            color={surface.color}
+            userData={{ surfaceId: surface.id, surfaceKind: surface.kind }}
+          />
+        ))}
+      </Instances>
+      <Instances
+        limit={RPG_RENDERED_SURFACE_GROUPS.rectangularLand.length}
+        frames={1}
+        receiveShadow
+      >
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.92} />
+        {RPG_RENDERED_SURFACE_GROUPS.rectangularLand.map((surface) => (
+          <Instance
+            key={surface.id}
+            position={resolveRpgSurfaceMeshPosition(surface)}
+            scale={surface.size}
+            color={surface.color}
+            userData={{ surfaceId: surface.id, surfaceKind: surface.kind }}
+          />
+        ))}
+      </Instances>
+      <Instances
+        limit={RPG_RENDERED_SURFACE_GROUPS.circular.length}
+        frames={1}
+        receiveShadow
+      >
+        <cylinderGeometry args={[1, 1, 1, 48]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.92} />
+        {RPG_RENDERED_SURFACE_GROUPS.circular.map((surface) => (
+          <Instance
+            key={surface.id}
+            position={resolveRpgSurfaceMeshPosition(surface)}
+            scale={[surface.size[0] / 2, surface.size[1], surface.size[2] / 2]}
+            color={surface.color}
+            userData={{ surfaceId: surface.id, surfaceKind: surface.kind }}
+          />
+        ))}
+      </Instances>
+      <Instances limit={1} frames={1}>
+        <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial color="#398aa2" roughness={0.24} />
-      </mesh>
-      {bridgeSegments.map((segment) => (
-        <mesh
-          key={segment.id}
-          position={segment.position}
-          rotation={[0, 0, segment.rotationZ]}
-          userData={{ surfaceId: RPG_WORLD_BRIDGE.id }}
-        >
-          <boxGeometry args={segment.size} />
-          <meshStandardMaterial color="#ac4a3d" roughness={0.82} />
-        </mesh>
-      ))}
+        <Instance
+          position={[
+            (RPG_WORLD_CANAL.polygon[0][0] + RPG_WORLD_CANAL.polygon[1][0]) / 2,
+            RPG_WORLD_CANAL.waterLevel,
+            0
+          ]}
+          scale={[2.2, 0.3, 72]}
+          userData={{ surfaceId: RPG_WORLD_CANAL.id }}
+        />
+      </Instances>
+      <Instances limit={bridgeSegments.length} frames={1} receiveShadow>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color="#ac4a3d" roughness={0.82} />
+        {bridgeSegments.map((segment) => (
+          <Instance
+            key={segment.id}
+            position={segment.position}
+            rotation={[0, 0, segment.rotationZ]}
+            scale={segment.size}
+            userData={{ surfaceId: RPG_WORLD_BRIDGE.id }}
+          />
+        ))}
+      </Instances>
     </group>
   );
 }

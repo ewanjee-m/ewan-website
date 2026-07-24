@@ -35,6 +35,39 @@ export const RPG_REGION_PRESENTATION_PROFILES = {
   }
 } as const;
 
+export const RPG_REGION_PRESENTATION_COLORS = {
+  airport: {
+    sky: new Color(RPG_REGION_PRESENTATION_PROFILES.airport.sky),
+    fog: new Color(RPG_REGION_PRESENTATION_PROFILES.airport.fog),
+    key: new Color(RPG_REGION_PRESENTATION_PROFILES.airport.key),
+    fill: new Color(RPG_REGION_PRESENTATION_PROFILES.airport.fill)
+  },
+  tokyo: {
+    sky: new Color(RPG_REGION_PRESENTATION_PROFILES.tokyo.sky),
+    fog: new Color(RPG_REGION_PRESENTATION_PROFILES.tokyo.fog),
+    key: new Color(RPG_REGION_PRESENTATION_PROFILES.tokyo.key),
+    fill: new Color(RPG_REGION_PRESENTATION_PROFILES.tokyo.fill)
+  },
+  gyukatsu: {
+    sky: new Color(RPG_REGION_PRESENTATION_PROFILES.gyukatsu.sky),
+    fog: new Color(RPG_REGION_PRESENTATION_PROFILES.gyukatsu.fog),
+    key: new Color(RPG_REGION_PRESENTATION_PROFILES.gyukatsu.key),
+    fill: new Color(RPG_REGION_PRESENTATION_PROFILES.gyukatsu.fill)
+  },
+  sakura: {
+    sky: new Color(RPG_REGION_PRESENTATION_PROFILES.sakura.sky),
+    fog: new Color(RPG_REGION_PRESENTATION_PROFILES.sakura.fog),
+    key: new Color(RPG_REGION_PRESENTATION_PROFILES.sakura.key),
+    fill: new Color(RPG_REGION_PRESENTATION_PROFILES.sakura.fill)
+  },
+  hanabi: {
+    sky: new Color(RPG_REGION_PRESENTATION_PROFILES.hanabi.sky),
+    fog: new Color(RPG_REGION_PRESENTATION_PROFILES.hanabi.fog),
+    key: new Color(RPG_REGION_PRESENTATION_PROFILES.hanabi.key),
+    fill: new Color(RPG_REGION_PRESENTATION_PROFILES.hanabi.fill)
+  }
+} as const;
+
 const ZONE_IDS = Object.keys(
   RPG_REGION_PRESENTATION_PROFILES
 ) as DestinationId[];
@@ -66,11 +99,12 @@ const emptyZoneScalars = (): ZoneScalars => ({
 
 export function createRpgRegionPresentation(): RpgRegionPresentationState {
   const profile = RPG_REGION_PRESENTATION_PROFILES.airport;
+  const colors = RPG_REGION_PRESENTATION_COLORS.airport;
   return {
-    sky: new Color(profile.sky),
-    fog: new Color(profile.fog),
-    key: new Color(profile.key),
-    fill: new Color(profile.fill),
+    sky: colors.sky.clone(),
+    fog: colors.fog.clone(),
+    key: colors.key.clone(),
+    fill: colors.fill.clone(),
     keyIntensity: profile.keyIntensity,
     fillIntensity: profile.fillIntensity,
     decorationDensity: profile.decorationDensity,
@@ -90,10 +124,12 @@ function applyProfile(
 ) {
   const from = RPG_REGION_PRESENTATION_PROFILES[fromId];
   const to = RPG_REGION_PRESENTATION_PROFILES[toId];
-  target.sky.set(from.sky).lerp(new Color(to.sky), amount);
-  target.fog.set(from.fog).lerp(new Color(to.fog), amount);
-  target.key.set(from.key).lerp(new Color(to.key), amount);
-  target.fill.set(from.fill).lerp(new Color(to.fill), amount);
+  const fromColors = RPG_REGION_PRESENTATION_COLORS[fromId];
+  const toColors = RPG_REGION_PRESENTATION_COLORS[toId];
+  target.sky.copy(fromColors.sky).lerp(toColors.sky, amount);
+  target.fog.copy(fromColors.fog).lerp(toColors.fog, amount);
+  target.key.copy(fromColors.key).lerp(toColors.key, amount);
+  target.fill.copy(fromColors.fill).lerp(toColors.fill, amount);
   target.keyIntensity = from.keyIntensity + (to.keyIntensity - from.keyIntensity) * amount;
   target.fillIntensity = from.fillIntensity + (to.fillIntensity - from.fillIntensity) * amount;
   target.decorationDensity = from.decorationDensity + (to.decorationDensity - from.decorationDensity) * amount;
