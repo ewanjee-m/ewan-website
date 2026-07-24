@@ -89,6 +89,14 @@ export function RpgTownAmbience({
         castShadow={qualitySettings.shadowMapSize > 0}
         shadow-mapSize-width={qualitySettings.shadowMapSize}
         shadow-mapSize-height={qualitySettings.shadowMapSize}
+        shadow-camera-left={-48}
+        shadow-camera-right={48}
+        shadow-camera-top={48}
+        shadow-camera-bottom={-48}
+        shadow-camera-near={1}
+        shadow-camera-far={100}
+        shadow-bias={-0.0005}
+        shadow-normalBias={0.02}
       />
     </>
   );

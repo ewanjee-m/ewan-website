@@ -376,34 +376,34 @@ interface LanternStringDefinition {
 const LANTERN_STRINGS: readonly LanternStringDefinition[] = [
   {
     id: "hanabi-north-string",
-    axis: "x",
-    fixed: -18.5,
-    from: 20,
-    to: 32,
-    height: 3.05,
+    axis: "z",
+    fixed: 19,
+    from: -29,
+    to: -19,
+    height: 4.66,
     sag: 0.26,
     lanternCount: 8,
     colors: ["#ff9264", "#ffd07a", "#ff7f7a"]
   },
   {
     id: "hanabi-south-string",
-    axis: "x",
-    fixed: -29.5,
-    from: 20,
-    to: 32,
-    height: 3.05,
+    axis: "z",
+    fixed: 35,
+    from: -29,
+    to: -19,
+    height: 4.66,
     sag: 0.26,
     lanternCount: 8,
     colors: ["#ffd07a", "#ff8f68", "#ffb0c4"]
   },
   {
     id: "hanabi-torii-string",
-    axis: "z",
-    fixed: 22.4,
-    from: -29,
-    to: -19,
-    height: 3.1,
-    sag: 0.28,
+    axis: "x",
+    fixed: -19,
+    from: 19,
+    to: 35,
+    height: 4.66,
+    sag: 0.22,
     lanternCount: 8,
     colors: ["#ff9d6c", "#ffd489"]
   },
@@ -452,6 +452,20 @@ function lanternStringPoint(
     ? [along, line.height - droop, line.fixed]
     : [line.fixed, line.height - droop, along];
 }
+
+export const RPG_LANTERN_STRING_SUPPORT_ENDPOINTS =
+  LANTERN_STRINGS.filter(({ id }) => id.startsWith("hanabi-")).flatMap(
+    (line) => [
+      {
+        id: `${line.id}-from-support`,
+        position: lanternStringPoint(line, 0)
+      },
+      {
+        id: `${line.id}-to-support`,
+        position: lanternStringPoint(line, 1)
+      }
+    ]
+  );
 
 export const RPG_LANTERN_STRING_WIRES: readonly RpgStreetLifeInstance[] =
   LANTERN_STRINGS.flatMap((line) => {

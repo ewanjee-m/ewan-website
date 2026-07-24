@@ -314,6 +314,7 @@ function SupportedSeamlessWorldCanvas({
         className="world-canvas"
         camera={{ position: [0, 6, 8], fov: 45, near: 0.1, far: 140 }}
         dpr={[qualitySettings.minDpr, qualitySettings.maxDpr]}
+        shadows={qualitySettings.shadowMapSize > 0}
         gl={{
           antialias: true,
           alpha: false,

@@ -17,6 +17,7 @@ import {
 import {
   advanceChaseOrbitCamera,
   getChaseOrbitCameraDiagnostic,
+  getRegionCameraProfile,
   shortestCameraYawError
 } from "./ChaseOrbitCamera";
 import type { InputController } from "./InputController";
@@ -224,7 +225,10 @@ export function ChaseOrbitCamera3d({
         : null;
     if (!activeCamera) return;
 
-    const targetFov = mobile.current ? 52 : 45;
+    const targetFov = getRegionCameraProfile(
+      snapshot.navigationRegion,
+      mobile.current ? "mobile" : "desktop"
+    ).fovDegrees;
     if (activeCamera.fov !== targetFov) {
       activeCamera.fov = targetFov;
       activeCamera.updateProjectionMatrix();

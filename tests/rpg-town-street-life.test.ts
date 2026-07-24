@@ -17,6 +17,7 @@ import {
   RPG_TOWN_SPAWN_CLEARANCE_RADIUS,
   RPG_TOWN_SPAWN_POINT,
   isOutsideRpgSpawnClearance,
+  RPG_LANTERN_STRING_SUPPORT_ENDPOINTS,
   RPG_LANTERN_STRING_WIRES,
   RPG_PALM_FRONDS,
   RPG_PALM_TRUNKS,
@@ -143,6 +144,39 @@ describe("RPG town street life", () => {
     for (const wire of RPG_LANTERN_STRING_WIRES) {
       expect(wire.position[1], wire.id).toBeGreaterThan(2.6);
       expect(Math.max(wire.size[0], wire.size[2]), wire.id).toBeLessThan(0.06);
+    }
+
+    const hanabiLanterns = RPG_HANGING_LANTERNS.filter(({ id }) =>
+      id.startsWith("hanabi-")
+    );
+    const hanabiWires = RPG_LANTERN_STRING_WIRES.filter(({ id }) =>
+      id.startsWith("hanabi-")
+    );
+    for (const lantern of hanabiLanterns) {
+      expect(lantern.position[1], lantern.id).toBeGreaterThan(3.7);
+    }
+    for (const wire of hanabiWires) {
+      expect(wire.position[1], wire.id).toBeGreaterThan(4);
+    }
+
+    const supportLandmarks = RPG_LANDMARKS.filter(({ id }) =>
+      id.startsWith("hanabi-lantern-")
+    );
+    for (const endpoint of RPG_LANTERN_STRING_SUPPORT_ENDPOINTS) {
+      const support = supportLandmarks.find(
+        ({ position }) =>
+          Math.hypot(
+            position[0] - endpoint.position[0],
+            position[2] - endpoint.position[2]
+          ) < 0.01
+      );
+      expect(support, endpoint.id).toBeDefined();
+      const renderedLightTop =
+        support!.position[1] + support!.size[1] * (0.24 + 0.28 / 2);
+      expect(
+        Math.abs(renderedLightTop - endpoint.position[1]),
+        endpoint.id
+      ).toBeLessThan(0.02);
     }
   });
 

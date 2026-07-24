@@ -133,6 +133,21 @@ function expectedColor(from: string, to: string, amount: number) {
 }
 
 describe("RPG region presentation", () => {
+  it("keeps the restaurant and festival readable while preserving their warm and night palettes", () => {
+    expect(
+      RPG_REGION_PRESENTATION_PROFILES.gyukatsu.keyIntensity
+    ).toBeGreaterThanOrEqual(1.2);
+    expect(
+      RPG_REGION_PRESENTATION_PROFILES.gyukatsu.fillIntensity
+    ).toBeGreaterThanOrEqual(0.75);
+    expect(
+      RPG_REGION_PRESENTATION_PROFILES.hanabi.keyIntensity
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      RPG_REGION_PRESENTATION_PROFILES.hanabi.fillIntensity
+    ).toBeGreaterThanOrEqual(0.75);
+  });
+
   it("uses smoothstep at 0.25 for every color, light, scalar, weight, and gain", () => {
     const target = createRpgRegionPresentation();
     const from = RPG_REGION_PRESENTATION_PROFILES.airport;

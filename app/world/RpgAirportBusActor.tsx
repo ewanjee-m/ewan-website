@@ -20,11 +20,13 @@ import type { RpgCameraDynamicObstacle } from "./RpgCameraCollision";
 export function RpgAirportBusActor({
   runtime,
   dynamicObstacles,
-  reducedMotion
+  reducedMotion,
+  telemetry: telemetryRef
 }: {
   runtime: RpgBusRuntime;
   dynamicObstacles: RefObject<Map<string, RpgCameraDynamicObstacle>>;
   reducedMotion: boolean;
+  telemetry: RefObject<HTMLDivElement | null>;
 }) {
   const root = useRef<Group>(null);
   const leftDoor = useRef<Group>(null);
@@ -60,6 +62,11 @@ export function RpgAirportBusActor({
     }
     for (const wheel of wheels.current) {
       if (wheel) wheel.rotation.x = runtime.pose.wheelRotation;
+    }
+    const telemetryNode = telemetryRef.current;
+    if (telemetryNode) {
+      telemetryNode.dataset.busPosition = runtime.pose.position.join(",");
+      telemetryNode.dataset.busPhase = runtime.snapshot.phase;
     }
   }, -2.5);
 

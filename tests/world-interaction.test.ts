@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { useFrame } from "@react-three/fiber";
 import { createElement } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { getMessages, locales } from "../app/i18n/messages";
 import {
   findWorldInteractionTarget,
   WORLD_INTERACTION_TARGETS,
@@ -64,6 +65,35 @@ describe("world interaction", () => {
         ["world-design", "character-controls", "ai-guide"].includes(entryId)
       )
     ).toBe(true);
+  });
+
+  it("gives every authored NPC localized RPG dialogue instead of portfolio copy", () => {
+    const actorIds = WORLD_INTERACTION_TARGETS.flatMap(({ actorId }) =>
+      actorId ? [actorId] : []
+    );
+
+    for (const locale of locales) {
+      const copy = getMessages(locale);
+      const dialogues: Readonly<
+        Record<string, { readonly speaker: string; readonly message: string }>
+      > = copy.npcDialogues;
+      expect(Object.keys(dialogues).sort(), locale).toEqual(
+        [...actorIds].sort()
+      );
+      for (const actorId of actorIds) {
+        const dialogue = dialogues[actorId];
+        expect(dialogue.speaker.length, `${locale}:${actorId}:speaker`)
+          .toBeGreaterThan(2);
+        expect(dialogue.message.length, `${locale}:${actorId}:message`)
+          .toBeGreaterThan(20);
+        expect(
+          copy.portfolioItems.some(
+            ({ summary }) => summary === dialogue.message
+          ),
+          `${locale}:${actorId}:portfolio-reuse`
+        ).toBe(false);
+      }
+    }
   });
 
   it("skips unavailable targets and continues to another eligible target", () => {

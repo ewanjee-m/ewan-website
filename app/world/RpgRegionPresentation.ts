@@ -16,8 +16,8 @@ export const RPG_REGION_PRESENTATION_PROFILES = {
     effectIntensity: 0.12, ambienceVolume: 0.24
   },
   gyukatsu: {
-    sky: "#c99b78", fog: "#8f6655", key: "#ffb667", fill: "#9a6e62",
-    keyIntensity: 1.05, fillIntensity: 0.62,
+    sky: "#d1a47e", fog: "#9f7462", key: "#ffc477", fill: "#b98a78",
+    keyIntensity: 1.24, fillIntensity: 0.78,
     decorationDensity: 0.92, vegetationDensity: 0.18,
     effectIntensity: 0.2, ambienceVolume: 0.28
   },
@@ -28,8 +28,8 @@ export const RPG_REGION_PRESENTATION_PROFILES = {
     effectIntensity: 0.72, ambienceVolume: 0.22
   },
   hanabi: {
-    sky: "#111a3a", fog: "#241d3e", key: "#ffbf69", fill: "#485c91",
-    keyIntensity: 0.82, fillIntensity: 0.55,
+    sky: "#18295a", fog: "#342b52", key: "#ffd080", fill: "#7083bd",
+    keyIntensity: 1.08, fillIntensity: 0.78,
     decorationDensity: 1, vegetationDensity: 0.32,
     effectIntensity: 1, ambienceVolume: 0.3
   }

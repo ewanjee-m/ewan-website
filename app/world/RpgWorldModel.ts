@@ -547,8 +547,8 @@ const createLantern = (
   id,
   kind: "lantern",
   zoneId: "hanabi",
-  position: [x, 1.45, z],
-  size: [0.18, 2.9, 0.18],
+  position: [x, 2.65, z],
+  size: [0.18, 5.3, 0.18],
   color: "#49362f",
   accent: variant % 2 === 0 ? "#ff7a63" : "#ffd170",
   blocksMovement: true,
@@ -938,17 +938,17 @@ export const RPG_WORLD_SCENE_LANDMARKS: readonly WorldSceneLandmark[] = [
     blocksMovement: true,
     variant: 5
   },
-  ...[20, 23, 26, 29, 32].flatMap((x, index) => [
+  ...[-19, -21.5, -24, -26.5, -29].flatMap((z, index) => [
     createLantern(
       `hanabi-lantern-${index}-north`,
-      x,
-      -18.5,
+      19,
+      z,
       index
     ),
     createLantern(
       `hanabi-lantern-${index}-south`,
-      x,
-      -29.5,
+      35,
+      z,
       index + 1
     )
   ]),

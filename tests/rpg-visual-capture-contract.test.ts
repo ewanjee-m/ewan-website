@@ -40,6 +40,24 @@ describe("RPG visual capture execution contract", () => {
     expect(source).toContain("cameraFacingDot >= 0.98");
     expect(
       source.match(/await waitForCameraFixture\(/g)
-    ).toHaveLength(3);
+    ).toHaveLength(4);
+  });
+
+  it("uses one landmark-focused camera fixture source instead of arrival-heading offsets", () => {
+    expect(source).toContain(
+      'RPG_VISUAL_CAMERA_FIXTURES'
+    );
+    expect(source).toContain(
+      'resolveRpgVisualCameraYaw'
+    );
+    expect(source).not.toContain("const CAMERA_FIXTURES = {");
+    expect(source).not.toContain(
+      "headingYaw + fixture.yawOffsetDegrees"
+    );
+  });
+
+  it("aims the airport proof at the live moving coach", () => {
+    expect(source).toContain("busPosition");
+    expect(source).toContain('id === "airport"');
   });
 });

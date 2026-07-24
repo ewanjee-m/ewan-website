@@ -112,6 +112,22 @@ describe("RPG town scene layout", () => {
     expect(airportPlaza?.size[0]).toBeGreaterThanOrEqual(12);
     expect(hanabiPlaza?.size[0]).toBeGreaterThanOrEqual(12);
   });
+
+  it("keeps the Hanabi arrival and scenic corridor clear of lantern poles", () => {
+    const hanabiLanterns = RPG_LANDMARKS.filter(
+      ({ zoneId, kind }) => zoneId === "hanabi" && kind === "lantern"
+    );
+
+    expect(hanabiLanterns).toHaveLength(10);
+    for (const lantern of hanabiLanterns) {
+      expect(
+        lantern.position[0] <= 19.1 || lantern.position[0] >= 34.4,
+        lantern.id
+      ).toBe(true);
+    }
+    expect(isRpgWalkablePosition(26, -18)).toBe(true);
+    expect(isRpgWalkablePosition(27, -22)).toBe(true);
+  });
   it("lays the five districts and one connected route network across both axes", () => {
     expect(RPG_TOWN_ZONES.map(({ id }) => id)).toEqual([
       "airport",

@@ -97,6 +97,7 @@ export const RpgTownScene = memo(function RpgTownScene({
           runtime={busRuntime}
           dynamicObstacles={dynamicObstacles}
           reducedMotion={reducedMotion}
+          telemetry={telemetry}
         />
         <RpgNpcCrowd
           playerPosition={playerPosition}

@@ -27,6 +27,45 @@ const messages = {
     resetPosition: "시작 위치로 돌아가기",
     jump: "점프",
     interact: "상호작용",
+    talkToNpc: "NPC와 대화",
+    interactionNpcConversation: "NPC 대화",
+    npcDialogues: {
+      "npc-airport-traveler": {
+        speaker: "여행객 미나",
+        message:
+          "리무진 버스가 곧 출발해요. 도쿄 대로까지 길이 이어져 있으니 표지판을 따라 걸어가세요."
+      },
+      "npc-tokyo-worker": {
+        speaker: "도쿄 직장인 켄",
+        message:
+          "파란 타워 아래 횡단보도를 건너면 규카츠 골목으로 이어지는 남쪽 길이 보여요."
+      },
+      "npc-gyukatsu-chef": {
+        speaker: "규카츠 셰프 아키라",
+        message:
+          "화로가 뜨거우니 천천히 지나가세요. 돌길 끝에서 벚꽃 수로로 내려갈 수 있어요."
+      },
+      "npc-sakura-visitor": {
+        speaker: "벚꽃 구경꾼 유이",
+        message:
+          "큰 벚나무 옆 다리를 건너면 하나비 축제의 등불이 보여요. 수로 가장자리를 조심하세요."
+      },
+      "npc-hanabi-child": {
+        speaker: "하나비 아이 하루",
+        message:
+          "도리이 옆 빨간 등 아래 사과 노점이 있어요. 불꽃놀이가 시작되기 전에 같이 가요!"
+      },
+      "npc-hanabi-yukata": {
+        speaker: "유카타 손님 사키",
+        message:
+          "도리이 너머가 불꽃을 가장 잘 볼 수 있는 자리예요. 등불 사이 길을 따라가 보세요."
+      },
+      "npc-hanabi-vendor": {
+        speaker: "축제 상인 다이스케",
+        message:
+          "사과 사탕은 빨간 노점에 있어요. 불꽃이 터질 때는 통로 중앙을 비워 주세요."
+      }
+    },
     worldFallback:
       "월드를 표시하지 못해 읽기 가능한 포트폴리오를 대신 표시합니다.",
     portfolioLabel: "포트폴리오 장소",
@@ -183,6 +222,45 @@ const messages = {
     resetPosition: "スタート地点に戻る",
     jump: "ジャンプ",
     interact: "調べる",
+    talkToNpc: "NPCと話す",
+    interactionNpcConversation: "NPCとの会話",
+    npcDialogues: {
+      "npc-airport-traveler": {
+        speaker: "旅人 ミナ",
+        message:
+          "リムジンバスはもうすぐ出発します。案内板に沿って歩けば、東京の大通りまで道が続いています。"
+      },
+      "npc-tokyo-worker": {
+        speaker: "会社員 ケン",
+        message:
+          "青いタワーの下の横断歩道を渡ると、牛カツ横丁へ続く南の道が見えます。"
+      },
+      "npc-gyukatsu-chef": {
+        speaker: "牛カツ職人 アキラ",
+        message:
+          "炭火は熱いので、ゆっくり通ってください。石畳の先から桜の運河へ下りられます。"
+      },
+      "npc-sakura-visitor": {
+        speaker: "花見客 ユイ",
+        message:
+          "大きな桜のそばの橋を渡ると、花火祭りの提灯が見えます。運河の縁に気をつけて。"
+      },
+      "npc-hanabi-child": {
+        speaker: "花火の子ども ハル",
+        message:
+          "鳥居の横、赤い提灯の下にりんご飴の屋台があるよ。花火が始まる前に一緒に行こう！"
+      },
+      "npc-hanabi-yukata": {
+        speaker: "浴衣客 サキ",
+        message:
+          "鳥居の向こうが花火を一番よく見られる場所です。提灯の間の道を進んでください。"
+      },
+      "npc-hanabi-vendor": {
+        speaker: "祭り商人 ダイスケ",
+        message:
+          "りんご飴は赤い屋台です。花火が上がる時は、通路の中央を空けてくださいね。"
+      }
+    },
     worldFallback:
       "ワールドを表示できないため、読みやすいポートフォリオを代わりに表示します。",
     portfolioLabel: "ポートフォリオの場所",
@@ -340,6 +418,45 @@ const messages = {
     resetPosition: "Return to start",
     jump: "Jump",
     interact: "Interact",
+    talkToNpc: "Talk to NPC",
+    interactionNpcConversation: "NPC conversation",
+    npcDialogues: {
+      "npc-airport-traveler": {
+        speaker: "Mina · Traveler",
+        message:
+          "The limousine bus leaves soon. Follow the signs and the road will take you all the way to Tokyo Boulevard."
+      },
+      "npc-tokyo-worker": {
+        speaker: "Ken · Office worker",
+        message:
+          "Cross beneath the blue tower and take the south road. It leads straight to the gyukatsu alley."
+      },
+      "npc-gyukatsu-chef": {
+        speaker: "Akira · Gyukatsu chef",
+        message:
+          "The charcoal grill is hot, so pass slowly. The stone path ahead descends toward the sakura canal."
+      },
+      "npc-sakura-visitor": {
+        speaker: "Yui · Sakura visitor",
+        message:
+          "Cross the bridge beside the great cherry tree and you will see the Hanabi lanterns. Mind the canal edge."
+      },
+      "npc-hanabi-child": {
+        speaker: "Haru · Festival child",
+        message:
+          "The candy-apple stall is under the red lanterns beside the torii. Let's get there before the fireworks begin!"
+      },
+      "npc-hanabi-yukata": {
+        speaker: "Saki · Yukata visitor",
+        message:
+          "The best fireworks view is beyond the torii. Follow the open path between the lanterns."
+      },
+      "npc-hanabi-vendor": {
+        speaker: "Daisuke · Festival vendor",
+        message:
+          "Candy apples are at the red stall. Please keep the center path clear when the fireworks start."
+      }
+    },
     worldFallback:
       "The world could not be displayed, so the readable portfolio is shown instead.",
     portfolioLabel: "Portfolio landmarks",

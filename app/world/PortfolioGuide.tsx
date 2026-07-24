@@ -9,6 +9,12 @@ export interface PortfolioEntry {
   summary: string;
 }
 
+export interface PortfolioRequestedDialogue {
+  contextLabel: string;
+  speaker: string;
+  message: string;
+}
+
 interface PortfolioLabels {
   portfolioLabel: string;
   openPortfolio: string;
@@ -20,6 +26,7 @@ interface PortfolioLabels {
 export interface PortfolioGuideProps {
   labels: PortfolioLabels;
   requestedEntryId: string | null;
+  requestedDialogue: PortfolioRequestedDialogue | null;
   onOpenChange: (open: boolean) => void;
   onRequestHandled: () => void;
 }
@@ -27,10 +34,13 @@ export interface PortfolioGuideProps {
 export function PortfolioGuide({
   labels,
   requestedEntryId,
+  requestedDialogue,
   onOpenChange,
   onRequestHandled
 }: PortfolioGuideProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeDialogue, setActiveDialogue] =
+    useState<PortfolioRequestedDialogue | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const closeButton = useRef<HTMLButtonElement>(null);
   const activeTrigger = useRef<HTMLElement>(null);
@@ -51,6 +61,7 @@ export function PortfolioGuide({
   ) {
     setHandledRequestId(requestedEntry.id);
     setMenuOpen(false);
+    setActiveDialogue(requestedDialogue);
     setActiveId(requestedEntry.id);
   }
   const activeEntry = labels.portfolioItems.find(
@@ -61,6 +72,7 @@ export function PortfolioGuide({
     open.current = false;
     shouldRestoreFocus.current = true;
     setActiveId(null);
+    setActiveDialogue(null);
     setMenuOpen(true);
     onOpenChange(false);
   }, [onOpenChange]);
@@ -69,6 +81,7 @@ export function PortfolioGuide({
     (entryId: string, trigger: HTMLElement | null) => {
       activeTrigger.current = trigger;
       setMenuOpen(false);
+      setActiveDialogue(null);
       setActiveId(entryId);
       if (!open.current) {
         open.current = true;
@@ -182,9 +195,20 @@ export function PortfolioGuide({
           >
             ×
           </button>
-          <p className="start-eyebrow">{activeEntry.kicker}</p>
-          <h2 id="portfolio-dialog-title">{activeEntry.title}</h2>
-          <p>{activeEntry.summary}</p>
+          {activeDialogue ? (
+            <p className="portfolio-dialog-context">
+              {activeDialogue.contextLabel}
+            </p>
+          ) : null}
+          <p className="start-eyebrow">
+            {activeDialogue ? activeEntry.title : activeEntry.kicker}
+          </p>
+          <h2 id="portfolio-dialog-title">
+            {activeDialogue ? activeDialogue.speaker : activeEntry.title}
+          </h2>
+          <p>
+            {activeDialogue ? activeDialogue.message : activeEntry.summary}
+          </p>
         </section>
       ) : null}
     </div>

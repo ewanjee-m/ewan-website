@@ -1,32 +1,75 @@
-export const RPG_VISUAL_CAMERA_FIXTURES = {
+import type { DestinationId } from "../../app/guide/GuideContract";
+
+export interface RpgVisualCameraFixture {
+  readonly focusLandmarkIds: readonly string[];
+  readonly focusWorldXZ: readonly [number, number];
+  readonly screenOffsetDegrees: number;
+  readonly pitchDegrees: number;
+  readonly desktopDistance: number;
+  readonly mobileDistance: number;
+  readonly capturePosition?: readonly [number, number];
+}
+
+export const RPG_VISUAL_CAMERA_FIXTURES: Readonly<
+  Record<DestinationId, RpgVisualCameraFixture>
+> = {
   airport: {
-    yawOffsetDegrees: -25,
-    pitchDegrees: 28,
-    desktopDistance: 7.8,
-    mobileDistance: 6.864
+    focusLandmarkIds: ["airport-limousine-bus"],
+    // The visual is a moving coach whose route stays around x=-31. The live
+    // capture overrides this fallback with telemetry from the rendered bus.
+    focusWorldXZ: [-31, 8],
+    screenOffsetDegrees: 0,
+    pitchDegrees: 22,
+    desktopDistance: 8.4,
+    mobileDistance: 7.56
   },
   tokyo: {
-    yawOffsetDegrees: 30,
-    pitchDegrees: 34,
-    desktopDistance: 6.6,
-    mobileDistance: 5.808
+    focusLandmarkIds: ["tokyo-blue-tower"],
+    focusWorldXZ: [-17, 29],
+    screenOffsetDegrees: 8,
+    pitchDegrees: 22,
+    desktopDistance: 7.8,
+    mobileDistance: 7.02,
+    capturePosition: [-9, 19.75]
   },
   gyukatsu: {
-    yawOffsetDegrees: -20,
-    pitchDegrees: 38,
-    desktopDistance: 5.6,
-    mobileDistance: 4.928
+    focusLandmarkIds: ["gyukatsu-main-machiya"],
+    focusWorldXZ: [-1, 8],
+    screenOffsetDegrees: 8,
+    pitchDegrees: 26,
+    desktopDistance: 7,
+    mobileDistance: 6.3
   },
   sakura: {
-    yawOffsetDegrees: 25,
-    pitchDegrees: 32,
-    desktopDistance: 6.8,
-    mobileDistance: 5.984
+    focusLandmarkIds: ["sakura-tree-01", "sakura-bridge"],
+    focusWorldXZ: [14.65, -24.8],
+    screenOffsetDegrees: 9.622,
+    pitchDegrees: 22,
+    desktopDistance: 8,
+    mobileDistance: 7.2,
+    capturePosition: [8.5, -35.5]
   },
   hanabi: {
-    yawOffsetDegrees: -30,
-    pitchDegrees: 28,
-    desktopDistance: 8,
-    mobileDistance: 7.04
+    focusLandmarkIds: ["hanabi-apple-stall", "hanabi-street-torii"],
+    focusWorldXZ: [22, -14.3],
+    screenOffsetDegrees: 0,
+    pitchDegrees: 18,
+    desktopDistance: 9.2,
+    mobileDistance: 8.28,
+    capturePosition: [27, -22]
   }
-} as const;
+};
+
+export function resolveRpgVisualCameraYaw(
+  fixture: RpgVisualCameraFixture,
+  playerPosition: readonly [number, number, number],
+  liveFocusWorldXZ: readonly [number, number] = fixture.focusWorldXZ
+) {
+  return (
+    Math.atan2(
+      liveFocusWorldXZ[0] - playerPosition[0],
+      liveFocusWorldXZ[1] - playerPosition[2]
+    ) +
+    fixture.screenOffsetDegrees * Math.PI / 180
+  );
+}

@@ -854,17 +854,39 @@ a:focus-visible {
 }
 
 .portfolio-menu-toggle {
-  display: none;
+  position: absolute;
+  top: 4.75rem;
+  left: max(0.75rem, env(safe-area-inset-left));
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid rgb(255 218 151 / 58%);
+  border-radius: 0.75rem;
+  color: #fff8ed;
+  background: rgb(7 21 46 / 82%);
+  box-shadow: 0 0.5rem 1.6rem rgb(0 0 0 / 18%);
+  pointer-events: auto;
+  backdrop-filter: blur(10px);
+}
+
+.portfolio-menu-toggle span {
+  color: var(--gold);
 }
 
 .portfolio-landmarks {
   position: absolute;
-  top: clamp(4.5rem, 9vw, 6.5rem);
+  top: 8rem;
   left: clamp(0.75rem, 2.5vw, 2rem);
-  display: grid;
+  display: none;
   gap: 0.45rem;
   width: min(17rem, calc(100vw - 6rem));
   pointer-events: auto;
+}
+
+.portfolio-landmarks[data-menu-open="true"] {
+  display: grid;
 }
 
 .portfolio-landmarks button {
@@ -896,8 +918,9 @@ a:focus-visible {
 .portfolio-dialog {
   position: absolute;
   top: 50%;
-  left: 50%;
-  width: min(31rem, calc(100vw - 2rem));
+  right: clamp(1rem, 3vw, 2.5rem);
+  left: auto;
+  width: min(28rem, calc(100vw - 2rem));
   max-height: min(70vh, 32rem);
   overflow: auto;
   padding: clamp(1.25rem, 3vw, 2rem);
@@ -907,7 +930,7 @@ a:focus-visible {
   background: rgb(9 20 40 / 94%);
   box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 48%);
   backdrop-filter: blur(18px);
-  transform: translate(-50%, -50%);
+  transform: translateY(-50%);
   pointer-events: auto;
 }
 
@@ -918,6 +941,24 @@ a:focus-visible {
 
 .portfolio-dialog p:not(.start-eyebrow) {
   line-height: 1.7;
+}
+
+.portfolio-dialog .start-eyebrow {
+  margin-right: 3.5rem;
+}
+
+.portfolio-dialog-context {
+  width: fit-content;
+  margin: 0 3.5rem 0.65rem 0;
+  padding: 0.32rem 0.62rem;
+  border: 1px solid rgb(255 218 151 / 42%);
+  border-radius: 999px;
+  color: #ffd27a;
+  background: rgb(111 53 58 / 52%);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
 }
 
 .portfolio-dialog a {
@@ -1158,6 +1199,11 @@ a:focus-visible {
 .world-shell:has(.guide-panel) .rpg-mini-map,
 .world-shell:has(.portfolio-dialog) .rpg-mini-map,
 .world-shell:has(.rpg-world-map) .rpg-mini-map {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.world-shell:has(.portfolio-dialog) .world-controls {
   visibility: hidden;
   pointer-events: none;
 }
@@ -1461,25 +1507,7 @@ a:focus-visible {
 
 @media (max-width: 640px) {
   .portfolio-menu-toggle {
-    position: absolute;
     top: 4.25rem;
-    left: max(0.75rem, env(safe-area-inset-left));
-    display: inline-flex;
-    min-height: 44px;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.55rem 0.75rem;
-    border: 1px solid rgb(255 218 151 / 58%);
-    border-radius: 0.75rem;
-    color: #fff8ed;
-    background: rgb(7 21 46 / 82%);
-    box-shadow: 0 0.5rem 1.6rem rgb(0 0 0 / 18%);
-    pointer-events: auto;
-    backdrop-filter: blur(10px);
-  }
-
-  .portfolio-menu-toggle span {
-    color: var(--gold);
   }
 
   .portfolio-landmarks {
@@ -1497,8 +1525,25 @@ a:focus-visible {
   }
 
   .portfolio-dialog {
-    top: 43%;
-    max-height: 52vh;
+    top: auto;
+    right: max(0.75rem, env(safe-area-inset-right));
+    bottom: max(0.75rem, env(safe-area-inset-bottom));
+    left: max(0.75rem, env(safe-area-inset-left));
+    width: auto;
+    max-height: 36svh;
+    padding: 1rem 1.1rem;
+    transform: none;
+  }
+
+  .portfolio-dialog h2 {
+    margin-bottom: 0.5rem;
+    font-size: 1.45rem;
+  }
+
+  .portfolio-dialog p:not(.start-eyebrow) {
+    margin-bottom: 0;
+    font-size: 0.95rem;
+    line-height: 1.5;
   }
 
   .rpg-mini-map {

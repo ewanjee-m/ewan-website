@@ -20,7 +20,11 @@ import type { createCameraRig } from "./CameraRig";
 import type { PlayerCharacterId } from "./CharacterAssets";
 import { createInputController } from "./InputController";
 import { attachWorldKeyboardInput } from "./KeyboardInput";
-import { PortfolioGuide, type PortfolioEntry } from "./PortfolioGuide";
+import {
+  PortfolioGuide,
+  type PortfolioEntry,
+  type PortfolioRequestedDialogue
+} from "./PortfolioGuide";
 import {
   createInitialWorldNavigationSnapshot,
   type WorldNavigationSnapshot
@@ -51,6 +55,11 @@ interface WorldLabels {
   resetPosition: string;
   jump: string;
   interact: string;
+  talkToNpc: string;
+  interactionNpcConversation: string;
+  npcDialogues: Readonly<
+    Record<string, { readonly speaker: string; readonly message: string }>
+  >;
   worldFallback: string;
   portfolioLabel: string;
   openPortfolio: string;
@@ -102,6 +111,8 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
   const [worldResetKey, setWorldResetKey] = useState(0);
   const [requestedEntryId, setRequestedEntryId] =
     useState<WorldInteractionEntryId | null>(null);
+  const [requestedDialogue, setRequestedDialogue] =
+    useState<PortfolioRequestedDialogue | null>(null);
   const sharedNavigation = useMemo(
     () => shareWorldNavigationSnapshot(navigation),
     [navigation]
@@ -136,9 +147,31 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
   const requestInteraction = useCallback(
     (entryId: WorldInteractionEntryId) => {
       if (interactionOpen || worldMapOpen) return;
+      const actorId = nearInteractionTarget?.actorId;
+      const dialogue = actorId ? labels.npcDialogues[actorId] : null;
+      setRequestedDialogue(
+        dialogue && nearInteractionTarget
+          ? {
+              contextLabel: `${
+                labels.worldMap.destinations[
+                  nearInteractionTarget.zoneId
+                ]
+              } · ${labels.interactionNpcConversation}`,
+              speaker: dialogue.speaker,
+              message: dialogue.message
+            }
+          : null
+      );
       setRequestedEntryId(entryId);
     },
-    [interactionOpen, worldMapOpen]
+    [
+      interactionOpen,
+      labels.interactionNpcConversation,
+      labels.npcDialogues,
+      labels.worldMap.destinations,
+      nearInteractionTarget,
+      worldMapOpen
+    ]
   );
   const handleInteractionOpenChange = useCallback((open: boolean) => {
     setInteractionOpen(open);
@@ -275,14 +308,22 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
       <PortfolioGuide
         labels={labels}
         requestedEntryId={requestedEntryId}
+        requestedDialogue={requestedDialogue}
         onOpenChange={handleInteractionOpenChange}
-        onRequestHandled={() => setRequestedEntryId(null)}
+        onRequestHandled={() => {
+          setRequestedEntryId(null);
+          setRequestedDialogue(null);
+        }}
       />
 
       <div ref={interactionPromptHost}>
         <WorldInteractionPrompt
           target={interactionOpen || worldMapOpen ? null : nearInteractionTarget}
-          label={labels.interact}
+          label={
+            nearInteractionTarget?.actorId
+              ? labels.talkToNpc
+              : labels.interact
+          }
           onInteract={() => {
             if (nearInteractionTarget) {
               requestInteraction(nearInteractionTarget.entryId);

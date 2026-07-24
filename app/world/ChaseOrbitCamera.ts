@@ -3,11 +3,11 @@ import type { NavigationRegion } from "./RpgWorldGeometry";
 import type { WorldCameraDragIntent } from "./WorldInput";
 
 const PROFILE = {
-  airport: { distance: 7.8, pitchDegrees: 28 },
-  tokyo: { distance: 6.6, pitchDegrees: 34 },
-  gyukatsu: { distance: 5.6, pitchDegrees: 38 },
-  sakura: { distance: 6.8, pitchDegrees: 32 },
-  hanabi: { distance: 8, pitchDegrees: 28 }
+  airport: { distance: 8.4, pitchDegrees: 22, mobileFovDegrees: 52 },
+  tokyo: { distance: 7.8, pitchDegrees: 22, mobileFovDegrees: 52 },
+  gyukatsu: { distance: 7, pitchDegrees: 26, mobileFovDegrees: 52 },
+  sakura: { distance: 8, pitchDegrees: 22, mobileFovDegrees: 68 },
+  hanabi: { distance: 9.2, pitchDegrees: 18, mobileFovDegrees: 52 }
 } as const;
 
 export interface ChaseOrbitCameraState {
@@ -56,22 +56,27 @@ export function getRegionCameraProfile(
               from.pitchDegrees,
               to.pitchDegrees,
               progress
+            ),
+            mobileFovDegrees: mix(
+              from.mobileFovDegrees,
+              to.mobileFovDegrees,
+              progress
             )
           };
         })();
 
   return {
-    distance: profile.distance * (viewport === "mobile" ? 0.88 : 1),
+    distance: profile.distance * (viewport === "mobile" ? 0.9 : 1),
     pitchDegrees: profile.pitchDegrees,
-    fovDegrees: viewport === "mobile" ? 52 : 45
+    fovDegrees: viewport === "mobile" ? profile.mobileFovDegrees : 45
   };
 }
 
 export function createChaseOrbitCameraState(): ChaseOrbitCameraState {
   return {
     yaw: 0,
-    pitch: (28 * Math.PI) / 180,
-    distance: 7.8,
+    pitch: (22 * Math.PI) / 180,
+    distance: 8.4,
     lastManualInputSeconds: Number.NEGATIVE_INFINITY
   };
 }

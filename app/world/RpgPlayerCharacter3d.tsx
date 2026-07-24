@@ -47,7 +47,7 @@ function prepareCharacterModel(source: Object3D) {
   model.traverse((object) => {
     if (!(object instanceof SkinnedMesh)) return;
     object.material = resolveRpgCharacterToonMaterial(object.material, "player");
-    object.castShadow = false;
+    object.castShadow = true;
     object.receiveShadow = false;
     object.frustumCulled = false;
     skinnedMeshes.push(object);

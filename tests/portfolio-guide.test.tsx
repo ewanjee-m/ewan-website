@@ -27,6 +27,7 @@ describe("mobile portfolio landmarks", () => {
       <PortfolioGuide
         labels={labels}
         requestedEntryId={null}
+        requestedDialogue={null}
         onOpenChange={vi.fn()}
         onRequestHandled={vi.fn()}
       />
@@ -69,12 +70,30 @@ describe("mobile portfolio landmarks", () => {
       <PortfolioGuide
         labels={labels}
         requestedEntryId="world-design"
+        requestedDialogue={{
+          contextLabel: "Hanabi · NPC conversation",
+          speaker: "Haru · Festival child",
+          message:
+            "The candy-apple stall is beside the torii. Let's go before the fireworks begin!"
+        }}
         onOpenChange={onOpenChange}
         onRequestHandled={onRequestHandled}
       />
     );
 
     expect(screen.getByRole("dialog")).toBeVisible();
+    expect(screen.getByText("Hanabi · NPC conversation")).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Haru · Festival child" })
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "The candy-apple stall is beside the torii. Let's go before the fireworks begin!"
+      )
+    ).toBeVisible();
+    expect(
+      screen.queryByText("A continuous interactive festival world.")
+    ).not.toBeInTheDocument();
     expect(onRequestHandled).toHaveBeenCalledOnce();
     expect(onOpenChange).toHaveBeenCalledWith(true);
 
@@ -82,6 +101,12 @@ describe("mobile portfolio landmarks", () => {
       <PortfolioGuide
         labels={labels}
         requestedEntryId="world-design"
+        requestedDialogue={{
+          contextLabel: "Hanabi · NPC conversation",
+          speaker: "Haru · Festival child",
+          message:
+            "The candy-apple stall is beside the torii. Let's go before the fireworks begin!"
+        }}
         onOpenChange={onOpenChange}
         onRequestHandled={onRequestHandled}
       />
@@ -115,5 +140,33 @@ describe("portfolio list against the world overlays", () => {
     expect(Number.isFinite(guideLayer)).toBe(true);
     expect(Number.isFinite(miniMapLayer)).toBe(true);
     expect(guideLayer).toBeGreaterThan(miniMapLayer);
+  });
+
+  it("keeps the desktop work list collapsed until the visitor asks for it", () => {
+    const styles = readFileSync(
+      resolve(process.cwd(), "app/globals.css"),
+      "utf8"
+    );
+
+    expect(styles).toMatch(
+      /\.portfolio-landmarks\s*\{[^}]*display:\s*none/
+    );
+    expect(styles).toMatch(
+      /\.portfolio-landmarks\[data-menu-open="true"\]\s*\{[^}]*display:\s*grid/
+    );
+  });
+
+  it("keeps the mobile interaction card in the lower third and clears inactive controls", () => {
+    const styles = readFileSync(
+      resolve(process.cwd(), "app/globals.css"),
+      "utf8"
+    );
+
+    expect(styles).toContain(
+      ".world-shell:has(.portfolio-dialog) .world-controls"
+    );
+    expect(styles).toMatch(
+      /@media \(max-width: 640px\)[\s\S]*?\.portfolio-dialog\s*\{[^}]*bottom:/
+    );
   });
 });

@@ -56,5 +56,24 @@ describe("rigged toon GLB player renderer", () => {
     expect(source).toContain("snapshot.jumpOffset");
     expect(source).toContain("evaluateRpgCharacterMotion3dInto");
     expect(source).toContain("createRpgCharacterMotion3dState");
+    expect(source).toContain("pose.current.shadowScale");
+    expect(source).toContain("pose.current.shadowOpacity");
+    expect(source).toContain('name="rpg-player-contact-shadow"');
+  });
+
+  it("enables the intended scene shadows while retaining a low-cost contact shadow", () => {
+    const characterSource = readFileSync(
+      resolve(process.cwd(), "app/world/RpgPlayerCharacter3d.tsx"),
+      "utf8"
+    );
+    const canvasSource = readFileSync(
+      resolve(process.cwd(), "app/world/SeamlessWorldCanvas.tsx"),
+      "utf8"
+    );
+
+    expect(characterSource).toContain("object.castShadow = true");
+    expect(canvasSource).toContain(
+      "shadows={qualitySettings.shadowMapSize > 0}"
+    );
   });
 });

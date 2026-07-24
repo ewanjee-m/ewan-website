@@ -23,6 +23,10 @@ import {
   RPG_CANONICAL_ROUTE_STEERING
 } from "../fixtures/rpg-canonical-route.ts";
 import {
+  RPG_VISUAL_CAMERA_FIXTURES,
+  resolveRpgVisualCameraYaw
+} from "../fixtures/rpg-visual-camera-fixtures.ts";
+import {
   analyzePngCrop,
   encodeSolidColorPng
 } from "../fixtures/rpg-png-evidence.ts";
@@ -60,13 +64,7 @@ const VIEWPORTS = {
     isMobile: true
   }
 };
-const CAMERA_FIXTURES = {
-  airport: { yawOffsetDegrees: -25, pitchDegrees: 28, desktopDistance: 7.8, mobileDistance: 6.864 },
-  tokyo: { yawOffsetDegrees: 30, pitchDegrees: 34, desktopDistance: 6.6, mobileDistance: 5.808 },
-  gyukatsu: { yawOffsetDegrees: -20, pitchDegrees: 38, desktopDistance: 5.6, mobileDistance: 4.928 },
-  sakura: { yawOffsetDegrees: 25, pitchDegrees: 32, desktopDistance: 6.8, mobileDistance: 5.984 },
-  hanabi: { yawOffsetDegrees: -30, pitchDegrees: 28, desktopDistance: 8, mobileDistance: 7.04 }
-};
+const CAMERA_FIXTURES = RPG_VISUAL_CAMERA_FIXTURES;
 const ROUTE = RPG_CANONICAL_ROUTE;
 const ROUTE_STEERING = RPG_CANONICAL_ROUTE_STEERING;
 const ARRIVAL_PREFIXES = [
@@ -573,7 +571,8 @@ async function telemetry(
       diagnostic: renderer.getAttribute("data-camera-diagnostic"),
       revision: renderer.getAttribute("data-navigation-revision"),
       zone: world?.getAttribute("data-current-zone"),
-      navigationRegion: renderer.getAttribute("data-navigation-region")
+      navigationRegion: renderer.getAttribute("data-navigation-region"),
+      busPosition: renderer.getAttribute("data-bus-position")
     };
   });
   const parsed = {
@@ -591,7 +590,8 @@ async function telemetry(
     cameraDiagnostic: data.diagnostic,
     navigationRevision: data.revision,
     zone: data.zone,
-    navigationRegion: data.navigationRegion
+    navigationRegion: data.navigationRegion,
+    busPosition: parseTuple(data.busPosition, "bus position")
   };
   if (
     ![
@@ -745,10 +745,17 @@ async function captureRow({
   const current = await telemetry(page);
   const fixture = CAMERA_FIXTURES[id];
   if (fixture) {
-    const headingYaw = Math.atan2(current.heading[0], current.heading[2]);
+    const liveFocusWorldXZ =
+      id === "airport"
+        ? [current.busPosition[0], current.busPosition[2]]
+        : fixture.focusWorldXZ;
     await setCamera(
       page,
-      headingYaw + fixture.yawOffsetDegrees * Math.PI / 180,
+      resolveRpgVisualCameraYaw(
+        fixture,
+        current.position,
+        liveFocusWorldXZ
+      ),
       fixture.pitchDegrees
     );
     const requestedDistance =
@@ -943,6 +950,10 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
       page = await openFreshPage();
       await enterWorld(page, "male");
       await driveRoutePrefix(page, end);
+      const scenicPosition = CAMERA_FIXTURES[id]?.capturePosition;
+      if (scenicPosition) {
+        await driveTo(page, scenicPosition);
+      }
       await captureRow({
         page, evidenceDirectory, viewportName, id, selectedCharacter: "male", rows
       });
@@ -950,14 +961,14 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
         assertUninterruptedRoute(
           await driveContinuousTrustedRoute(
             page,
-            [[8, 0], [5, 7]],
+            [[8, 0], [5, 6]],
             { runRequested: false, tolerance: 0.05 }
           ),
           "gyukatsu narrow-camera route"
         );
         const narrow = await telemetry(page);
         if (
-          Math.hypot(narrow.position[0] - 5, narrow.position[2] - 7) > 0.05 ||
+          Math.hypot(narrow.position[0] - 5, narrow.position[2] - 6) > 0.05 ||
           narrow.zone !== "gyukatsu" ||
           narrow.cameraSafe !== "true" ||
           narrow.cameraDiagnostic !== "ok"
@@ -968,24 +979,46 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
           viewportName === "mobile"
             ? CAMERA_FIXTURES.gyukatsu.mobileDistance
             : CAMERA_FIXTURES.gyukatsu.desktopDistance;
+        const narrowYaw = resolveRpgVisualCameraYaw(
+          CAMERA_FIXTURES.gyukatsu,
+          narrow.position
+        );
         await setCamera(
           page,
-          Math.atan2(narrow.heading[0], narrow.heading[2]) - 20 * Math.PI / 180,
-          38
+          narrowYaw,
+          CAMERA_FIXTURES.gyukatsu.pitchDegrees
         );
         await waitForCameraFixture(
           page,
-          38,
+          CAMERA_FIXTURES.gyukatsu.pitchDegrees,
           requestedDistance
         );
+        const narrowCamera = await telemetry(page);
+        if (
+          narrowCamera.cameraCollisionAdjusted !== "false" ||
+          narrowCamera.cameraCollisionAdjustment > 0.02 ||
+          narrowCamera.cameraLateralCollisionEscape !== "false"
+        ) {
+          fail(
+            "E_NARROW_CAMERA",
+            `narrow-camera framing was unexpectedly corrected: ` +
+              `adjusted=${narrowCamera.cameraCollisionAdjusted}; ` +
+              `adjustment=${narrowCamera.cameraCollisionAdjustment}; ` +
+              `lateral=${narrowCamera.cameraLateralCollisionEscape}`
+          );
+        }
         await captureRow({
           page, evidenceDirectory, viewportName, id: "narrow-camera", selectedCharacter: "male", rows
         });
 
-        await setCamera(page, Math.PI / 2, 38);
+        await setCamera(
+          page,
+          narrowYaw - 30 * Math.PI / 180,
+          CAMERA_FIXTURES.gyukatsu.pitchDegrees
+        );
         await waitForCameraFixture(
           page,
-          38,
+          CAMERA_FIXTURES.gyukatsu.pitchDegrees,
           requestedDistance
         );
         const obstacle = await telemetry(page);
@@ -993,7 +1026,8 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
           obstacle.cameraBoom < 2.6 ||
           obstacle.cameraBoom > requestedDistance + 0.1 ||
           obstacle.cameraCollisionAdjusted !== "true" ||
-          obstacle.cameraCollisionAdjustment <= 0.1 ||
+          obstacle.cameraCollisionAdjustment < 2.7 ||
+          obstacle.cameraLateralCollisionEscape !== "true" ||
           obstacle.cameraSafeViolationMs > 250 ||
           obstacle.cameraDiagnostic !== "ok"
         ) {
@@ -1024,10 +1058,26 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
       }),
       "female Hanabi route"
     );
-    await driveTo(page, [21, -21.9]);
-    await driveForwardToPoint(page, [21, -22], Math.PI, {
+    await driveTo(page, [21, -26.1]);
+    await driveForwardToPoint(page, [21, -26], 0, {
       tolerance: 0.05
     });
+    const interactionCamera = await telemetry(page);
+    await setCamera(
+      page,
+      resolveRpgVisualCameraYaw(
+        CAMERA_FIXTURES.hanabi,
+        interactionCamera.position
+      ),
+      CAMERA_FIXTURES.hanabi.pitchDegrees
+    );
+    await waitForCameraFixture(
+      page,
+      CAMERA_FIXTURES.hanabi.pitchDegrees,
+      viewportName === "mobile"
+        ? CAMERA_FIXTURES.hanabi.mobileDistance
+        : CAMERA_FIXTURES.hanabi.desktopDistance
+    );
     const prompt = page.locator(
       'button.world-interaction-prompt[data-target-id="npc-hanabi-child"]'
     );

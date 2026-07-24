@@ -83,9 +83,9 @@ const airportTerminal = RPG_LANDMARKS.find(
   ({ id }) => id === "airport-terminal"
 )!;
 const festivalLantern = RPG_LANDMARKS.find(
-  // This ray passes between the south-side festival stalls so the assertion
+  // The west-side row keeps this ray clear of stalls, so the assertion
   // isolates the lantern clearance instead of a nearer building.
-  ({ id }) => id === "hanabi-lantern-2-south"
+  ({ id }) => id === "hanabi-lantern-2-north"
 )!;
 
 describe("RPG chase camera obstacle clearance", () => {
@@ -338,8 +338,8 @@ describe("RPG chase camera obstacle clearance", () => {
         festivalLantern.position[2] + 1
       ]
     });
-    expect(ratio).toBeGreaterThan(0.4);
-    expect(ratio).toBeLessThan(0.8);
+    expect(ratio).toBeGreaterThan(0.2);
+    expect(ratio).toBeLessThan(0.3);
   });
 
   it("retracts the boom in front of a townsperson standing behind the player", () => {
@@ -554,8 +554,8 @@ describe("RPG chase camera obstacle clearance", () => {
 
   it("keeps every Hanabi arrival orbit outside the festival stalls", () => {
     const player = [26, 1.15, -18] as const;
-    const pitch = (28 * Math.PI) / 180;
-    const distance = 7.04;
+    const pitch = (18 * Math.PI) / 180;
+    const distance = 8.28;
     const horizontal = Math.cos(pitch) * distance;
 
     for (let yawDegrees = 0; yawDegrees < 360; yawDegrees += 1) {

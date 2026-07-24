@@ -2,7 +2,12 @@
 
 import { useFrame } from "@react-three/fiber";
 import { useRef, type RefObject } from "react";
-import { Group, Vector3 } from "three";
+import {
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  Vector3
+} from "three";
 import type { PlayerCharacterId } from "./CharacterAssets";
 import {
   RpgAssetAvailabilityGate,
@@ -39,6 +44,8 @@ export function RpgPlayerActor({
   telemetry: RefObject<HTMLDivElement | null>;
 }) {
   const root = useRef<Group>(null);
+  const contactShadow = useRef<Mesh>(null);
+  const contactShadowMaterial = useRef<MeshBasicMaterial>(null);
   const characterHandle = useRef<RpgPlayerCharacter3dHandle>(null);
   const motion = useRef(createRpgCharacterMotion3dState());
   const pose = useRef(createRpgCharacterMotion3dPose());
@@ -79,10 +86,38 @@ export function RpgPlayerActor({
       pose.current
     );
     characterHandle.current?.applyPose(pose.current);
+    if (contactShadow.current) {
+      contactShadow.current.scale.set(
+        pose.current.shadowScale,
+        pose.current.shadowScale * 0.38,
+        1
+      );
+    }
+    if (contactShadowMaterial.current) {
+      contactShadowMaterial.current.opacity =
+        pose.current.shadowOpacity * 0.72;
+    }
   });
 
   return (
     <group ref={root} name="rpg-player-actor">
+      <mesh
+        ref={contactShadow}
+        name="rpg-player-contact-shadow"
+        position={[0, 0.025, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        renderOrder={1}
+      >
+        <circleGeometry args={[0.72, 32]} />
+        <meshBasicMaterial
+          ref={contactShadowMaterial}
+          color="#07101d"
+          depthWrite={false}
+          opacity={0.35}
+          toneMapped={false}
+          transparent
+        />
+      </mesh>
       <RpgAssetAvailabilityGate
         assetId={`player-${character}`}
         src={getRpgPlayerCharacterDesign(character).modelAsset}
