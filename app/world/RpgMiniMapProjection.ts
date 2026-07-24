@@ -242,15 +242,41 @@ export function projectRpgReferenceMapHeadingRotation(
   if (epsilon <= 0) {
     throw new RangeError("Map heading epsilon must be positive.");
   }
-  const current = projectRpgReferenceMapPoint(position);
-  const next = projectRpgReferenceMapPoint([
-    position[0] + (heading[0] / headingLength) * epsilon,
+  const current = projectWorldToReference(position);
+  if (!current) {
+    throw new RangeError("Map point is outside the registered reference terrain.");
+  }
+  const headingStep = [
+    (heading[0] / headingLength) * epsilon,
+    (heading[2] / headingLength) * epsilon
+  ] as const;
+  const next = projectWorldToReference([
+    position[0] + headingStep[0],
     position[1],
-    position[2] + (heading[2] / headingLength) * epsilon
+    position[2] + headingStep[1]
   ]);
+  const previous = next
+    ? null
+    : projectWorldToReference([
+        position[0] - headingStep[0],
+        position[1],
+        position[2] - headingStep[1]
+      ]);
+  let deltaX: number;
+  let deltaY: number;
+  if (next) {
+    deltaX = next.pixel[0] - current.pixel[0];
+    deltaY = next.pixel[1] - current.pixel[1];
+  } else if (previous) {
+    deltaX = current.pixel[0] - previous.pixel[0];
+    deltaY = current.pixel[1] - previous.pixel[1];
+  } else {
+    throw new RangeError(
+      "Map heading cannot be projected inside the registered reference terrain."
+    );
+  }
   const rotation =
-    (Math.atan2(next.y - current.y, next.x - current.x) * 180) /
-    Math.PI;
+    (Math.atan2(deltaY, deltaX) * 180) / Math.PI;
   return rotation === -180 ? 180 : rotation;
 }
 

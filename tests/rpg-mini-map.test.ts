@@ -124,6 +124,29 @@ describe("RPG terrain map projection", () => {
     }
   });
 
+  it("projects a player heading at the world boundary without sampling outside the map", () => {
+    const boundaryPosition = [2, 0, RPG_WORLD_BOUNDS.minimumZ] as const;
+    const rotation = projectRpgReferenceMapHeadingRotation(
+      boundaryPosition,
+      [0, 0, -1]
+    );
+    const boundaryPoint = projectRpgReferenceMapPoint(boundaryPosition);
+    const insidePoint = projectRpgReferenceMapPoint([
+      boundaryPosition[0],
+      boundaryPosition[1],
+      boundaryPosition[2] + 0.25
+    ]);
+    const expectedRotation =
+      Math.atan2(
+        boundaryPoint.y - insidePoint.y,
+        boundaryPoint.x - insidePoint.x
+      ) *
+      180 /
+      Math.PI;
+
+    expect(rotation).toBeCloseTo(expectedRotation, 10);
+  });
+
   it("projects world polygons into registered reference points", () => {
     const polygon = RPG_WORLD_ZONES[0].displayPolygon;
 
