@@ -2,7 +2,7 @@ import type { WorldNavigationSnapshot } from "./WorldNavigationState";
 
 export function createWorldNavigationPublisher(
   publish: (atSeconds: number, snapshot: WorldNavigationSnapshot) => void,
-  intervalSeconds = 0.1
+  intervalSeconds = 0.075
 ) {
   let lastAt = Number.NEGATIVE_INFINITY;
   let lastRegionId = "";

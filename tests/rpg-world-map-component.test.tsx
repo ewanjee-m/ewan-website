@@ -5,6 +5,7 @@ import { adaptFlatWorldNavigationSnapshot } from "../app/world/FlatWorldNavigati
 import { createFlatWorldSession } from "../app/world/FlatWorldSession";
 import {
   RPG_CANONICAL_MAP_SOURCE_IDS,
+  RPG_REFERENCE_MAP_NODES,
   projectRpgReferenceMapHeadingRotation,
   projectRpgReferenceMapPoint
 } from "../app/world/RpgMiniMapProjection";
@@ -139,6 +140,16 @@ describe("RPG world map", () => {
     expect(
       container.querySelectorAll("[data-map-mobile-leader]")
     ).toHaveLength(5);
+    for (const node of RPG_REFERENCE_MAP_NODES) {
+      expect(
+        container.querySelector(
+          `.rpg-world-map-zone-button-${node.zoneId}`
+        )
+      ).toHaveAttribute(
+        "data-heading-rotation",
+        String(node.headingRotation)
+      );
+    }
   });
 
   it("selects a place without moving the player", async () => {

@@ -15,3 +15,14 @@ export const RPG_CANONICAL_ROUTE = [
   [18.9, -18],
   [26, -18]
 ] as const;
+
+export const RPG_CANONICAL_ROUTE_TOLERANCE = 0.05;
+
+const BRIDGE_STEERING_Z = -17.98;
+
+export const RPG_CANONICAL_ROUTE_STEERING =
+  RPG_CANONICAL_ROUTE.map((point, index) =>
+    index === 12 || index === 13
+      ? ([point[0], BRIDGE_STEERING_Z] as const)
+      : point
+  );

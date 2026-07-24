@@ -174,13 +174,23 @@ export function RpgMiniMap({
                   data-map-source-id={arrival.arrivalId}
                   data-navigation-revision={navigation.revision}
                   data-anchor-reference={arrival.referencePixel.join(",")}
+                  data-heading-rotation={arrival.headingRotation}
                   data-marker-diameter-reference="40"
                   data-current={destinationId === navigation.currentZoneId}
                   role="img"
                   aria-label={labels.destinations[destinationId]}
-                  transform={`translate(${arrival.referencePixel[0]} ${arrival.referencePixel[1]})`}
+                  transform={
+                    `translate(${arrival.referencePixel[0]} ` +
+                    `${arrival.referencePixel[1]}) ` +
+                    `rotate(${arrival.headingRotation})`
+                  }
                 >
                   <circle r="20" />
+                  <path
+                    className="rpg-mini-map-destination-heading"
+                    d="M 27 0 L 13 -7 L 13 7 Z"
+                    fill="#06111f"
+                  />
                 </g>
               );
             })}

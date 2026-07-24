@@ -33,7 +33,8 @@ export function RpgAirportBusActor({
     position: runtime.pose.position,
     size: RPG_BUS_DEFAULT_SIZE,
     yaw: runtime.pose.yaw,
-    clearance: RPG_BUS_ACTOR_CLEARANCE
+    clearance: RPG_BUS_ACTOR_CLEARANCE,
+    cameraCollision: "solid"
   });
 
   useEffect(() => {

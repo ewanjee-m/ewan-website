@@ -19,9 +19,16 @@ import {
   evaluateRpgBusMotionInto,
   isRpgPositionOutsideMovingBus
 } from "../app/world/RpgBusMotion";
-import { RPG_CANONICAL_ROUTE } from "./fixtures/rpg-canonical-route";
+import {
+  RPG_CANONICAL_ROUTE,
+  RPG_CANONICAL_ROUTE_TOLERANCE
+} from "./fixtures/rpg-canonical-route";
 
 describe("WorldRuntime", () => {
+  it("keeps browser canonical-route arrivals within 0.05 world units", () => {
+    expect(RPG_CANONICAL_ROUTE_TOLERANCE).toBeLessThanOrEqual(0.05);
+  });
+
   it("uses the same bus pose for rendering and dynamic player collision", () => {
     const bus = createRpgBusRuntime();
     const pose = bus.pose;

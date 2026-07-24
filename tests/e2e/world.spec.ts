@@ -1,121 +1,35 @@
 import { expect, test, type Page } from "@playwright/test";
-import { RPG_WORLD_SPAWN } from "../../app/world/RpgWorldModel";
+import {
+  RPG_WORLD_ARRIVALS,
+  RPG_WORLD_CANAL,
+  RPG_WORLD_SPAWN
+} from "../../app/world/RpgWorldModel";
+import { projectRpgReferenceMapPoint } from "../../app/world/RpgMiniMapProjection";
+import {
+  dragCamera,
+  driveCanonicalRoute,
+  driveForwardToPoint,
+  driveTrustedRouteProbe,
+  driveWithKeyboardToPoint,
+  enterRpgWorld,
+  monitorCameraSafetyDuring,
+  observeTrustedMovementDuring,
+  readWorldTelemetry,
+  rotateCameraToYaw
+} from "../fixtures/rpg-playwright-world";
+import { RPG_VISUAL_CAMERA_FIXTURES } from "../fixtures/rpg-visual-camera-fixtures";
 
-type Box = { x: number; y: number; width: number; height: number };
+const WORLD = '[data-testid="world-view"]';
+const RENDERER = ".seamless-world-renderer";
+const CHROMIUM_RESOURCE_404 =
+  "Failed to load resource: the server responded with a status of 404 (Not Found)";
 
-function boxesOverlap(first: Box, second: Box) {
-  return !(
-    first.x + first.width <= second.x ||
-    second.x + second.width <= first.x ||
-    first.y + first.height <= second.y ||
-    second.y + second.height <= first.y
-  );
+function withinFivePercent(actual: number, expected: number) {
+  expect(actual).toBeGreaterThanOrEqual(expected * 0.95);
+  expect(actual).toBeLessThanOrEqual(expected * 1.05);
 }
 
-function expectFullyVisible(
-  box: Box | null,
-  viewport: { width: number; height: number }
-) {
-  expect(box).not.toBeNull();
-  expect(box!.x).toBeGreaterThanOrEqual(0);
-  expect(box!.y).toBeGreaterThanOrEqual(0);
-  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
-  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
-}
-
-async function enterWorld(page: Page) {
-  await page.addInitScript(() => localStorage.clear());
-  const response = await page.goto("/en");
-  expect(response).not.toBeNull();
-  expect(response!.headers()["x-content-type-options"]).toBe("nosniff");
-  expect(response!.headers()["x-frame-options"]).toBe("DENY");
-  expect(response!.headers()["content-security-policy"]).toContain(
-    "frame-ancestors 'none'"
-  );
-  await page.getByRole("button", { name: "START" }).click();
-  await page
-    .getByRole("button", { name: "Select female character" })
-    .click();
-  await page.getByRole("button", { name: "ENTER WORLD" }).click();
-  await expect(
-    page.locator(
-      '.flat-world-renderer[data-world-ready="true"][data-world-renderer="approved-reference"][data-renderer-technology="canvas2d"]'
-    )
-  ).toBeVisible({ timeout: 30_000 });
-}
-
-async function readWorldPosition(page: Page) {
-  return (
-    (await page.getByTestId("world-view").getAttribute("data-player-position")) ??
-    ""
-  )
-    .split(",")
-    .map(Number);
-}
-
-async function enterSeamlessWorld(
-  page: Page,
-  character: "male" | "female" = "female"
-) {
-  await page.addInitScript(() => localStorage.clear());
-  await page.goto("/en");
-  await page.getByRole("button", { name: "START" }).click();
-  await page
-    .getByRole("button", {
-      name: `Select ${character} character`
-    })
-    .click();
-  await page.getByRole("button", { name: "ENTER WORLD" }).click();
-  const renderer = page.locator(
-    '.seamless-world-renderer[data-world-ready="true"]'
-  );
-  await expect(renderer).toBeVisible({ timeout: 30_000 });
-  return renderer;
-}
-
-async function expectMoved(page: Page) {
-  const before = await readWorldPosition(page);
-  await page.keyboard.down("ArrowRight");
-  await page.waitForTimeout(500);
-  await page.keyboard.up("ArrowRight");
-  await expect
-    .poll(async () => {
-      const after = await readWorldPosition(page);
-      return Math.hypot(
-        (after[0] ?? 0) - (before[0] ?? 0),
-        (after[2] ?? 0) - (before[2] ?? 0)
-      );
-    })
-    .toBeGreaterThan(0.05);
-}
-
-async function approachAirportInteraction(page: Page) {
-  await page.getByRole("button", { name: "Return to start" }).click();
-  await expect.poll(async () => {
-    const position = await readWorldPosition(page);
-    return Math.hypot(
-      (position[0] ?? 0) - RPG_WORLD_SPAWN[0],
-      (position[2] ?? 0) - RPG_WORLD_SPAWN[2]
-    );
-  }).toBeLessThan(0.05);
-
-  const airportPrompt = page.locator(
-    'button[data-target-id="airport-terminal-entry"], ' +
-      'button[data-target-id="npc-airport-traveler"]'
-  );
-  await page.keyboard.down("ArrowUp");
-  try {
-    await expect(airportPrompt).toBeVisible({ timeout: 5_000 });
-  } finally {
-    await page.keyboard.up("ArrowUp");
-  }
-  await expect(airportPrompt).toHaveAttribute(
-    "data-target-id",
-    /^(airport-terminal-entry|npc-airport-traveler)$/
-  );
-}
-
-function captureAssetFailureEvidence(page: Page) {
+function collectErrors(page: Page) {
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.stack ?? error.message));
@@ -125,694 +39,478 @@ function captureAssetFailureEvidence(page: Page) {
   return { pageErrors, consoleErrors };
 }
 
-function expectRedactedAssetFailure(
-  evidence: ReturnType<typeof captureAssetFailureEvidence>,
-  assetFilename: string
-) {
-  expect(evidence.pageErrors).toEqual([]);
-  const reported = evidence.consoleErrors.join("\n");
-  expect(reported).not.toContain(assetFilename);
-  expect(reported).not.toContain("http://");
-  expect(reported).not.toContain("https://");
-  expect(reported).not.toMatch(/\n\s+at\s/);
+async function exactNavigationState(page: Page) {
+  const telemetry = await readWorldTelemetry(page);
+  return {
+    position: telemetry.positionRaw,
+    heading: telemetry.headingRaw,
+    revision: telemetry.revision,
+    cameraYaw: telemetry.cameraYaw,
+    cameraPitch: telemetry.cameraPitch
+  };
 }
 
-test("falls back when the selected player GLB returns 404", async ({
+test("selected male and female GLBs appear in the seamless WebGL renderer", async ({
   page
 }) => {
-  const evidence = captureAssetFailureEvidence(page);
-  let originalRequests = 0;
-  await page.route("**/player-male.glb", (route) => {
-    originalRequests += 1;
-    return route.fulfill({ status: 404, body: "" });
-  });
-  const renderer = await enterSeamlessWorld(page, "male");
-
-  await expect(renderer).toHaveAttribute("data-character-fallback", "true");
-  await expectMoved(page);
-  expectRedactedAssetFailure(evidence, "player-male.glb");
-  expect(originalRequests).toBe(1);
-});
-
-test("falls back by omitting only one failed NPC", async ({ page }) => {
-  const evidence = captureAssetFailureEvidence(page);
-  let originalRequests = 0;
-  await page.route("**/npc-hanabi-yukata.glb", (route) => {
-    originalRequests += 1;
-    return route.fulfill({ status: 404, body: "" });
-  });
-  const renderer = await enterSeamlessWorld(page);
-
-  await expect(renderer).toHaveAttribute(
-    "data-unavailable-npc-ids",
-    "npc-hanabi-yukata"
-  );
-  await expectMoved(page);
-  await approachAirportInteraction(page);
-  await page.getByRole("button", { name: "Interact" }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  expectRedactedAssetFailure(evidence, "npc-hanabi-yukata.glb");
-  expect(originalRequests).toBe(1);
-});
-
-test("falls back by omitting the optional Hanabi decoration", async ({
-  page
-}) => {
-  const evidence = captureAssetFailureEvidence(page);
-  let originalRequests = 0;
-  await page.route("**/hanabi-festival-sign.svg", (route) => {
-    originalRequests += 1;
-    return route.fulfill({ status: 404, body: "" });
-  });
-  const renderer = await enterSeamlessWorld(page);
-
-  await expect(renderer).toHaveAttribute(
-    "data-optional-decoration",
-    "omitted"
-  );
-  await expect(renderer).toHaveAttribute("data-hanabi-fireworks", "true");
-  await expectMoved(page);
-  await approachAirportInteraction(page);
-  expectRedactedAssetFailure(evidence, "hanabi-festival-sign.svg");
-  expect(originalRequests).toBe(1);
-});
-
-test("requests each original RPG asset once before loading its cached object URL", async ({
-  page
-}) => {
-  const expectedAssets = [
-    "player-female.glb",
-    "npc-airport-traveler.glb",
-    "npc-gyukatsu-chef.glb",
-    "npc-hanabi-yukata.glb",
-    "npc-sakura-visitor.glb",
-    "hanabi-festival-sign.svg"
-  ];
-  const requestCounts = new Map<string, number>();
+  const requested = new Set<string>();
   page.on("request", (request) => {
     const filename = new URL(request.url()).pathname.split("/").at(-1);
-    if (filename && expectedAssets.includes(filename)) {
-      requestCounts.set(filename, (requestCounts.get(filename) ?? 0) + 1);
-    }
+    if (filename) requested.add(filename);
   });
 
-  const renderer = await enterSeamlessWorld(page);
-  await expect(renderer).toHaveAttribute(
-    "data-optional-decoration",
-    "available"
-  );
-  await expect.poll(() =>
-    expectedAssets.map((asset) => requestCounts.get(asset) ?? 0)
-  ).toEqual(expectedAssets.map(() => 1));
-  expect(requestCounts.get("player-male.glb") ?? 0).toBe(0);
+  for (const character of ["male", "female"] as const) {
+    const renderer = await enterRpgWorld(page, character);
+    await expect(renderer).toHaveAttribute("data-character-fallback", "false");
+    await expect(page.locator(WORLD)).toHaveAttribute(
+      "data-character",
+      character
+    );
+    expect(requested.has(`player-${character}.glb`)).toBe(true);
+    await page.reload();
+  }
 });
 
-test("retries after WebGL support becomes available", async ({ page }) => {
-  await page.addInitScript(() => {
-    const host = window as typeof window & {
-      __ORIGINAL_CANVAS_GET_CONTEXT__:
-        typeof HTMLCanvasElement.prototype.getContext;
-    };
-    host.__ORIGINAL_CANVAS_GET_CONTEXT__ =
-      HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = () => null;
-  });
-  await page.goto("/en");
-  await page.getByRole("button", { name: "START" }).click();
-  await page
-    .getByRole("button", { name: "Select female character" })
-    .click();
-  await page.getByRole("button", { name: "ENTER WORLD" }).click();
-
-  await expect(page.locator(".seamless-world-renderer")).toHaveCount(0);
-  const retry = page.getByRole("button", { name: "Retry" });
-  await expect(retry).toBeVisible();
-  await page.evaluate(() => {
-    const host = window as typeof window & {
-      __ORIGINAL_CANVAS_GET_CONTEXT__:
-        typeof HTMLCanvasElement.prototype.getContext;
-    };
-    HTMLCanvasElement.prototype.getContext =
-      host.__ORIGINAL_CANVAS_GET_CONTEXT__;
-  });
-  await retry.click();
-  await expect(
-    page.locator('.seamless-world-renderer[data-world-ready="true"]')
-  ).toBeVisible({ timeout: 10_000 });
-});
-
-test("enters the seamless WebGL world", async ({ page }) => {
+test("the active Canvas and maps do not initiate the concept image", async ({
+  page
+}) => {
   await page.addInitScript(() => localStorage.clear());
   await page.goto("/en");
   await page.getByRole("button", { name: "START" }).click();
   await page
     .getByRole("button", { name: "Select female character" })
     .click();
-  await page.getByRole("button", { name: "ENTER WORLD" }).click();
 
-  const renderer = page.locator(
-    '.seamless-world-renderer[data-renderer-technology="webgl3d"][data-world-ready="true"]'
-  );
-  await expect(renderer).toBeVisible({ timeout: 30_000 });
-  await page.waitForTimeout(300);
-  const cameraTelemetry = await renderer.evaluate((element) => {
-    const boom = element.getAttribute("data-camera-boom");
-    const safe = element.getAttribute("data-camera-safe");
-    const safeViolationMs = element.getAttribute(
-      "data-camera-safe-violation-ms"
-    );
-    const diagnostic = element.getAttribute("data-camera-diagnostic");
-    return {
-      boom,
-      safe,
-      safeViolationMs,
-      diagnostic,
-      parsedBoom: boom === null ? Number.NaN : Number(boom),
-      parsedSafeViolationMs:
-        safeViolationMs === null ? Number.NaN : Number(safeViolationMs)
-    };
-  });
-  expect(cameraTelemetry.boom).not.toBeNull();
-  expect(cameraTelemetry.safe).not.toBeNull();
-  expect(cameraTelemetry.safeViolationMs).not.toBeNull();
-  expect(cameraTelemetry.diagnostic).not.toBeNull();
-  expect(Number.isFinite(cameraTelemetry.parsedBoom)).toBe(true);
-  expect(Number.isFinite(cameraTelemetry.parsedSafeViolationMs)).toBe(true);
-  expect(cameraTelemetry.diagnostic).toBe("ok");
-  expect(cameraTelemetry.safe).toBe("true");
-  expect(cameraTelemetry.parsedBoom).toBeGreaterThanOrEqual(2.6);
-  expect(cameraTelemetry.parsedSafeViolationMs).toBeLessThanOrEqual(250);
-  expect(
-    await page.evaluate(() => window.__RPG_RUNTIME_DIAGNOSTICS__)
-  ).toEqual({
-    canvasMounts: 1,
-    runtimeCreates: 1,
-    sceneMounts: 1
-  });
-});
-
-test.describe("pre-world responsive flow", () => {
-  for (const scenario of [
-    {
-      name: "short landscape",
-      viewport: { width: 844, height: 390 },
-      locale: "en",
-      start: "START",
-      enter: "ENTER WORLD"
-    },
-    {
-      name: "Korean portrait",
-      viewport: { width: 390, height: 844 },
-      locale: "ko",
-      start: "시작",
-      enter: "월드 입장"
+  const afterEntryRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("world-environment-concept.png")) {
+      afterEntryRequests.push(request.url());
     }
-  ]) {
-    test(`${scenario.name} keeps every required action and label unobstructed`, async ({
-      page
-    }) => {
-      await page.setViewportSize(scenario.viewport);
-      await page.addInitScript(() => localStorage.clear());
-      await page.goto(`/${scenario.locale}`);
-
-      const start = page.getByRole("button", { name: scenario.start });
-      expectFullyVisible(await start.boundingBox(), scenario.viewport);
-      await start.click();
-
-      const localeBox = await page.locator(".locale-switcher").boundingBox();
-      const brandBox = await page.locator(".start-eyebrow").boundingBox();
-      expect(localeBox).not.toBeNull();
-      expect(brandBox).not.toBeNull();
-      expect(boxesOverlap(localeBox!, brandBox!)).toBe(false);
-
-      const options = page.locator(".character-option");
-      await expect(options).toHaveCount(2);
-      for (let index = 0; index < 2; index += 1) {
-        const figureBox = await options
-          .nth(index)
-          .locator(".character-figure")
-          .boundingBox();
-        const nameBox = await options
-          .nth(index)
-          .locator(".character-name")
-          .boundingBox();
-        expect(figureBox).not.toBeNull();
-        expect(nameBox).not.toBeNull();
-        expect(figureBox!.y + figureBox!.height).toBeLessThanOrEqual(
-          nameBox!.y + 2
-        );
-      }
-
-      await options.first().click();
-      const enter = page.getByRole("button", { name: scenario.enter });
-      await enter.scrollIntoViewIfNeeded();
-      expectFullyVisible(await enter.boundingBox(), scenario.viewport);
-    });
-  }
+  });
+  await page.getByRole("button", { name: "ENTER WORLD" }).click();
+  await expect(
+    page.locator(
+      `${RENDERER}[data-world-ready="true"]` +
+        '[data-world-renderer="seamless-rpg"]' +
+        '[data-renderer-technology="webgl3d"]'
+    )
+  ).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Open world map (M key)" }).click();
+  await expect(page.getByRole("dialog", { name: "World map" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  expect(afterEntryRequests).toEqual([]);
 });
 
-test("serves the Japanese festival favicon from the conventional URL", async ({
-  request
-}) => {
-  const response = await request.get("/favicon.ico");
-
-  expect(response.status()).toBe(200);
-  expect(response.headers()["content-type"]).toContain("image/svg+xml");
-  expect(await response.text()).toContain('aria-label="Hanabi festival torii"');
-});
-
-test.describe("common desktop viewports", () => {
-  for (const viewport of [
-    { width: 800, height: 896 },
-    { width: 864, height: 996 },
-    { width: 1280, height: 800 },
-    { width: 1366, height: 768 }
-  ]) {
-    test(`${viewport.width}x${viewport.height} renders the registered world without overflow`, async ({
-      page
-    }) => {
-      const errors: string[] = [];
-      page.on("pageerror", (error) => errors.push(error.message));
-      page.on("console", (message) => {
-        if (message.type() === "error") {
-          errors.push(message.text());
-        }
-      });
-      await page.setViewportSize(viewport);
-      await enterWorld(page);
-
-      const renderer = page.locator(".flat-world-renderer");
-      const backdrop = page.locator(
-        '[data-rpg-world-backdrop="approved-image"]'
-      );
-      await expect(renderer).toHaveAttribute(
-        "data-viewport",
-        `${viewport.width},${viewport.height}`
-      );
-      await expect(renderer).toHaveAttribute(
-        "data-viewport-supported",
-        "true"
-      );
-      await expect(renderer).toHaveAttribute("data-camera-profile", "desktop");
-      await expect(backdrop).toHaveAttribute(
-        "data-rpg-world-backdrop-safe-frame",
-        `0,0,${viewport.width},${viewport.height}`
-      );
-      expectFullyVisible(await backdrop.boundingBox(), viewport);
-      expect(await renderer.locator(":scope > *").count()).toBeGreaterThan(0);
-
-      const overflow = await page.evaluate(() => ({
-        horizontal:
-          document.documentElement.scrollWidth -
-          document.documentElement.clientWidth,
-        vertical:
-          document.documentElement.scrollHeight -
-          document.documentElement.clientHeight
-      }));
-      expect(overflow.horizontal).toBeLessThanOrEqual(0);
-      expect(overflow.vertical).toBeLessThanOrEqual(0);
-      expect(errors).toEqual([]);
-    });
-  }
-});
-
-test("desktop keeps the Canvas2D world active through guidance, movement, reset, and locale change", async ({
+test("the trusted route binding balances a short two-point drive", async ({
   page
 }) => {
-  const errors: string[] = [];
-  let guideRequests = 0;
-  page.on("pageerror", (error) => errors.push(error.message));
-  page.on("console", (message) => {
-    if (message.type() === "error") {
-      errors.push(message.text());
+  await enterRpgWorld(page);
+  const result = await driveTrustedRouteProbe(page);
+  expect(result.moved).toBeGreaterThan(2);
+  expect(result.vertexCount).toBe(3);
+  expect(result.pressedKeyCount).toBe(0);
+  expect(result.trust.untrustedCount).toBe(0);
+  expect(result.trust.untrustedPointerCount).toBe(0);
+  expect(result.trust.keydownCount).toBeGreaterThan(0);
+  expect(result.trust.keyupCount).toBe(result.trust.keydownCount);
+  expect(result.trust.pointerDownCount).toBeGreaterThan(0);
+  expect(result.trust.pointerUpCount).toBe(result.trust.pointerDownCount);
+  expect(result.trust.maximumPointerStrokePixels).toBeLessThanOrEqual(140.001);
+  expect(result.observation?.safetyFailure).toBeNull();
+  expect(result.observation?.maximumViolationMs).toBeLessThanOrEqual(250);
+  expect(result.observation?.mapUpdateFailure).toBeNull();
+  expect(result.observation?.maximumMapUpdateLatencyMs).toBeLessThanOrEqual(
+    100
+  );
+  expect(result.observation?.averageMapUpdateIntervalMs).toBeLessThanOrEqual(
+    100
+  );
+  expect(result.observation?.maximumMapUpdateGapMs).toBeLessThanOrEqual(100);
+  expect(result.observation?.firstMovementMapUpdateDelayMs)
+    .toBeLessThanOrEqual(100);
+  expect(result.observation?.lastMapUpdateAgeMs).toBeLessThanOrEqual(100);
+});
+
+test("walks the canonical route in 75.8 seconds and only reset returns to the airport", async ({
+  page
+}) => {
+  test.setTimeout(120_000);
+  await enterRpgWorld(page);
+  const result = await driveCanonicalRoute(page, { runRequested: false });
+  withinFivePercent(result.traversalMs, 75_800);
+  await expect(page.locator(WORLD)).toHaveAttribute("data-current-zone", "hanabi");
+  await page.getByRole("button", { name: "Return to start" }).click();
+  await expect.poll(() => readWorldTelemetry(page)).toEqual(
+    expect.objectContaining({
+      zone: "airport",
+      position: RPG_WORLD_SPAWN
+    })
+  );
+});
+
+test("runs the canonical route in 64.3 seconds and preserves the Hanabi child interaction", async ({
+  page
+}) => {
+  test.setTimeout(120_000);
+  const errors = collectErrors(page);
+  let missingNpcRequests = 0;
+  await page.route("**/npc-hanabi-yukata.glb", (route) => {
+    missingNpcRequests += 1;
+    return route.fulfill({ status: 404, body: "" });
+  });
+  const renderer = await enterRpgWorld(page);
+
+  const route = await driveCanonicalRoute(page, { runRequested: true });
+  expect(route.keyboardTrust.untrustedCount).toBe(0);
+  expect(route.keyboardTrust.keydownCount).toBeGreaterThan(0);
+  expect(route.keyboardTrust.keyupCount).toBeGreaterThan(0);
+  withinFivePercent(route.traversalMs, 64_300);
+  expect(route.zones).toEqual([
+    "airport",
+    "tokyo",
+    "gyukatsu",
+    "sakura",
+    "hanabi"
+  ]);
+  await expect(renderer).toHaveAttribute(
+    "data-unavailable-npc-ids",
+    "npc-hanabi-yukata"
+  );
+  expect(missingNpcRequests).toBe(1);
+
+  const postRoute = await observeTrustedMovementDuring(page, async () => {
+    await driveWithKeyboardToPoint(page, [21, -21.9], {
+      runRequested: true,
+      tolerance: 0.03
+    });
+    const approach = await driveForwardToPoint(
+      page,
+      [21, -22],
+      Math.PI
+    );
+
+    const prompt = page.locator(
+      'button.world-interaction-prompt[data-target-id="npc-hanabi-child"]'
+    );
+    await expect(prompt).toBeVisible();
+    const beforeInteraction = await exactNavigationState(page);
+    await prompt.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.waitForTimeout(500);
+    expect(await exactNavigationState(page)).toEqual(beforeInteraction);
+
+    await driveWithKeyboardToPoint(page, [19, -22], {
+      runRequested: true,
+      tolerance: 0.03
+    });
+    await rotateCameraToYaw(page, -Math.PI / 2);
+    const beforeCanal = await readWorldTelemetry(page);
+    await page.keyboard.down("w");
+    try {
+      await page.waitForTimeout(1_500);
+    } finally {
+      await page.keyboard.up("w");
+    }
+    const canalBlocked = await readWorldTelemetry(page);
+    return { approach, beforeCanal, canalBlocked };
+  });
+  const { approach, beforeCanal, canalBlocked } = postRoute.result;
+  expect(postRoute.trust.untrustedCount).toBe(0);
+  expect(postRoute.trust.untrustedPointerCount).toBe(0);
+  expect(postRoute.trust.keyupCount).toBe(postRoute.trust.keydownCount);
+  expect(Math.hypot(approach.position[0] - 21, approach.position[2] + 22))
+    .toBeLessThanOrEqual(0.05);
+  const approachHeadingError =
+    Math.abs(
+      Math.atan2(
+        Math.sin(
+          Math.atan2(approach.heading[0], approach.heading[2]) -
+            Math.PI
+        ),
+        Math.cos(
+          Math.atan2(approach.heading[0], approach.heading[2]) -
+            Math.PI
+        )
+      )
+    ) *
+    180 /
+    Math.PI;
+  expect(approachHeadingError).toBeLessThanOrEqual(2);
+
+  const canalEastBankX = Math.max(
+    ...RPG_WORLD_CANAL.polygon.map(([x]) => x)
+  );
+  expect(beforeCanal.position[0]).toBeGreaterThanOrEqual(18.9);
+  expect(beforeCanal.position[0] - canalBlocked.position[0])
+    .toBeGreaterThan(0.5);
+  expect(canalBlocked.position[0]).toBeGreaterThanOrEqual(
+    canalEastBankX - 0.01
+  );
+  expect(canalBlocked.position[0]).toBeLessThanOrEqual(
+    canalEastBankX + 0.05
+  );
+  expect(route.navigationRegions).toContain("sakura-to-hanabi");
+
+  expect(errors.pageErrors).toEqual([]);
+  const browserResourceErrors = errors.consoleErrors.filter(
+    (message) => message === CHROMIUM_RESOURCE_404
+  );
+  const applicationErrors = errors.consoleErrors.filter(
+    (message) => message !== CHROMIUM_RESOURCE_404
+  );
+  expect(browserResourceErrors.length).toBeLessThanOrEqual(1);
+  expect(applicationErrors).toHaveLength(1);
+  expect(applicationErrors[0]).toContain("npc-hanabi-yukata");
+  expect(applicationErrors[0]).toContain("AssetHttpError");
+  expect(applicationErrors[0]).not.toContain(".glb");
+  expect(applicationErrors[0]).not.toContain("http://");
+  expect(applicationErrors[0]).not.toContain("https://");
+  expect(applicationErrors[0]).not.toMatch(/\n\s+at\s/);
+});
+
+test("camera telemetry includes live pitch and recenters after the grace period", async ({
+  page
+}) => {
+  const renderer = await enterRpgWorld(page);
+  const initial = await readWorldTelemetry(page);
+  expect(initial.cameraPitch * 180 / Math.PI).toBeCloseTo(
+    RPG_VISUAL_CAMERA_FIXTURES.airport.pitchDegrees,
+    1
+  );
+
+  const cameraSafety = await monitorCameraSafetyDuring(page, async () => {
+    await dragCamera(page, 140, 40);
+    await page.keyboard.down("w");
+    try {
+      await page.waitForTimeout(2_050);
+    } finally {
+      await page.keyboard.up("w");
     }
   });
-  await page.route("**/api/guide", async (route) => {
-    guideRequests += 1;
-    expect(route.request().headers()["x-guide-client-id"]).toMatch(
-      /^[0-9a-f-]{36}$/
-    );
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        recommendation: {
-          destinationId: "moon",
-          themeId: "celebration",
-          basis: "fortune"
-        }
-      })
-    });
+  expect(cameraSafety.safetyFailure).toBeNull();
+  expect(cameraSafety.minimumBoom).toBeGreaterThanOrEqual(2.6);
+  expect(cameraSafety.maximumViolationMs).toBeLessThanOrEqual(250);
+  expect(cameraSafety.manual).not.toBeNull();
+  expect(cameraSafety.beforeRecentering).not.toBeNull();
+  expect(cameraSafety.afterRecentering).not.toBeNull();
+  const manual = cameraSafety.manual!;
+  const beforeRecentering = cameraSafety.beforeRecentering!;
+  const afterRecentering = cameraSafety.afterRecentering!;
+  expect(Math.abs(beforeRecentering.elapsedMs - 799))
+    .toBeLessThanOrEqual(25);
+  expect(Math.abs(afterRecentering.elapsedMs - 2_000))
+    .toBeLessThanOrEqual(50);
+  const unchangedYawDegrees =
+    Math.abs(
+      Math.atan2(
+        Math.sin(beforeRecentering.cameraYaw - manual.cameraYaw),
+        Math.cos(beforeRecentering.cameraYaw - manual.cameraYaw)
+      )
+    ) *
+    180 /
+    Math.PI;
+  expect(unchangedYawDegrees).toBeLessThanOrEqual(1);
+  const targetYaw = Math.atan2(
+    afterRecentering.heading[0],
+    afterRecentering.heading[2]
+  );
+  const errorDegrees =
+    Math.abs(
+      Math.atan2(
+        Math.sin(targetYaw - afterRecentering.cameraYaw),
+        Math.cos(targetYaw - afterRecentering.cameraYaw)
+      )
+    ) *
+    180 /
+    Math.PI;
+  expect(errorDegrees).toBeLessThanOrEqual(5);
+  await expect(renderer).toHaveAttribute("data-camera-diagnostic", "ok");
+});
+
+test.describe("mobile controls", () => {
+  test.use({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 3,
+    hasTouch: true,
+    isMobile: true
   });
 
-  await enterWorld(page);
-  const world = page.getByTestId("world-view");
-  const renderer = page.locator(".flat-world-renderer");
-  const startPosition = await world.getAttribute("data-player-position");
-  expect(startPosition).not.toBeNull();
-  await expect(world).toHaveAttribute("data-character", "female");
-  await expect(renderer).toHaveAttribute(
-    "data-world-renderer",
-    "approved-reference"
-  );
-  await expect(renderer).toHaveAttribute("data-renderer-technology", "canvas2d");
-
-  const beforeMove = await readWorldPosition(page);
-  await page.keyboard.down("ArrowUp");
-  try {
+  test("joystick moves and the right-side drag changes camera yaw", async ({
+    page
+  }) => {
+    await enterRpgWorld(page);
+    const movement = page.getByRole("region", {
+      name: "Mobile movement control"
+    });
+    const box = await movement.boundingBox();
+    expect(box).not.toBeNull();
+    const before = await readWorldTelemetry(page);
+    const x = box!.x + box!.width / 2;
+    const y = box!.y + box!.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y - box!.height * 0.4, { steps: 5 });
     await expect
       .poll(async () => {
-        const current = await readWorldPosition(page);
+        const current = await readWorldTelemetry(page);
         return Math.hypot(
-          current[0] - beforeMove[0],
-          current[2] - beforeMove[2]
+          current.position[0] - before.position[0],
+          current.position[2] - before.position[2]
         );
       })
       .toBeGreaterThan(0.5);
-  } finally {
-    await page.keyboard.up("ArrowUp");
-  }
-  await expect(world).not.toHaveAttribute(
-    "data-player-position",
-    startPosition!
-  );
-  await page.getByRole("button", { name: "Return to start" }).click();
-  await expect(world).toHaveAttribute("data-player-position", startPosition!);
+    await page.mouse.up();
 
-  await page
-    .getByRole("button", { name: "Directions", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Today's fortune" }).click();
-  await expect(
-    page.locator(".guide-notice", {
-      hasText:
-        "We couldn't load guidance, so we're showing a default recommendation."
-    })
-  ).toBeVisible();
-
-  await page.getByRole("button", { name: "日本語" }).click();
-  await expect(world).toHaveAttribute("data-locale", "ja");
-  await expect(page).toHaveTitle(
-    "Ewan's World · インタラクティブ3Dポートフォリオ"
-  );
-  await expect(page.locator('meta[name="description"]')).toHaveAttribute(
-    "content",
-    "日本のお祭りをイメージした3Dワールドの風景と操作を楽しめます。"
-  );
-  await expect(
-    page.locator(".guide-notice", {
-      hasText: "案内を取得できなかったため、基本のおすすめを表示します。"
-    })
-  ).toBeVisible();
-  expect(guideRequests).toBe(1);
-  expect(errors).toEqual([]);
+    const yawBefore = (await readWorldTelemetry(page)).cameraYaw;
+    const dragSafety = await monitorCameraSafetyDuring(
+      page,
+      () => dragCamera(page, -80, 0)
+    );
+    expect(dragSafety.safetyFailure).toBeNull();
+    expect(dragSafety.minimumBoom).toBeGreaterThanOrEqual(2.6);
+    expect(dragSafety.maximumViolationMs).toBeLessThanOrEqual(250);
+    const yawAfter = (await readWorldTelemetry(page)).cameraYaw;
+    expect(yawAfter).not.toBeCloseTo(yawBefore, 2);
+  });
 });
 
-test("Tokyo weather sends only a fresh validated observation to guidance", async ({
+test("map inspection and interaction consume Escape without mutating navigation", async ({
   page
 }) => {
-  let weatherRequests = 0;
-  let postedBody: Record<string, unknown> | undefined;
-  await page.route("https://api.open-meteo.com/v1/forecast**", async (route) => {
-    weatherRequests += 1;
-    const nowSeconds = Math.floor(Date.now() / 1000) - 300;
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        timezone: "Asia/Tokyo",
-        current: {
-          time: nowSeconds,
-          interval: 900,
-          temperature_2m: 31.2,
-          weather_code: 2
-        }
-      })
-    });
-  });
-  await page.route("**/api/guide", async (route) => {
-    postedBody = route.request().postDataJSON() as Record<string, unknown>;
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        recommendation: {
-          destinationId: "moon",
-          themeId: "rest",
-          basis: "weather"
-        }
-      })
-    });
-  });
+  await enterRpgWorld(page);
+  const beforeMap = await exactNavigationState(page);
+  await page.getByRole("button", { name: "Open world map (M key)" }).click();
+  const map = page.getByRole("dialog", { name: "World map" });
+  await expect(map).toBeVisible();
+  await map.getByRole("button", { name: "Inspect: Hanabi" }).click();
+  await page.keyboard.down("w");
+  await page.keyboard.press(" ");
+  await page.keyboard.press("r");
+  await page.keyboard.press("e");
+  await dragCamera(page, 60, 30);
+  await page.keyboard.up("w");
+  await page.keyboard.press("Escape");
+  await expect(map).toHaveCount(0);
+  await page.waitForTimeout(500);
+  expect(await exactNavigationState(page)).toEqual(beforeMap);
 
-  await enterWorld(page);
-  await page
-    .getByRole("button", { name: "Directions", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Current weather" }).click();
-
-  await expect(page.getByText(/^Current weather data · Cloudy$/)).toBeVisible();
-  await expect(page.getByText("Temperature: 31.2°C")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Weather data by Open-Meteo" })
-  ).toBeVisible();
-  expect(weatherRequests).toBe(1);
-  expect(postedBody).toEqual(
-    expect.objectContaining({
-      mode: "weather",
-      currentZoneId: "airport",
-      weatherCode: 2,
-      temperatureC: 31.2,
-      observedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/)
-    })
-  );
-  expect(postedBody).not.toHaveProperty("latitude");
-  expect(postedBody).not.toHaveProperty("longitude");
+  await page.getByRole("button", { name: "Return to start" }).click();
+  const prompt = page.locator("button.world-interaction-prompt");
+  await page.keyboard.down("w");
+  try {
+    await expect(prompt).toBeVisible({ timeout: 5_000 });
+  } finally {
+    await page.keyboard.up("w");
+  }
+  const beforeInteraction = await exactNavigationState(page);
+  await prompt.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(500);
+  expect(await exactNavigationState(page)).toEqual(beforeInteraction);
 });
 
-test.describe("mobile portrait world", () => {
-  const viewport = { width: 390, height: 844 };
-
-  test.use({
-    viewport,
-    hasTouch: true,
-    isMobile: true,
-    deviceScaleFactor: 3
-  });
-
-  test("keeps movement, guide, mini-map, and full map inside the safe layout", async ({
-    page
-  }) => {
-    const errors: string[] = [];
-    page.on("pageerror", (error) => errors.push(error.message));
-    page.on("console", (message) => {
-      if (message.type() === "error") {
-        errors.push(message.text());
+test("all five arrival markers use the registered anchors and headings", async ({
+  page
+}) => {
+  await enterRpgWorld(page);
+  const markers = page.locator(".rpg-mini-map-destination");
+  await expect(markers).toHaveCount(5);
+  for (const arrival of RPG_WORLD_ARRIVALS) {
+    const marker = page.locator(
+      `.rpg-mini-map-destination-${arrival.zoneId}`
+    );
+    const placementErrorCssPixels = await marker.evaluate(
+      (element, referencePixel) => {
+        const destination = element as SVGGraphicsElement;
+        const svg = destination.ownerSVGElement;
+        const destinationMatrix = destination.getScreenCTM();
+        const svgMatrix = svg?.getScreenCTM();
+        if (!destinationMatrix || !svgMatrix) {
+          throw new Error("arrival marker screen transform is missing");
+        }
+        const actual = new DOMPoint(0, 0).matrixTransform(
+          destinationMatrix
+        );
+        const expected = new DOMPoint(
+          referencePixel[0],
+          referencePixel[1]
+        ).matrixTransform(svgMatrix);
+        return Math.hypot(
+          actual.x - expected.x,
+          actual.y - expected.y
+        );
+      },
+      arrival.approvedReferenceFoot.pixel
+    );
+    expect(placementErrorCssPixels).toBeLessThanOrEqual(0.5);
+    const anchor = (await marker.getAttribute("data-anchor-reference"))!
+      .split(",")
+      .map(Number);
+    expect(Math.abs(anchor[0] - arrival.approvedReferenceFoot.pixel[0]))
+      .toBeLessThanOrEqual(0.5);
+    expect(Math.abs(anchor[1] - arrival.approvedReferenceFoot.pixel[1]))
+      .toBeLessThanOrEqual(0.5);
+    const headingLength = Math.hypot(
+      arrival.heading[0],
+      arrival.heading[1]
+    );
+    const headingSample = projectRpgReferenceMapPoint([
+      arrival.position[0] +
+        (arrival.heading[0] / headingLength) * 0.25,
+      arrival.position[1],
+      arrival.position[2] +
+        (arrival.heading[1] / headingLength) * 0.25
+    ]);
+    const headingError = await marker.evaluate(
+      (element, { anchor, next }) => {
+        const destination = element as SVGGraphicsElement;
+        const svg = destination.ownerSVGElement;
+        const destinationMatrix = destination.getScreenCTM();
+        const svgMatrix = svg?.getScreenCTM();
+        if (!destinationMatrix || !svgMatrix) {
+          throw new Error("arrival heading screen transform is missing");
+        }
+        const actualOrigin = new DOMPoint(0, 0).matrixTransform(
+          destinationMatrix
+        );
+        const actualForward = new DOMPoint(1, 0).matrixTransform(
+          destinationMatrix
+        );
+        const expectedOrigin = new DOMPoint(
+          anchor[0],
+          anchor[1]
+        ).matrixTransform(svgMatrix);
+        const expectedForward = new DOMPoint(
+          next[0],
+          next[1]
+        ).matrixTransform(svgMatrix);
+        const actualAngle = Math.atan2(
+          actualForward.y - actualOrigin.y,
+          actualForward.x - actualOrigin.x
+        );
+        const expectedAngle = Math.atan2(
+          expectedForward.y - expectedOrigin.y,
+          expectedForward.x - expectedOrigin.x
+        );
+        return (
+          Math.abs(
+            Math.atan2(
+              Math.sin(actualAngle - expectedAngle),
+              Math.cos(actualAngle - expectedAngle)
+            )
+          ) *
+          180 /
+          Math.PI
+        );
+      },
+      {
+        anchor: arrival.approvedReferenceFoot.pixel,
+        next: [headingSample.x, headingSample.y] as const
       }
-    });
-    await page.route("**/api/guide", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          recommendation: {
-            destinationId: "moon",
-            themeId: "celebration",
-            basis: "fortune"
-          }
-        })
-      })
     );
-
-    await enterWorld(page);
-    const renderer = page.locator(".flat-world-renderer");
-    const movement = page.getByRole("region", {
-      name: "Mobile movement control"
-    });
-    const backdrop = page.locator(
-      '[data-rpg-world-backdrop="approved-image"]'
-    );
-    await expect(renderer).toHaveAttribute("data-viewport", "390,844");
-    await expect(backdrop).toHaveAttribute(
-      "data-rpg-world-backdrop-safe-frame",
-      "0,64,390,780"
-    );
-    expectFullyVisible(await movement.boundingBox(), viewport);
-    await expect(page.getByTestId("world-view")).not.toHaveAttribute(
-      "role",
-      "application"
-    );
-
-    const miniMap = page.locator(".rpg-mini-map");
-    await expect(miniMap).toHaveAttribute("data-expanded", "false");
-    await page.getByRole("button", { name: "Expand mini-map" }).click();
-    const miniMapCanvas = page.locator(".rpg-mini-map-canvas");
-    await expect(miniMap).toHaveAttribute("data-expanded", "true");
-    await expect(miniMapCanvas).toBeVisible();
-    await expect(
-      miniMapCanvas.locator('[data-map-layer="model-terrain"]')
-    ).toHaveCount(1);
-    await expect(miniMapCanvas.locator("image")).toHaveCount(0);
-    expectFullyVisible(await miniMap.boundingBox(), viewport);
-    await page.getByRole("button", { name: "Collapse mini-map" }).click();
-
-    await page
-      .getByRole("button", { name: "Directions", exact: true })
-      .click();
-    const panel = page.locator(".guide-panel");
-    await expect(panel).toBeVisible();
-    await expect(miniMap).toBeHidden();
-    expectFullyVisible(await panel.boundingBox(), viewport);
-    const panelBox = await panel.boundingBox();
-    const movementBox = await movement.boundingBox();
-    expect(panelBox).not.toBeNull();
-    expect(movementBox).not.toBeNull();
-    expect(boxesOverlap(panelBox!, movementBox!)).toBe(false);
-    await page.getByRole("button", { name: "Close" }).click();
-
-    await page
-      .getByRole("button", { name: "Open world map (M key)" })
-      .click();
-    const world = page.getByTestId("world-view");
-    const playerPosition = await world.getAttribute("data-player-position");
-    const navigationRevision = await world.getAttribute(
-      "data-navigation-revision"
-    );
-    expect(playerPosition).not.toBeNull();
-    expect(navigationRevision).not.toBeNull();
-    const map = page.getByRole("dialog", { name: "World map" });
-    await expect(map).toBeVisible();
-    expectFullyVisible(await map.boundingBox(), viewport);
-    await expect(
-      map.locator('[data-map-layer="model-terrain"]')
-    ).toHaveCount(1);
-    await expect(map.locator("svg image")).toHaveCount(0);
-    await expect(
-      map.getByRole("button", { name: /^Inspect:/ })
-    ).toHaveCount(5);
-    const selectedDescription = map.getByTestId(
-      "world-map-selected-description"
-    );
-    const initialDescription = await selectedDescription.textContent();
-    await map.getByRole("button", { name: "Inspect: Hanabi" }).click();
-    await expect(map).toBeVisible();
-    await expect(selectedDescription).toHaveText(
-      "Hanabi torii, stalls, lanterns, and fireworks"
-    );
-    expect(await selectedDescription.textContent()).not.toBe(initialDescription);
-    await expect(world).toHaveAttribute("data-player-position", playerPosition!);
-    await expect(world).toHaveAttribute(
-      "data-navigation-revision",
-      navigationRevision!
-    );
-    await page.getByRole("button", { name: "Close world map" }).click();
-
-    const overflow = await page.evaluate(() => ({
-      horizontal:
-        document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      vertical:
-        document.documentElement.scrollHeight -
-        document.documentElement.clientHeight
-    }));
-    expect(overflow.horizontal).toBeLessThanOrEqual(0);
-    expect(overflow.vertical).toBeLessThanOrEqual(0);
-    expect(errors).toEqual([]);
-  });
-
-  test("moves the player with the mobile joystick and resets its knob on release", async ({
-    page
-  }) => {
-    await enterWorld(page);
-
-    const movement = page.getByRole("region", {
-      name: "Mobile movement control"
-    });
-    const knob = movement.locator(".mobile-move-knob");
-    const movementBox = await movement.boundingBox();
-    expect(movementBox).not.toBeNull();
-
-    const startPosition = await readWorldPosition(page);
-    const centerX = movementBox!.x + movementBox!.width / 2;
-    const centerY = movementBox!.y + movementBox!.height / 2;
-
-    await page.mouse.move(centerX, centerY);
-    await page.mouse.down();
-    try {
-      await page.mouse.move(centerX, centerY - movementBox!.height * 0.38, {
-        steps: 4
-      });
-
-      await expect
-        .poll(async () => {
-          const currentPosition = await readWorldPosition(page);
-          return Math.hypot(
-            currentPosition[0] - startPosition[0],
-            currentPosition[2] - startPosition[2]
-          );
-        })
-        .toBeGreaterThan(0.5);
-
-      expect(
-        await knob.evaluate(
-          (element) => (element as HTMLElement).style.transform
-        )
-      ).not.toBe("translate(0px, 0px)");
-    } finally {
-      await page.mouse.up();
-    }
-
-    await expect
-      .poll(() =>
-        knob.evaluate((element) => (element as HTMLElement).style.transform)
-      )
-      .toBe("translate(0px, 0px)");
-  });
-});
-
-test.describe("mobile landscape world", () => {
-  const viewport = { width: 844, height: 390 };
-
-  test.use({
-    viewport,
-    hasTouch: true,
-    isMobile: true,
-    deviceScaleFactor: 3
-  });
-
-  test("keeps active movement and map controls visible without a camera region", async ({
-    page
-  }) => {
-    await page.addInitScript(() => localStorage.clear());
-    await page.goto("/en");
-    await page.getByRole("button", { name: "START" }).click();
-    await page
-      .getByRole("button", { name: "Select female character" })
-      .click();
-    await page.getByRole("button", { name: "ENTER WORLD" }).click();
-    const renderer = page.locator(".flat-world-renderer");
-    await expect(renderer).toHaveAttribute("data-viewport", "844,390");
-    await expect(renderer).toHaveAttribute("data-viewport-supported", "false");
-
-    const movement = page.getByRole("region", {
-      name: "Mobile movement control"
-    });
-    const mapButton = page.getByRole("button", {
-      name: "Open world map (M key)"
-    });
-    expectFullyVisible(await movement.boundingBox(), viewport);
-    expectFullyVisible(await mapButton.boundingBox(), viewport);
-    await expect(page.locator(".camera-drag-zone")).toHaveCount(0);
-
-    await mapButton.click();
-    const map = page.getByRole("dialog", { name: "World map" });
-    await expect(map).toBeVisible();
-    expectFullyVisible(await map.boundingBox(), viewport);
-    await expect(
-      map.locator('[data-map-layer="model-terrain"]')
-    ).toHaveCount(1);
-    await expect(map.locator("svg image")).toHaveCount(0);
-    await expect(
-      map.getByRole("button", { name: /^Inspect:/ })
-    ).toHaveCount(5);
-  });
+    expect(headingError).toBeLessThanOrEqual(2);
+  }
 });

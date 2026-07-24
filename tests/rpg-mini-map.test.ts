@@ -236,6 +236,18 @@ describe("RPG terrain map projection", () => {
     expect(projectRpgReferenceMapHeadingRotation(arrival.position, heading, epsilon)).toBeCloseTo(expectedAngle, 10);
   });
 
+  it("projects every registered arrival heading onto its reference map node", () => {
+    for (const [index, arrival] of RPG_WORLD_ARRIVALS.entries()) {
+      expect(RPG_REFERENCE_MAP_NODES[index]).toMatchObject({
+        arrivalId: arrival.id,
+        headingRotation: projectRpgReferenceMapHeadingRotation(
+          arrival.position,
+          [arrival.heading[0], 0, arrival.heading[1]]
+        )
+      });
+    }
+  });
+
   it("retains the standalone bounded projection utility", () => {
     const projection = createRpgMapProjection({
       bounds: { minimumX: 10, maximumX: 30, minimumZ: -20, maximumZ: 20 },

@@ -4,7 +4,7 @@ import type { WorldNavigationSnapshot } from "../app/world/WorldNavigationState"
 import { createWorldRuntime } from "../app/world/WorldRuntime";
 
 describe("world navigation publisher", () => {
-  it("publishes moved snapshots within 100ms and region changes immediately", () => {
+  it("publishes moved snapshots at 75ms and region changes immediately", () => {
     const published: Array<{ at: number; revision: number }> = [];
     const publisher = createWorldNavigationPublisher((at, snapshot) => {
       published.push({ at, revision: snapshot.revision });
@@ -16,10 +16,10 @@ describe("world navigation publisher", () => {
     runtime.advance(0.01, 0);
     const moved = runtime.getNavigationSnapshot();
 
-    publisher.offer(0.099, moved);
+    publisher.offer(0.074, moved);
     expect(published).toHaveLength(1);
-    publisher.offer(0.1, moved);
-    expect(published.at(-1)).toEqual({ at: 0.1, revision: moved.revision });
+    publisher.offer(0.075, moved);
+    expect(published.at(-1)).toEqual({ at: 0.075, revision: moved.revision });
 
     const changedRegion = {
       ...moved,
@@ -27,8 +27,8 @@ describe("world navigation publisher", () => {
       navigationRegionId: "tokyo",
       currentZoneId: "tokyo"
     } as WorldNavigationSnapshot;
-    publisher.offer(0.101, changedRegion);
-    expect(published.at(-1)?.at).toBe(0.101);
+    publisher.offer(0.076, changedRegion);
+    expect(published.at(-1)?.at).toBe(0.076);
   });
 
   it("publishes interaction changes immediately without cloning the snapshot", () => {

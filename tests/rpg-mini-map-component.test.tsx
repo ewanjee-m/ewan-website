@@ -9,6 +9,7 @@ import { createFlatWorldSession } from "../app/world/FlatWorldSession";
 import { RpgMiniMap } from "../app/world/RpgMiniMap";
 import {
   RPG_CANONICAL_MAP_SOURCE_IDS,
+  RPG_REFERENCE_MAP_NODES,
   projectRpgReferenceMapHeadingRotation,
   projectRpgReferenceMapPoint
 } from "../app/world/RpgMiniMapProjection";
@@ -171,6 +172,16 @@ describe("RPG mini-map", () => {
         (label) => label.dataset.labelFontTargetCssPx === "10"
       )
     ).toBe(true);
+    for (const node of RPG_REFERENCE_MAP_NODES) {
+      expect(
+        container.querySelector(
+          `.rpg-mini-map-destination-${node.zoneId}`
+        )
+      ).toHaveAttribute(
+        "data-heading-rotation",
+        String(node.headingRotation)
+      );
+    }
   });
 
   it("keeps every fast-travel player marker on the canonical arrival marker", () => {

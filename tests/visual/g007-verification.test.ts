@@ -25,11 +25,19 @@ const expectedScripts = {
   "test:unit": "vitest run",
   "test:watch": "vitest",
   "test:e2e": "playwright test --config=playwright.config.ts",
-  "test:visual": "node tests/visual/g007-verification.mjs --capture",
+  "test:visual": "node tests/visual/rpg-world-verification.mjs --capture",
   "test:visual:finalize":
-    "node tests/visual/g007-verification.mjs --finalize",
+    "node tests/visual/rpg-world-verification.mjs --finalize",
   "test:visual:check":
+    "node tests/visual/rpg-world-verification.mjs --self-test",
+  "test:visual:g007-history:capture":
+    "node tests/visual/g007-verification.mjs --capture",
+  "test:visual:g007-history:finalize":
+    "node tests/visual/g007-verification.mjs --finalize",
+  "test:visual:g007-history:check":
     "node tests/visual/g007-verification.mjs --self-test",
+  "test:performance":
+    "playwright test tests/e2e/rpg-performance.spec.ts --config=playwright.performance.config.ts",
   "test:architecture-gate": "node tests/visual/architecture-attempt.mjs"
 };
 const retiredSuites = [

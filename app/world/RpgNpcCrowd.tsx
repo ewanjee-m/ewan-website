@@ -81,7 +81,8 @@ function RpgNpcActor({
     position: [0, 0, 0],
     size: [0.56, model.visibleHeight, 0.56],
     yaw: 0,
-    clearance: RPG_NPC_CAMERA_CLEARANCE
+    clearance: RPG_NPC_CAMERA_CLEARANCE,
+    cameraCollision: "occlusion-only"
   });
   const [assetAvailable, setAssetAvailable] = useState(false);
   const assetFailed = useRef(false);

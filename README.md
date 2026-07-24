@@ -1,80 +1,37 @@
 # Ewan World
 
-남성 또는 여성 플레이어 캐릭터로 일본 마을을 탐색하는 인터랙티브 포트폴리오다. 승인된 `1817x866` 원화, 플레이어 스프라이트, 접촉 그림자, 전경 가림, 미니맵과 전체 지도가 하나의 등록 좌표를 공유한다.
+남성 또는 여성 플레이어 캐릭터로 일본 축제 마을을 직접 탐색하는 WebGL 3D 포트폴리오다.
 
 공항버스, 도쿄, 규카츠, 벚꽃과 하나비 장면을 탐험할 수 있다.
 
-활성 화면 경로는 `ExperienceShell -> WorldView -> FlatWorldCanvas`다. `FlatWorldCanvas`는 `CanvasRenderingContext2D`를 사용하는 승인 원화 기준 Canvas 2D 렌더러다.
+## 활성 런타임
 
-## 주요 기능
+```text
+ExperienceShell
+→ WorldView
+→ SeamlessWorldCanvas
+→ WorldRuntime + RpgTownScene + RpgPlayerActor + ChaseOrbitCamera3d
+```
+
+`SeamlessWorldCanvas`는 하나의 지속되는 `seamless-rpg` WebGL 3D 렌더러다. 다섯 장소는 같은 장면, 런타임, 카메라와 탐색 상태 안에서 연결된다.
+
+## 기능
 
 - 한국어, 일본어, 영어 시작 화면
-- 남성 또는 여성 캐릭터 선택
-- 데스크톱 방향키 이동과 `Space` 점프
-- 모바일 왼쪽 이동 조작, 점프, 시작 위치 복귀
-- 공항, 도쿄, 규카츠, 벚꽃 수로, 하나비 장소 탐색
-- 현재 위치와 방향을 표시하는 접기·펼치기 미니맵
-- 다섯 장소를 선택해 한 번에 이동하는 전체 지도
-- 도쿄 날씨 또는 포춘을 바탕으로 목적지와 방향을 제안하는 길 안내
-- 포트폴리오 항목 열기
+- 남성 또는 여성 GLB 캐릭터 선택
+- 키보드와 모바일 조이스틱 이동, 걷기·달리기·점프
+- 마우스와 터치 드래그 추적 카메라
+- 공항, 도쿄, 규카츠, 벚꽃 수로, 하나비의 연속 이동
+- 구조물 충돌, 운하 차단과 다리 통행
+- 현재 위치·방향·탐색 리비전을 공유하는 미니맵과 전체 지도
+- 가까운 장소와 NPC 상호작용
+- 도쿄 날씨 또는 포춘을 이용한 길 안내
 
-전체 지도 이동은 위치, 방향, 구역, 카메라 등록을 한 번에 갱신한다. 길 안내는 추천만 제공하며 이동과 독립적이다. 추천을 받은 뒤에도 방문자는 자유롭게 이동하고 전체 지도에서 어떤 장소든 선택할 수 있다.
-
-## 화면 구성
-
-시작 화면과 캐릭터 선택 화면은 승인된 마을 이미지를 배경으로 사용하고 어두운 그라데이션과 카드 UI를 겹친다. 캐릭터 선택은 `320x525` 카드 두 장으로 구성하며, 작은 화면에서는 한 열로 배치한다.
-
-월드는 다음 계층을 합성한다.
-
-1. 승인된 마을 배경
-2. 플레이어 접촉 그림자
-3. Canvas 2D 플레이어 스프라이트
-4. 구역별로 잘라 낸 전경 이미지
-5. 포트폴리오, 길 안내, 미니맵, 전체 지도와 이동 조작
-
-데스크톱 기준 화면은 `1440x900`이다. 모바일 기준 화면은 `390x844`이며 월드 표시 안전 프레임은 `(0,64,390,780)`이다.
-
-## 캐릭터
-
-남성과 여성은 같은 이동·충돌·점프 규칙을 사용한다. 각 캐릭터는 정면, 후면, 측면과 두 장의 달리기 프레임으로 구성된 `768x1152` WebP 런타임 자산을 가진다.
-
-- 정면과 후면은 전용 프레임을 사용한다.
-- 측면은 오른쪽 자산을 기준으로 하며 왼쪽 이동에서 가로 반전한다.
-- 달릴 때 두 프레임을 교대한다.
-- 점프할 때 현재 방향의 프레임을 유지하며 화면상 높이를 바꾼다.
-- 자산별 발 오프셋으로 투명 여백을 보정해 발이 등록된 지면점에 닿도록 그린다.
-- 플레이어 아래에는 타원형 접촉 그림자가 있고, 장소의 난간·나무·건물 가장자리 같은 전경이 플레이어 앞을 가릴 수 있다.
-
-자세한 내용은 [플레이어 캐릭터 디자인](docs/character-design.md)에 있다.
-
-## 월드와 지도
-
-논리 월드는 `x=-36~36`, `z=-36~36`이다. 장소, 이동 경로, 운하, 다리, 차단 영역을 논리 좌표로 관리하고 `1817x866` 승인 이미지 좌표에 등록한다.
-
-- 카메라는 원화를 회전하지 않고 플레이어와 장소 보호 영역에 맞춰 원화 안의 표시 창을 이동한다.
-- 운하는 등록된 다리 경로에서만 건널 수 있다.
-- 미니맵과 전체 지도는 같은 지형, 다섯 도착점, 경로, 플레이어 위치와 방향을 사용한다.
-- 전체 지도에서 목적지를 누르면 해당 도착점과 바라보는 방향으로 즉시 이동한다.
-
-자세한 내용은 [월드 디자인](docs/world-design.md)에 있다.
-
-## 길 안내
-
-길 안내는 `weather`와 `fortune` 두 입력만 받는다. AI 응답은 허용된 목적지와 테마 목록으로 검증하며, API 또는 날씨 요청이 실패하면 검증된 로컬 추천을 표시한다.
-
-`OPENAI_API_KEY`가 없어도 시작, 캐릭터 선택, 월드 이동, 지도와 로컬 안내가 동작한다. 키는 브라우저 코드, `NEXT_PUBLIC_*`, 저장소 또는 `public` 파일에 넣지 않는다.
-
-`AI_GUIDE_ENABLED=false`인 공개 배포는 `x-guide-mode: disabled`가 있는 `503`을 반환하며, 화면은 검증된 로컬 추천으로 이어진다. 이 표식이 없는 `503`은 키, 바인딩 또는 상류 서비스 문제로 취급한다.
-
-애플리케이션의 구조화 요청 로그에는 메서드, 경로, 상태, 처리 시간과 요청 식별자만 남긴다. Sites 플랫폼이 별도로 만드는 호출 로그에는 전체 요청 URL이 포함될 수 있으므로 비밀 값이나 개인정보를 쿼리 문자열에 넣지 않는다.
-
-자세한 내용은 [AI 길 안내 디자인](docs/ai-guide-design.md)에 있다.
+전체 지도는 장소 정보를 살펴보는 용도이며 플레이어를 이동시키지 않는다. 시작 위치 복귀는 별도 조작만 수행한다.
 
 ## 개발
 
-요구 Node.js 버전은 `24` 이상이다.
-
-개발 서버를 실행한다.
+Node.js `24` 이상이 필요하다.
 
 ```bash
 npm run dev
@@ -82,44 +39,40 @@ npm run dev
 
 ## 검증
 
-`package.json`이 정의하는 검증 명령은 다음과 같다.
-
 ```bash
 npm run test:unit
-npm run test:e2e
-npm run test:visual:check
 npm run typecheck -- --incremental false
 npm run lint
 npm run build
+npm run test:e2e
+npm run test:visual:check
+npm run test:performance
 ```
 
-현재 화면 캡처를 생성한다.
+현재 3D 시각 증거 20개를 캡처한다.
 
 ```bash
 npm run test:visual
 ```
 
-이 명령은 하나의 `npm run dev` 생명주기에서 데스크톱 12개와 모바일 5개 화면을 캡처한다. 캡처가 정상이어도 상태는 `AWAITING_VISUAL_REVIEW`이며 최종 성공이 아니다.
-
-별도 검토자가 17개 화면을 모두 승인하고 검토 산출물을 만든 뒤, 같은 증거 폴더를 마감한다.
+캡처는 `AWAITING_VISUAL_REVIEW`에서 멈춘다. 별도 검토자가 같은 커밋, 매니페스트 해시, PNG 해시와 남성·여성 앞뒤 참고 이미지를 확인한 뒤 마감한다.
 
 ```bash
-npm run test:visual:finalize -- --evidence-dir <exact-g007-directory>
+npm run test:visual:finalize -- --evidence-dir <rpg-evidence-directory>
 ```
 
-마감 명령은 서버를 시작하거나 화면을 다시 캡처하지 않는다. 입력, 캡처, 검토, 독립 검증이 모두 일치할 때만 같은 폴더를 최종 `PASS`로 만든다.
+G007과 G005 증거는 역사 기록으로 보존한다. G007 도구는 `test:visual:g007-history:*`, G005 복구 도구는 `test:architecture-gate`로만 실행한다.
 
-활성 렌더러는 Canvas 2D이므로 GPU 메모리 수치는 수집하지 않는다. 상태는 `NOT_APPLICABLE`이고 사유는 `active renderer uses CanvasRenderingContext2D and creates no WebGL/WebGL2 context`다.
+## 길 안내와 개인정보
 
-`npm run test:architecture-gate`는 G005 역사·복구용 명령이다. 현재 G007 검증에는 실행하지 않는다.
+길 안내는 `weather`와 `fortune`만 받는다. 서버 응답은 허용된 목적지와 테마로 검증하며 실패하면 로컬 추천을 표시한다. 이름, 이메일, 생년월일, 성별, 방문자 위치 권한과 자유 입력은 요구하지 않는다. `OPENAI_API_KEY`는 서버 환경에서만 읽는다.
 
 ## 문서
 
 - [제품 계획](docs/product-plan.md)
 - [월드 디자인](docs/world-design.md)
 - [인터페이스 디자인](docs/interface-design.md)
-- [플레이어 캐릭터 디자인](docs/character-design.md)
-- [AI 길 안내 디자인](docs/ai-guide-design.md)
+- [캐릭터 디자인](docs/character-design.md)
 - [현재 인계](docs/handoff.md)
-- [승인 원화 기준 Canvas 렌더러 결정](docs/adr/0003-approved-reference-canvas-renderer.md)
-- [대체된 렌더러 결정 기록](docs/adr/0002-stable-renderer-and-streamed-world.md)
+- [활성 WebGL 3D 결정](docs/adr/0004-seamless-rpg-world.md)
+- [대체된 Canvas 2D 결정 기록](docs/adr/0003-approved-reference-canvas-renderer.md)

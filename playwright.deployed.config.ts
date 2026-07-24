@@ -27,6 +27,10 @@ export default defineConfig({
   use: {
     baseURL: deployedUrl.toString(),
     browserName: "chromium",
+    channel: "chromium",
+    locale: "en-US",
+    timezoneId: "Asia/Seoul",
+    contextOptions: { reducedMotion: "reduce" },
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure"

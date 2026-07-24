@@ -57,6 +57,7 @@ const ZONE_MARKERS = RPG_REFERENCE_MAP_NODES.map((arrival) => {
     left: (arrival.referencePixel[0] / RPG_WORLD_MAP_VIEW_BOX.width) * 100,
     top: (arrival.referencePixel[1] / RPG_WORLD_MAP_VIEW_BOX.height) * 100,
     anchor: arrival.referencePixel,
+    headingRotation: arrival.headingRotation,
     mobileControlTarget: MOBILE_ZONE_CONTROL_TARGETS[arrival.zoneId]
   };
 });
@@ -270,6 +271,7 @@ export function RpgWorldMap({
           left,
           top,
           anchor,
+          headingRotation,
           mobileControlTarget
         }) => (
           <button
@@ -283,6 +285,7 @@ export function RpgWorldMap({
             data-map-source-id={arrivalId}
             data-navigation-revision={navigation.revision}
             data-anchor-reference={anchor.join(",")}
+            data-heading-rotation={headingRotation}
             data-mobile-control-reference={mobileControlTarget.join(",")}
             data-touch-target-min-css="44x44"
             data-touch-rect-mobile-css="76x44"

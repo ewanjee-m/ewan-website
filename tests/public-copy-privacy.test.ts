@@ -66,7 +66,7 @@ describe("public portfolio copy privacy", () => {
       "`ewan-website`는 방문자가 남성 또는 여성 플레이어 캐릭터를 선택하고 일본 마을의 다섯 장소를 탐색하는 인터랙티브 포트폴리오다."
     );
     expect(readFileSync("docs/product-plan.md", "utf8")).toContain(
-      "`FlatWorldCanvas`는 승인 원화 기준 Canvas 2D 렌더러다."
+      "`SeamlessWorldCanvas`는 하나의 지속되는 WebGL 3D RPG 월드 렌더러다."
     );
   });
 

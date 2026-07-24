@@ -36,10 +36,22 @@ import {
 import type { WorldNavigationSnapshot } from "./WorldNavigationState";
 import type { WorldCameraDragIntent } from "./WorldInput";
 import type { WorldRuntime } from "./WorldRuntime";
+import { projectRpgReferenceMapPoint } from "./RpgMiniMapProjection";
 
 interface MaterialAppearance {
   transparent: boolean;
   opacity: number;
+}
+
+const RPG_CAMERA_LOOK_HALFLIFE_SECONDS = 0.08;
+
+export function getRpgCameraLookSlerpAlpha(deltaSeconds: number) {
+  return 1 -
+    Math.pow(
+      0.5,
+      Math.max(0, deltaSeconds) /
+        RPG_CAMERA_LOOK_HALFLIFE_SECONDS
+    );
 }
 
 export interface ChaseOrbitCamera3dProps {
@@ -58,8 +70,25 @@ export function collectRpgCameraDynamicObstacles(
 ) {
   target.length = 0;
   for (const obstacle of source.values()) {
+    if (obstacle.cameraCollision === "occlusion-only") continue;
     target.push(obstacle);
   }
+  return target;
+}
+
+export function collectRpgCameraOcclusionRoots(
+  scene: Object3D,
+  target: Object3D[]
+) {
+  target.length = 0;
+  scene.traverse((object) => {
+    if (
+      object.userData.cameraOccluder === true &&
+      object.userData.landmarkId !== "airport-bus"
+    ) {
+      target.push(object);
+    }
+  });
   return target;
 }
 
@@ -122,6 +151,7 @@ export function ChaseOrbitCamera3d({
   const raycaster = useRef(new Raycaster());
   const rayDirection = useRef(new Vector3());
   const rayHits = useRef<Intersection[]>([]);
+  const occlusionRoots = useRef<Object3D[]>([]);
   const occlusion = useRef(createRpgCameraOcclusionState());
   const occluder = useRef<Object3D | null>(null);
   const materialAppearances = useRef(new Map<Material, MaterialAppearance>());
@@ -217,7 +247,7 @@ export function ChaseOrbitCamera3d({
     lookTarget.current.lookAt(focus.current);
     activeCamera.quaternion.slerp(
       lookTarget.current.quaternion,
-      1 - Math.pow(0.5, delta / 0.18)
+      getRpgCameraLookSlerpAlpha(delta)
     );
     activeCamera.updateMatrixWorld();
 
@@ -304,7 +334,7 @@ export function ChaseOrbitCamera3d({
     lookTarget.current.lookAt(focus.current);
     activeCamera.quaternion.slerp(
       lookTarget.current.quaternion,
-      1 - Math.pow(0.5, delta / 0.18)
+      getRpgCameraLookSlerpAlpha(delta)
     );
     activeCamera.updateMatrixWorld();
 
@@ -319,7 +349,10 @@ export function ChaseOrbitCamera3d({
     raycaster.current.far = rayDistance;
     rayHits.current.length = 0;
     raycaster.current.intersectObjects(
-      scene.children,
+      collectRpgCameraOcclusionRoots(
+        scene,
+        occlusionRoots.current
+      ),
       true,
       rayHits.current
     );
@@ -378,7 +411,11 @@ export function ChaseOrbitCamera3d({
     const telemetryNode = telemetryRef.current;
     if (telemetryNode) {
       telemetryNode.dataset.cameraYaw = String(state.yaw);
+      telemetryNode.dataset.cameraPitch = String(state.pitch);
       telemetryNode.dataset.cameraBoom = String(boom);
+      telemetryNode.dataset.playerHeading = snapshot.heading.join(",");
+      const mapAnchor = projectRpgReferenceMapPoint(snapshot.position);
+      telemetryNode.dataset.mapAnchorReference = `${mapAnchor.x},${mapAnchor.y}`;
       telemetryNode.dataset.cameraSafeViolationMs = String(
         Math.round(safetyViolationSeconds.current * 1000)
       );

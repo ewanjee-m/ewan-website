@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { Object3D } from "three";
 import {
   calculateRpgCameraCollisionRatio,
   resolveRpgCameraCollisionInto,
   resolveRpgCameraOrbitCollisionInto,
   RPG_NPC_CAMERA_CLEARANCE,
   RPG_CAMERA_MINIMUM_BOOM_DISTANCE,
+  RPG_CAMERA_MINIMUM_FULL_BODY_FRAMING_DISTANCE,
   type RpgCameraDynamicObstacle
 } from "../app/world/RpgCameraCollision";
 import {
@@ -16,7 +18,11 @@ import {
   PLAYER_CHARACTER_CAMERA_HIDE_DISTANCE
 } from "../app/world/RpgCharacterCameraVisibility";
 import { createRpgBusMotionPose } from "../app/world/RpgBusMotion";
-import { collectRpgCameraDynamicObstacles } from "../app/world/ChaseOrbitCamera3d";
+import {
+  collectRpgCameraDynamicObstacles,
+  collectRpgCameraOcclusionRoots,
+  getRpgCameraLookSlerpAlpha
+} from "../app/world/ChaseOrbitCamera3d";
 import {
   isRpgWalkablePosition,
   RPG_LANDMARKS
@@ -81,16 +87,50 @@ const festivalLantern = RPG_LANDMARKS.find(
 )!;
 
 describe("RPG chase camera obstacle clearance", () => {
+  it("converges the camera look target within the 250ms safe-frame budget", () => {
+    const frameSeconds = 1 / 60;
+    const alpha = getRpgCameraLookSlerpAlpha(frameSeconds);
+    let remainingError = 1;
+    for (let frame = 0; frame < 15; frame += 1) {
+      remainingError *= (1 - alpha) ** 2;
+    }
+    expect(remainingError).toBeLessThan(0.02);
+  });
+
+  it("raycasts only explicit static camera occluder roots", () => {
+    const scene = new Object3D();
+    const playerRig = new Object3D();
+    const terminal = new Object3D();
+    const terminalMesh = new Object3D();
+    const bus = new Object3D();
+    terminal.userData = {
+      cameraOccluder: true,
+      landmarkId: "airport-terminal"
+    };
+    bus.userData = {
+      cameraOccluder: true,
+      landmarkId: "airport-bus"
+    };
+    terminal.add(terminalMesh);
+    scene.add(playerRig, terminal, bus);
+    const target = [playerRig];
+
+    expect(collectRpgCameraOcclusionRoots(scene, target)).toBe(target);
+    expect(target).toEqual([terminal]);
+  });
+
   it("refills the caller-owned dynamic obstacle collection without replacing it", () => {
     const first: RpgCameraDynamicObstacle = {
       position: [1, 1, 1],
       size: [1, 2, 1],
-      yaw: 0
+      yaw: 0,
+      cameraCollision: "solid"
     };
     const second: RpgCameraDynamicObstacle = {
       position: [2, 1, 2],
       size: [1, 2, 1],
-      yaw: Math.PI / 2
+      yaw: Math.PI / 2,
+      cameraCollision: "occlusion-only"
     };
     const source = new Map([
       ["first", first],
@@ -99,7 +139,43 @@ describe("RPG chase camera obstacle clearance", () => {
     const target = [second];
 
     expect(collectRpgCameraDynamicObstacles(source, target)).toBe(target);
-    expect(target).toEqual([first, second]);
+    expect(target).toEqual([first]);
+  });
+
+  it("orbits around the Gyukatsu facade without extending through it", () => {
+    const player = [-7, 1.15, 9] as const;
+    const yaw = 4.261270019531251;
+    const pitch = 0.6506699197917142;
+    const distance = 5.6;
+    const horizontal = Math.cos(pitch) * distance;
+    const desiredCamera = [
+      player[0] - Math.sin(yaw) * horizontal,
+      player[1] + Math.sin(pitch) * distance,
+      player[2] - Math.cos(yaw) * horizontal
+    ] as const;
+    const resolved = [0, 0, 0] as [number, number, number];
+
+    expect(
+      resolveRpgCameraOrbitCollisionInto(
+        { player, desiredCamera },
+        resolved
+      )
+    ).toBe(true);
+    expect(
+      Math.hypot(
+        resolved[0] - player[0],
+        resolved[1] - player[1],
+        resolved[2] - player[2]
+      )
+    ).toBeGreaterThanOrEqual(
+      RPG_CAMERA_MINIMUM_FULL_BODY_FRAMING_DISTANCE
+    );
+    expect(
+      calculateRpgCameraCollisionRatio({
+        player,
+        desiredCamera: resolved
+      })
+    ).toBe(1);
   });
 
   it("keeps the full boom length when the route behind the player is clear", () => {

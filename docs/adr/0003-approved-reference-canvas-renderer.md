@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded
 ---
 
 # 승인 원화 기준 Canvas 2D 렌더러
+
+이 결정은 [ADR 0004](0004-seamless-rpg-world.md)로 대체되었다. 아래 본문은 G005/G007 역사와 당시 계약을 보존한다.
 
 ## 배경
 

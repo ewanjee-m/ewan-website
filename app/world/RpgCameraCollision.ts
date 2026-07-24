@@ -13,6 +13,7 @@ export interface RpgCameraDynamicObstacle {
   /** Heading yaw in radians: 0 faces +Z and PI / 2 faces +X. */
   yaw: number;
   clearance?: number;
+  cameraCollision?: "solid" | "occlusion-only";
 }
 
 export interface RpgCameraCollisionInput {
@@ -35,7 +36,7 @@ export const RPG_NPC_CAMERA_CLEARANCE = 0.25;
  */
 export const RPG_CAMERA_MINIMUM_BOOM_DISTANCE = 2.6;
 const COLLISION_RATIO_EPSILON = 1e-4;
-const FULL_BODY_BOOM_RATIO = 0.34;
+export const RPG_CAMERA_MINIMUM_FULL_BODY_FRAMING_DISTANCE = 4.5;
 const LATERAL_ESCAPE_ANGLES = [
   30,
   -30,
@@ -417,8 +418,21 @@ export function resolveRpgCameraOrbitCollisionInto(
   input: RpgCameraCollisionInput,
   target: MutableRpgCameraPoint
 ) {
+  const desiredBoomLength = Math.hypot(
+    input.desiredCamera[0] - input.player[0],
+    input.desiredCamera[1] - input.player[1],
+    input.desiredCamera[2] - input.player[2]
+  );
+  const requiredRatio =
+    desiredBoomLength > 1e-8
+      ? Math.min(
+          1,
+          RPG_CAMERA_MINIMUM_FULL_BODY_FRAMING_DISTANCE /
+            desiredBoomLength
+        )
+      : 1;
   const directRatio = resolveRpgCameraCollisionInto(input, target);
-  if (directRatio >= FULL_BODY_BOOM_RATIO) {
+  if (directRatio >= requiredRatio) {
     return false;
   }
   // `target` already carries the minimum boom; every early exit below leaves it
@@ -428,7 +442,7 @@ export function resolveRpgCameraOrbitCollisionInto(
     calculateRpgCameraCollisionRatio({
       ...input,
       dynamicObstacles: []
-    }) >= FULL_BODY_BOOM_RATIO
+    }) >= requiredRatio
   ) {
     // A vehicle or a townsperson may briefly cross the boom. Shortening the
     // boom keeps the player's screen direction stable; a lateral orbit would
@@ -472,7 +486,7 @@ export function resolveRpgCameraOrbitCollisionInto(
     }
   }
 
-  if (bestRatio <= directRatio) {
+  if (bestRatio < requiredRatio) {
     return false;
   }
   target[0] = bestX;

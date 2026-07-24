@@ -180,7 +180,11 @@ export const RPG_REFERENCE_MAP_NODES = Object.freeze(
       arrivalId: arrival.id,
       zoneId: arrival.zoneId,
       worldPosition: arrival.position,
-      referencePixel: projection.pixel
+      referencePixel: projection.pixel,
+      headingRotation: projectRpgReferenceMapHeadingRotation(
+        arrival.position,
+        [arrival.heading[0], 0, arrival.heading[1]]
+      )
     });
   })
 );
