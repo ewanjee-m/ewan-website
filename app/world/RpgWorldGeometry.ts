@@ -212,6 +212,21 @@ export function getSurfaceHeight(position: WorldPoint2 | WorldPoint3) {
   return RPG_WORLD_BRIDGE.surfaceHeight + Math.sin(Math.PI * progress) * RPG_WORLD_BRIDGE.archRise;
 }
 
+export function getSurfaceNormal(
+  position: WorldPoint2 | WorldPoint3,
+  epsilon = 0.05
+): WorldPoint3 {
+  const [x, z] = point2(position);
+  const dx =
+    getSurfaceHeight([x + epsilon, z]) -
+    getSurfaceHeight([x - epsilon, z]);
+  const dz =
+    getSurfaceHeight([x, z + epsilon]) -
+    getSurfaceHeight([x, z - epsilon]);
+  const length = Math.hypot(dx, epsilon * 2, dz);
+  return [-dx / length, (epsilon * 2) / length, -dz / length];
+}
+
 export interface RuntimeReferenceTriangle extends ReferenceTriangle {
   readonly atomicTriangleId: string;
   readonly calibrationTriangleId: string;

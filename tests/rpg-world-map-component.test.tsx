@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { adaptFlatWorldNavigationSnapshot } from "../app/world/FlatWorldNavigationAdapter";
 import { createFlatWorldSession } from "../app/world/FlatWorldSession";
 import {
   RPG_CANONICAL_MAP_SOURCE_IDS,
@@ -60,7 +61,7 @@ function navigationAt(
       })
     ).toBe(true);
   }
-  return session.getNavigationSnapshot();
+  return adaptFlatWorldNavigationSnapshot(session.getNavigationSnapshot());
 }
 
 function renderWorldMap(
@@ -252,7 +253,9 @@ describe("RPG world map", () => {
     for (const destinationId of Object.keys(
       RPG_REFERENCE_MAP_GOLDEN.nodes
     ) as Array<keyof typeof RPG_REFERENCE_MAP_GOLDEN.nodes>) {
-      const navigation = session.fastTravel(destinationId);
+      const navigation = adaptFlatWorldNavigationSnapshot(
+        session.fastTravel(destinationId)
+      );
       const { container, unmount } = renderWorldMap({ navigation });
       const target = RPG_REFERENCE_MAP_GOLDEN.nodes[destinationId].join(",");
       expect(

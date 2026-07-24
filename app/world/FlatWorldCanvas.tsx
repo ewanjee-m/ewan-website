@@ -11,6 +11,7 @@ import {
 import type { DestinationId } from "../guide/GuideContract";
 import { getSelectedPlayerRuntimeManifest } from "./CharacterAssets";
 import type { FlatCameraProfileId } from "./FlatCameraPlacement";
+import { adaptFlatWorldNavigationSnapshot } from "./FlatWorldNavigationAdapter";
 import {
   createFlatWorldSession,
   createInitialFlatWorldNavigationSnapshot,
@@ -52,13 +53,14 @@ import { RPG_WORLD_BOUNDS, RPG_WORLD_SPAWN } from "./RpgWorldModel";
 import type { InputController } from "./InputController";
 import type { PlayerCharacter } from "./WorldView";
 import type { WorldMovementIntent } from "./WorldInput";
+import type { WorldNavigationSnapshot } from "./WorldNavigationState";
 import type { MovementIntent } from "./WorldSession";
 
 interface FlatWorldCanvasProps {
   character: PlayerCharacter;
   input: InputController;
   activeDestinationId: DestinationId | null;
-  onNavigationChange: (navigation: FlatWorldNavigationSnapshot) => void;
+  onNavigationChange: (navigation: WorldNavigationSnapshot) => void;
 }
 
 const WORLD_START = {
@@ -825,7 +827,7 @@ function FlatWorldCanvas(props: FlatWorldCanvasProps) {
       ) {
         lastNavigationRevisionRef.current = navigation.revision;
         lastNavigationUpdateRef.current = now;
-        onNavigationChange(navigation);
+        onNavigationChange(adaptFlatWorldNavigationSnapshot(navigation));
       }
       animationFrame = requestAnimationFrame(tick);
     };

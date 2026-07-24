@@ -4,6 +4,7 @@ import { act } from "react";
 import { hydrateRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { adaptFlatWorldNavigationSnapshot } from "../app/world/FlatWorldNavigationAdapter";
 import { createFlatWorldSession } from "../app/world/FlatWorldSession";
 import { RpgMiniMap } from "../app/world/RpgMiniMap";
 import {
@@ -57,7 +58,7 @@ function navigationAt(
       })
     ).toBe(true);
   }
-  return session.getNavigationSnapshot();
+  return adaptFlatWorldNavigationSnapshot(session.getNavigationSnapshot());
 }
 
 function useMobileViewport(matches: boolean) {
@@ -142,11 +143,18 @@ describe("RPG mini-map", () => {
       moveSpeed: 4
     });
     const { container, rerender } = render(
-      <RpgMiniMap labels={labels} navigation={session.getNavigationSnapshot()} />
+      <RpgMiniMap
+        labels={labels}
+        navigation={adaptFlatWorldNavigationSnapshot(
+          session.getNavigationSnapshot()
+        )}
+      />
     );
 
     for (const destinationId of RPG_WORLD_ZONE_IDS) {
-      const navigation = session.fastTravel(destinationId);
+      const navigation = adaptFlatWorldNavigationSnapshot(
+        session.fastTravel(destinationId)
+      );
       rerender(<RpgMiniMap labels={labels} navigation={navigation} />);
       const player = container.querySelector<SVGGElement>(
         '[data-map-layer="player"]'

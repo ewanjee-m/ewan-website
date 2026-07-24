@@ -15,6 +15,7 @@ import { calculateRpgReferenceCameraPlacement } from "../app/world/RpgCameraPlac
 import {
   createFlatPlayerMotionState
 } from "../app/world/FlatPlayerMotion";
+import { adaptFlatWorldNavigationSnapshot } from "../app/world/FlatWorldNavigationAdapter";
 import {
   createFlatWorldSession,
   createInitialFlatWorldNavigationSnapshot,
@@ -54,6 +55,7 @@ import {
 } from "../app/world/RpgWorldBackdrop";
 import {
   getNavigationRegionAt,
+  getSurfaceHeight,
   isWalkable,
   projectWorldToReference
 } from "../app/world/RpgWorldGeometry";
@@ -805,6 +807,31 @@ describe("RPG player sprite renderer integration", () => {
     expect(frame.rawMovement).toEqual({ x: -1, y: 0.25 });
     expect(frame.moving).toBe(navigation.moving);
     expect(frame.jumpHeight).toBe(navigation.position[1]);
+  });
+
+  it("adapts bridge feet to surface height while preserving jump offset", () => {
+    const session = createFlatWorldSession({
+      bounds: RPG_WORLD_BOUNDS,
+      start: { x: RPG_WORLD_SPAWN[0], z: RPG_WORLD_SPAWN[2] },
+      moveSpeed: 3.4,
+      canMoveTo: (x, z) => isWalkable([x, z])
+    });
+    expect(session.teleport(16.6, -17)).toBe(true);
+    session.jump();
+    session.advance(0.1);
+    const flat = session.getNavigationSnapshot();
+
+    const navigation = adaptFlatWorldNavigationSnapshot(flat);
+
+    expect(navigation.surfaceHeight).toBeCloseTo(
+      getSurfaceHeight(flat.position),
+      10
+    );
+    expect(navigation.jumpOffset).toBe(flat.position[1]);
+    expect(navigation.position[1]).toBeCloseTo(
+      navigation.surfaceHeight + navigation.jumpOffset,
+      10
+    );
   });
 
   it("loads the selected identity boundary without requesting the other identity", async () => {

@@ -2,11 +2,11 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getMessages } from "../app/i18n/messages";
-import { createInitialFlatWorldNavigationSnapshot } from "../app/world/FlatWorldSession";
 import {
   RPG_CANONICAL_MAP_SOURCE_IDS,
   RPG_MAP_TERRAIN_ASSET
 } from "../app/world/RpgMiniMapProjection";
+import { createInitialWorldNavigationSnapshot } from "../app/world/WorldNavigationState";
 import {
   WorldView,
   shareWorldNavigationSnapshot
@@ -52,7 +52,7 @@ describe("world mini-map integration", () => {
   });
 
   it("shares one immutable navigation object across every consumer", () => {
-    const navigation = createInitialFlatWorldNavigationSnapshot();
+    const navigation = createInitialWorldNavigationSnapshot();
     const consumers = shareWorldNavigationSnapshot(navigation);
 
     expect(consumers.guide).toBe(navigation);

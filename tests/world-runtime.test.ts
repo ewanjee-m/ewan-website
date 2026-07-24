@@ -1,0 +1,265 @@
+import { describe, expect, it } from "vitest";
+import { isWalkable } from "../app/world/RpgWorldGeometry";
+import {
+  WORLD_RUN_SPEED,
+  WORLD_WALK_SPEED,
+  createWorldRuntime
+} from "../app/world/WorldRuntime";
+import {
+  RPG_WORLD_BOUNDS,
+  RPG_WORLD_SPAWN
+} from "../app/world/RpgWorldModel";
+import { RPG_CANONICAL_ROUTE } from "./fixtures/rpg-canonical-route";
+
+describe("WorldRuntime", () => {
+  it("keeps the canonical route walkable at 0.1-unit samples", () => {
+    let distance = 0;
+    for (let index = 1; index < RPG_CANONICAL_ROUTE.length; index += 1) {
+      const from = RPG_CANONICAL_ROUTE[index - 1];
+      const to = RPG_CANONICAL_ROUTE[index];
+      const length = Math.hypot(to[0] - from[0], to[1] - from[1]);
+      distance += length;
+      const count = Math.ceil(length / 0.1);
+      for (let sample = 0; sample <= count; sample += 1) {
+        const progress = sample / count;
+        expect(isWalkable([
+          from[0] + (to[0] - from[0]) * progress,
+          from[1] + (to[1] - from[1]) * progress
+        ])).toBe(true);
+      }
+    }
+    expect(distance).toBeCloseTo(122.08884600503183, 9);
+  });
+
+  function driveCanonicalRoute(runRequested: boolean) {
+    const runtime = createWorldRuntime();
+    const speed = runRequested ? WORLD_RUN_SPEED : WORLD_WALK_SPEED;
+    const framePattern = [1 / 120, 1 / 50, 1 / 30, 1 / 90] as const;
+    const visitedZones: string[] = [];
+    let elapsedSeconds = 0;
+    let frame = 0;
+
+    for (let index = 1; index < RPG_CANONICAL_ROUTE.length; index += 1) {
+      const target = RPG_CANONICAL_ROUTE[index];
+      for (;;) {
+        const current = runtime.getNavigationSnapshot().position;
+        const dx = target[0] - current[0];
+        const dz = target[1] - current[2];
+        const remaining = Math.hypot(dx, dz);
+        if (remaining <= 1e-7) break;
+        const delta = Math.min(
+          framePattern[frame % framePattern.length],
+          remaining / speed
+        );
+        runtime.setMovement({
+          x: dx / remaining,
+          y: dz / remaining,
+          runRequested
+        });
+        runtime.advance(delta, 0);
+        elapsedSeconds += delta;
+        frame += 1;
+        const zone = runtime.getNavigationSnapshot().currentZoneId;
+        if (visitedZones.at(-1) !== zone) visitedZones.push(zone);
+      }
+    }
+
+    runtime.setMovement({ x: 0, y: 0, runRequested: false });
+    return { runtime, elapsedSeconds, visitedZones };
+  }
+
+  it.each([
+    { runRequested: false, expectedSeconds: 75.8 },
+    { runRequested: true, expectedSeconds: 64.3 }
+  ])(
+    "drives the real runtime through every region in $expectedSeconds seconds ±5%",
+    ({ runRequested, expectedSeconds }) => {
+      const result = driveCanonicalRoute(runRequested);
+      expect(result.elapsedSeconds).toBeGreaterThanOrEqual(
+        expectedSeconds * 0.95
+      );
+      expect(result.elapsedSeconds).toBeLessThanOrEqual(
+        expectedSeconds * 1.05
+      );
+      expect(result.visitedZones).toEqual([
+        "airport",
+        "tokyo",
+        "gyukatsu",
+        "sakura",
+        "hanabi"
+      ]);
+      expect(result.runtime.getNavigationSnapshot().position).toEqual([
+        26,
+        0,
+        -18
+      ]);
+    }
+  );
+
+  it("keeps an idle revision stable and exposes no coordinate jump API", () => {
+    const runtime = createWorldRuntime();
+    const before = runtime.getNavigationSnapshot();
+    for (let frame = 0; frame < 30; frame += 1) {
+      runtime.advance(1 / 60, 0);
+    }
+    const after = runtime.getNavigationSnapshot();
+    expect(after.position).toEqual(before.position);
+    expect(after.revision).toBe(before.revision);
+    expect(runtime).not.toHaveProperty("teleport");
+    expect(runtime).not.toHaveProperty("fastTravel");
+    expect(runtime).not.toHaveProperty("setPosition");
+  });
+
+  it("moves from active input and stops after input is released", () => {
+    const runtime = createWorldRuntime();
+    runtime.setMovement({ x: -1, y: 0, runRequested: false });
+    runtime.advance(0.1, 0);
+
+    const moving = runtime.getNavigationSnapshot();
+    expect(moving.position[0]).toBeLessThan(RPG_WORLD_SPAWN[0]);
+    expect(moving.heading).toEqual([-1, 0, 0]);
+    expect(moving.moving).toBe(true);
+    expect(moving.locomotion).toBe("walk");
+
+    runtime.setMovement({ x: 0, y: 0, runRequested: false });
+    const stoppedAt = runtime.getNavigationSnapshot().position;
+    runtime.advance(0.1, 0);
+
+    const stopped = runtime.getNavigationSnapshot();
+    expect(stopped.position).toEqual(stoppedAt);
+    expect(stopped.moving).toBe(false);
+    expect(stopped.locomotion).toBe("idle");
+  });
+
+  it("normalizes diagonal input so it is not faster than one axis", () => {
+    const axis = createWorldRuntime();
+    const diagonal = createWorldRuntime();
+
+    axis.setMovement({ x: 1, y: 0, runRequested: false });
+    diagonal.setMovement({ x: 1, y: 1, runRequested: false });
+    axis.advance(0.1, 0);
+    diagonal.advance(0.1, 0);
+
+    const axisPosition = axis.getNavigationSnapshot().position;
+    const diagonalPosition = diagonal.getNavigationSnapshot().position;
+    expect(
+      Math.hypot(
+        diagonalPosition[0] - RPG_WORLD_SPAWN[0],
+        diagonalPosition[2] - RPG_WORLD_SPAWN[2]
+      )
+    ).toBeCloseTo(
+      Math.hypot(
+        axisPosition[0] - RPG_WORLD_SPAWN[0],
+        axisPosition[2] - RPG_WORLD_SPAWN[2]
+      ),
+      8
+    );
+  });
+
+  it("never leaves the world boundary or walkable navigation space", () => {
+    for (const movement of [
+      { x: -1, y: 0, runRequested: true },
+      { x: 1, y: 0, runRequested: true },
+      { x: 0, y: -1, runRequested: true },
+      { x: 0, y: 1, runRequested: true }
+    ]) {
+      const runtime = createWorldRuntime();
+      runtime.setMovement(movement);
+      for (let frame = 0; frame < 400; frame += 1) {
+        runtime.advance(0.25, 0);
+      }
+      const [x, , z] = runtime.getNavigationSnapshot().position;
+      expect(x).toBeGreaterThanOrEqual(RPG_WORLD_BOUNDS.minimumX);
+      expect(x).toBeLessThanOrEqual(RPG_WORLD_BOUNDS.maximumX);
+      expect(z).toBeGreaterThanOrEqual(RPG_WORLD_BOUNDS.minimumZ);
+      expect(z).toBeLessThanOrEqual(RPG_WORLD_BOUNDS.maximumZ);
+      expect(isWalkable([x, z])).toBe(true);
+    }
+  });
+
+  it("slides along a free edge when dynamic geometry blocks one axis", () => {
+    const runtime = createWorldRuntime({
+      canOccupyDynamic: ([x]) => x <= -26
+    });
+    runtime.setMovement({ x: 1, y: 1, runRequested: false });
+
+    for (let frame = 0; frame < 10; frame += 1) {
+      runtime.advance(0.1, 0);
+    }
+
+    const [x, , z] = runtime.getNavigationSnapshot().position;
+    expect(x).toBeLessThanOrEqual(-26);
+    expect(z).toBeGreaterThan(RPG_WORLD_SPAWN[2]);
+  });
+
+  it("substeps long frames so the player cannot tunnel through dynamic geometry", () => {
+    const runtime = createWorldRuntime({
+      canOccupyDynamic: ([x]) => x < -26 || x > -25.5
+    });
+    runtime.setMovement({ x: 1, y: 0, runRequested: true });
+
+    runtime.advance(1, 0);
+
+    expect(runtime.getNavigationSnapshot().position[0]).toBeLessThan(-26);
+  });
+
+  it("jumps above the surface and lands without horizontal movement", () => {
+    const runtime = createWorldRuntime();
+
+    runtime.jump();
+    runtime.advance(0.25, 0);
+
+    const airborne = runtime.getNavigationSnapshot();
+    expect(airborne.jumpOffset).toBeGreaterThan(0);
+    expect(airborne.position[0]).toBe(RPG_WORLD_SPAWN[0]);
+    expect(airborne.position[2]).toBe(RPG_WORLD_SPAWN[2]);
+    expect(airborne.grounded).toBe(false);
+    expect(airborne.locomotion).toBe("jump");
+
+    for (let step = 0; step < 40; step += 1) {
+      runtime.advance(0.1, 0);
+    }
+
+    const landed = runtime.getNavigationSnapshot();
+    expect(landed.position).toEqual(RPG_WORLD_SPAWN);
+    expect(landed.jumpOffset).toBe(0);
+    expect(landed.grounded).toBe(true);
+  });
+
+  it("resets movement, heading, and jumping to the safe spawn", () => {
+    const runtime = createWorldRuntime();
+    runtime.setMovement({ x: 1, y: 1, runRequested: true });
+    runtime.advance(0.1, 0);
+    runtime.jump();
+    runtime.advance(0.1, 0);
+
+    runtime.reset();
+
+    expect(runtime.getNavigationSnapshot()).toMatchObject({
+      position: RPG_WORLD_SPAWN,
+      jumpOffset: 0,
+      heading: [1, 0, 0],
+      moving: false,
+      grounded: true,
+      locomotion: "idle",
+      currentZoneId: "airport"
+    });
+  });
+
+  it("publishes deeply immutable caller-visible navigation snapshots", () => {
+    const runtime = createWorldRuntime();
+    const initial = runtime.getNavigationSnapshot();
+
+    runtime.setMovement({ x: 1, y: 0, runRequested: false });
+    runtime.advance(1 / 60, 0);
+    const moved = runtime.getNavigationSnapshot();
+
+    expect(moved).not.toBe(initial);
+    expect(moved.revision).toBeGreaterThan(initial.revision);
+    expect(Object.isFrozen(moved)).toBe(true);
+    expect(Object.isFrozen(moved.position)).toBe(true);
+    expect(Object.isFrozen(moved.surfaceNormal)).toBe(true);
+    expect(Object.isFrozen(moved.heading)).toBe(true);
+    expect(Object.isFrozen(moved.highlightedZoneIds)).toBe(true);
+  });
+});

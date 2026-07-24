@@ -22,9 +22,9 @@ import { createInputController } from "./InputController";
 import { attachWorldKeyboardInput } from "./KeyboardInput";
 import { PortfolioGuide, type PortfolioEntry } from "./PortfolioGuide";
 import {
-  createInitialFlatWorldNavigationSnapshot,
-  type FlatWorldNavigationSnapshot
-} from "./FlatWorldSession";
+  createInitialWorldNavigationSnapshot,
+  type WorldNavigationSnapshot
+} from "./WorldNavigationState";
 import { RpgMiniMap, type RpgMiniMapLabels } from "./RpgMiniMap";
 import { RpgWorldMap, type RpgWorldMapLabels } from "./RpgWorldMap";
 import { WorldErrorBoundary } from "./WorldErrorBoundary";
@@ -71,7 +71,7 @@ interface WorldViewProps {
 }
 
 export function shareWorldNavigationSnapshot(
-  navigation: FlatWorldNavigationSnapshot
+  navigation: WorldNavigationSnapshot
 ) {
   return Object.freeze({
     guide: navigation,
@@ -86,8 +86,8 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
   const [activeRecommendation, setActiveRecommendation] =
     useState<ActiveGuideRecommendation | null>(null);
   const [navigation, setNavigation] =
-    useState<FlatWorldNavigationSnapshot>(
-      createInitialFlatWorldNavigationSnapshot
+    useState<WorldNavigationSnapshot>(
+      createInitialWorldNavigationSnapshot
     );
   const [worldMapOpen, setWorldMapOpen] = useState(false);
   const sharedNavigation = useMemo(
@@ -104,7 +104,7 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
     </div>
   );
   const updateNavigation = useCallback(
-    (nextNavigation: FlatWorldNavigationSnapshot) =>
+    (nextNavigation: WorldNavigationSnapshot) =>
       setNavigation((current) =>
         current === nextNavigation ? current : nextNavigation
       ),

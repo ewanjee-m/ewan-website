@@ -13,7 +13,7 @@ import {
   projectRpgReferenceMapPoint,
   serializeRpgReferencePoints
 } from "./RpgMiniMapProjection";
-import type { FlatWorldNavigationSnapshot } from "./FlatWorldSession";
+import type { WorldNavigationSnapshot } from "./WorldNavigationState";
 
 export interface RpgWorldMapLabels {
   title: string;
@@ -34,7 +34,7 @@ export interface RpgWorldMapLabels {
 
 interface RpgWorldMapProps {
   labels: RpgWorldMapLabels;
-  navigation: FlatWorldNavigationSnapshot;
+  navigation: WorldNavigationSnapshot;
   onClose: () => void;
 }
 
