@@ -4,6 +4,7 @@ import {
   calculateRpgCameraCollisionRatio,
   resolveRpgCameraCollisionInto,
   resolveRpgCameraOrbitCollisionInto,
+  selectRpgCameraCollisionSafeCandidateInto,
   RPG_NPC_CAMERA_CLEARANCE,
   RPG_CAMERA_MINIMUM_BOOM_DISTANCE,
   RPG_CAMERA_MINIMUM_FULL_BODY_FRAMING_DISTANCE,
@@ -116,6 +117,18 @@ describe("RPG chase camera obstacle clearance", () => {
       remainingError *= (1 - alpha) ** 2;
     }
     expect(remainingError).toBeLessThan(0.02);
+  });
+
+  it("accelerates look convergence during a lateral collision escape", () => {
+    const frameSeconds = 1 / 60;
+    const normalAlpha = getRpgCameraLookSlerpAlpha(frameSeconds);
+    const escapeAlpha = getRpgCameraLookSlerpAlpha(frameSeconds, true);
+    let remainingError = 1;
+    for (let frame = 0; frame < 10; frame += 1) {
+      remainingError *= (1 - escapeAlpha) ** 2;
+    }
+    expect(escapeAlpha).toBeGreaterThan(normalAlpha);
+    expect(remainingError).toBeLessThan(0.001);
   });
 
   it("raycasts only explicit static camera occluder roots", () => {
@@ -501,6 +514,82 @@ describe("RPG chase camera obstacle clearance", () => {
     ).toBe(1);
   });
 
+  it("rejects an unsafe damped or offset candidate in favor of its resolved fallback", () => {
+    const column = RPG_CAMERA_COLUMN_OBSTACLES.find(
+      ({ height }) => height >= 5
+    )!;
+    const player = [column.x, 0, column.z - 2] as const;
+    const unsafeCandidate = [column.x, 2.8, column.z + 4] as const;
+    const safeFallback = [0, 0, 0] as [number, number, number];
+    const selected = [0, 0, 0] as [number, number, number];
+    resolveRpgCameraOrbitCollisionInto(
+      {
+        player,
+        desiredCamera: unsafeCandidate,
+        columnObstacles: [column]
+      },
+      safeFallback
+    );
+
+    const usedFallback = selectRpgCameraCollisionSafeCandidateInto(
+      {
+        player,
+        candidateCamera: unsafeCandidate,
+        fallbackCamera: safeFallback,
+        columnObstacles: [column]
+      },
+      selected
+    );
+
+    expect(usedFallback).toBe(true);
+    expect(selected).toEqual(safeFallback);
+    expect(
+      calculateRpgCameraCollisionRatio({
+        player,
+        desiredCamera: selected,
+        columnObstacles: [column]
+      })
+    ).toBe(1);
+  });
+
+  it("keeps every Hanabi arrival orbit outside the festival stalls", () => {
+    const player = [26, 1.15, -18] as const;
+    const pitch = (28 * Math.PI) / 180;
+    const distance = 7.04;
+    const horizontal = Math.cos(pitch) * distance;
+
+    for (let yawDegrees = 0; yawDegrees < 360; yawDegrees += 1) {
+      const yaw = (yawDegrees * Math.PI) / 180;
+      const desiredCamera = [
+        player[0] - Math.sin(yaw) * horizontal,
+        player[1] + Math.sin(pitch) * distance,
+        player[2] - Math.cos(yaw) * horizontal
+      ] as const;
+      const resolved = [0, 0, 0] as [number, number, number];
+
+      resolveRpgCameraOrbitCollisionInto(
+        { player, desiredCamera },
+        resolved
+      );
+
+      expect(
+        calculateRpgCameraCollisionRatio({
+          player,
+          desiredCamera: resolved
+        }),
+        `yaw ${yawDegrees}`
+      ).toBe(1);
+      expect(
+        Math.hypot(
+          resolved[0] - player[0],
+          resolved[1] - player[1],
+          resolved[2] - player[2]
+        ),
+        `yaw ${yawDegrees}`
+      ).toBeGreaterThanOrEqual(RPG_CAMERA_MINIMUM_BOOM_DISTANCE);
+    }
+  });
+
   it("catches a thin column the boom would otherwise pass straight through", () => {
     const player = [...OPEN_GROUND] as [number, number, number];
     const desiredCamera = desiredCameraAtPitch(18);
@@ -693,7 +782,7 @@ describe("RPG chase camera obstacle clearance", () => {
 
     expect(worstAt).not.toBe("");
     expect(worstDistance).toBeGreaterThanOrEqual(
-      RPG_CAMERA_MINIMUM_BOOM_DISTANCE - 1e-6
+      RPG_CAMERA_MINIMUM_BOOM_DISTANCE
     );
   });
 

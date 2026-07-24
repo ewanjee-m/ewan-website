@@ -24,6 +24,15 @@ export interface RpgCameraCollisionInput {
   columnObstacles?: readonly Readonly<RpgCameraColumnObstacle>[];
 }
 
+export interface RpgCameraCollisionSafeCandidateInput {
+  player: RpgCameraPoint;
+  candidateCamera: RpgCameraPoint;
+  fallbackCamera: RpgCameraPoint;
+  clearance?: number;
+  dynamicObstacles?: readonly Readonly<RpgCameraDynamicObstacle>[];
+  columnObstacles?: readonly Readonly<RpgCameraColumnObstacle>[];
+}
+
 const DEFAULT_CLEARANCE = 0.55;
 // A pole or trunk is thinner than the padding a wall needs, so the building
 // clearance would retract the boom for a prop the camera would never touch.
@@ -35,6 +44,7 @@ export const RPG_NPC_CAMERA_CLEARANCE = 0.25;
  * every resolved camera position is pushed back out to this distance.
  */
 export const RPG_CAMERA_MINIMUM_BOOM_DISTANCE = 2.6;
+export const RPG_CAMERA_MINIMUM_BOOM_NUMERICAL_MARGIN = 1e-9;
 const COLLISION_RATIO_EPSILON = 1e-4;
 export const RPG_CAMERA_MINIMUM_FULL_BODY_FRAMING_DISTANCE = 4.5;
 const LATERAL_ESCAPE_ANGLES = [
@@ -47,7 +57,18 @@ const LATERAL_ESCAPE_ANGLES = [
   75,
   -75,
   90,
-  -90
+  -90,
+  105,
+  -105,
+  120,
+  -120,
+  135,
+  -135,
+  150,
+  -150,
+  165,
+  -165,
+  180
 ] as const;
 
 function isFinitePoint(point: RpgCameraPoint) {
@@ -362,6 +383,32 @@ export function calculateRpgCameraCollisionRatio({
   return nearestRatio;
 }
 
+export function selectRpgCameraCollisionSafeCandidateInto(
+  {
+    player,
+    candidateCamera,
+    fallbackCamera,
+    clearance,
+    dynamicObstacles,
+    columnObstacles
+  }: RpgCameraCollisionSafeCandidateInput,
+  target: MutableRpgCameraPoint
+) {
+  const candidateIsClear =
+    calculateRpgCameraCollisionRatio({
+      player,
+      desiredCamera: candidateCamera,
+      clearance,
+      dynamicObstacles,
+      columnObstacles
+    }) === 1;
+  const source = candidateIsClear ? candidateCamera : fallbackCamera;
+  target[0] = source[0];
+  target[1] = source[1];
+  target[2] = source[2];
+  return !candidateIsClear;
+}
+
 /**
  * Pushes a resolved camera back out along its own boom until it reaches the
  * minimum distance, never past the boom the placement asked for.
@@ -375,7 +422,11 @@ function extendToMinimumBoomInto(
   const desiredY = desiredCamera[1] - player[1];
   const desiredZ = desiredCamera[2] - player[2];
   const desiredLength = Math.hypot(desiredX, desiredY, desiredZ);
-  const minimum = Math.min(RPG_CAMERA_MINIMUM_BOOM_DISTANCE, desiredLength);
+  const minimum = Math.min(
+    RPG_CAMERA_MINIMUM_BOOM_DISTANCE +
+      RPG_CAMERA_MINIMUM_BOOM_NUMERICAL_MARGIN,
+    desiredLength
+  );
   const currentX = target[0] - player[0];
   const currentY = target[1] - player[1];
   const currentZ = target[2] - player[2];

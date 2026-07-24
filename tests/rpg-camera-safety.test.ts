@@ -161,6 +161,24 @@ describe("RPG camera screen safety", () => {
     expect(current.y).toBeCloseTo(-0.66);
   });
 
+  it("derives each safety target from the current screen correction", () => {
+    const current = new Vector3(0.5, 0, 0);
+    const target = new Vector3();
+
+    advanceRpgCameraSafetyOffset({
+      distance: 8,
+      correction: { x: 0.1, y: 0 },
+      cameraRight: new Vector3(1, 0, 0),
+      cameraUp: new Vector3(0, 1, 0),
+      currentOffset: current,
+      targetOffset: target,
+      deltaSeconds: 0
+    });
+
+    expect(target.toArray()).toEqual([0.2, 0, 0]);
+    expect(current.toArray()).toEqual([0.5, 0, 0]);
+  });
+
   it("decays the current safety offset toward zero when the body is safe", () => {
     const current = new Vector3(1.6, -0.8, 0.4);
     const target = new Vector3(9, 9, 9);

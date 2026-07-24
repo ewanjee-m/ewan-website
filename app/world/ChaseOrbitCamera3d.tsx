@@ -22,7 +22,9 @@ import {
 import type { InputController } from "./InputController";
 import {
   RPG_CAMERA_MINIMUM_BOOM_DISTANCE,
+  RPG_CAMERA_MINIMUM_BOOM_NUMERICAL_MARGIN,
   resolveRpgCameraOrbitCollisionInto,
+  selectRpgCameraCollisionSafeCandidateInto,
   type RpgCameraDynamicObstacle
 } from "./RpgCameraCollision";
 import {
@@ -46,13 +48,19 @@ interface MaterialAppearance {
 }
 
 const RPG_CAMERA_LOOK_HALFLIFE_SECONDS = 0.08;
+const RPG_CAMERA_ESCAPE_LOOK_HALFLIFE_SECONDS = 0.025;
 
-export function getRpgCameraLookSlerpAlpha(deltaSeconds: number) {
+export function getRpgCameraLookSlerpAlpha(
+  deltaSeconds: number,
+  lateralCollisionEscape = false
+) {
   return 1 -
     Math.pow(
       0.5,
       Math.max(0, deltaSeconds) /
-        RPG_CAMERA_LOOK_HALFLIFE_SECONDS
+        (lateralCollisionEscape
+          ? RPG_CAMERA_ESCAPE_LOOK_HALFLIFE_SECONDS
+          : RPG_CAMERA_LOOK_HALFLIFE_SECONDS)
     );
 }
 
@@ -152,6 +160,8 @@ export function ChaseOrbitCamera3d({
   const resolved = useRef<[number, number, number]>([0, 0, 0]);
   const collisionPlayer = useRef<[number, number, number]>([0, 0, 0]);
   const collisionDesired = useRef<[number, number, number]>([0, 0, 0]);
+  const collisionTransition = useRef<[number, number, number]>([0, 0, 0]);
+  const collisionFinal = useRef<[number, number, number]>([0, 0, 0]);
   const collisionObstacles = useRef<RpgCameraDynamicObstacle[]>([]);
   const lookMatrix = useRef(new Matrix4());
   const lookQuaternion = useRef(new Quaternion());
@@ -172,6 +182,8 @@ export function ChaseOrbitCamera3d({
   const safetyViolationSeconds = useRef(0);
   const batchedOcclusionSeconds = useRef(0);
   const collisionIsFinite = useRef(true);
+  const usedTransitionCollisionFallback = useRef(false);
+  const usedFinalCollisionFallback = useRef(false);
   const placementInitialized = useRef(false);
   const mobile = useRef(
     typeof window !== "undefined" &&
@@ -235,14 +247,16 @@ export function ChaseOrbitCamera3d({
     collisionDesired.current[0] = desired.current.x;
     collisionDesired.current[1] = desired.current.y;
     collisionDesired.current[2] = desired.current.z;
+    const currentCollisionObstacles =
+      collectRpgCameraDynamicObstacles(
+        dynamicObstaclesRef.current,
+        collisionObstacles.current
+      );
     const usedLateralCollisionEscape = resolveRpgCameraOrbitCollisionInto(
       {
         player: collisionPlayer.current,
         desiredCamera: collisionDesired.current,
-        dynamicObstacles: collectRpgCameraDynamicObstacles(
-          dynamicObstaclesRef.current,
-          collisionObstacles.current
-        )
+        dynamicObstacles: currentCollisionObstacles
       },
       resolved.current
     );
@@ -257,16 +271,38 @@ export function ChaseOrbitCamera3d({
       collisionIsFinite.current && !placementInitialized.current;
     if (collisionIsFinite.current) {
       safePosition.current.fromArray(resolved.current);
+    } else {
+      resolved.current[0] = safePosition.current.x;
+      resolved.current[1] = safePosition.current.y;
+      resolved.current[2] = safePosition.current.z;
     }
     if (initializePlacement) {
       basePosition.current.copy(safePosition.current);
+      usedTransitionCollisionFallback.current = false;
       placementInitialized.current = true;
     } else {
       basePosition.current.lerp(
         safePosition.current,
         1 - Math.pow(0.5, delta / 0.12)
       );
+      collisionDesired.current[0] = basePosition.current.x;
+      collisionDesired.current[1] = basePosition.current.y;
+      collisionDesired.current[2] = basePosition.current.z;
+      usedTransitionCollisionFallback.current =
+        selectRpgCameraCollisionSafeCandidateInto(
+          {
+            player: collisionPlayer.current,
+            candidateCamera: collisionDesired.current,
+            fallbackCamera: resolved.current,
+            dynamicObstacles: currentCollisionObstacles
+          },
+          collisionTransition.current
+        );
+      basePosition.current.fromArray(collisionTransition.current);
     }
+    collisionTransition.current[0] = basePosition.current.x;
+    collisionTransition.current[1] = basePosition.current.y;
+    collisionTransition.current[2] = basePosition.current.z;
     activeCamera.position
       .copy(basePosition.current)
       .add(safetyOffset.current);
@@ -282,7 +318,10 @@ export function ChaseOrbitCamera3d({
     } else {
       activeCamera.quaternion.slerp(
         lookQuaternion.current,
-        getRpgCameraLookSlerpAlpha(delta)
+        getRpgCameraLookSlerpAlpha(
+          delta,
+          usedLateralCollisionEscape
+        )
       );
     }
     activeCamera.updateMatrixWorld();
@@ -356,10 +395,31 @@ export function ChaseOrbitCamera3d({
       if (boomDirection.current.lengthSq() < 1e-8) {
         boomDirection.current.set(0, 0, 1);
       }
-      boomDirection.current.setLength(RPG_CAMERA_MINIMUM_BOOM_DISTANCE);
+      boomDirection.current.setLength(
+        RPG_CAMERA_MINIMUM_BOOM_DISTANCE +
+          RPG_CAMERA_MINIMUM_BOOM_NUMERICAL_MARGIN
+      );
       activeCamera.position
         .copy(focus.current)
         .add(boomDirection.current);
+    }
+    collisionDesired.current[0] = activeCamera.position.x;
+    collisionDesired.current[1] = activeCamera.position.y;
+    collisionDesired.current[2] = activeCamera.position.z;
+    usedFinalCollisionFallback.current =
+      selectRpgCameraCollisionSafeCandidateInto(
+        {
+          player: collisionPlayer.current,
+          candidateCamera: collisionDesired.current,
+          fallbackCamera: collisionTransition.current,
+          dynamicObstacles: currentCollisionObstacles
+        },
+        collisionFinal.current
+      );
+    activeCamera.position.fromArray(collisionFinal.current);
+    if (usedFinalCollisionFallback.current) {
+      safetyOffset.current.set(0, 0, 0);
+      safetyTarget.current.set(0, 0, 0);
     }
     resolveRpgCameraLookQuaternionInto(
       activeCamera.position,
@@ -373,7 +433,10 @@ export function ChaseOrbitCamera3d({
     } else {
       activeCamera.quaternion.slerp(
         lookQuaternion.current,
-        getRpgCameraLookSlerpAlpha(delta)
+        getRpgCameraLookSlerpAlpha(
+          delta,
+          usedLateralCollisionEscape
+        )
       );
     }
     activeCamera.updateMatrixWorld();
@@ -518,12 +581,22 @@ export function ChaseOrbitCamera3d({
       telemetryNode.dataset.cameraLateralCollisionEscape = String(
         usedLateralCollisionEscape
       );
+      telemetryNode.dataset.cameraTransitionCollisionFallback = String(
+        usedTransitionCollisionFallback.current
+      );
+      telemetryNode.dataset.cameraFinalCollisionFallback = String(
+        usedFinalCollisionFallback.current
+      );
       telemetryNode.dataset.playerHeading = snapshot.heading.join(",");
       const mapAnchor = projectRpgReferenceMapPoint(snapshot.position);
       telemetryNode.dataset.mapAnchorReference = `${mapAnchor.x},${mapAnchor.y}`;
       telemetryNode.dataset.cameraSafeViolationMs = String(
         Math.round(safetyViolationSeconds.current * 1000)
       );
+      telemetryNode.dataset.cameraSafetyCorrection =
+        `${remainingSafetyCorrection.x},${remainingSafetyCorrection.y}`;
+      telemetryNode.dataset.cameraSafetyOffset =
+        `${safetyOffset.current.x},${safetyOffset.current.y},${safetyOffset.current.z}`;
       telemetryNode.dataset.cameraSafe = String(
         safetyViolationSeconds.current <= 0.25
       );

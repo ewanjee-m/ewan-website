@@ -1,6 +1,8 @@
 import { test } from "@playwright/test";
 import {
   driveCanonicalRoute,
+  driveForwardToPoint,
+  driveWithKeyboardToPoint,
   enterRpgWorld
 } from "../fixtures/rpg-playwright-world";
 
@@ -19,5 +21,13 @@ test("mobile full route keeps the camera safe without hidden recovery", async ({
   await driveCanonicalRoute(page, {
     runRequested: false,
     requireMapObservation: false
+  });
+  await driveWithKeyboardToPoint(page, [21, -21.9], {
+    runRequested: true,
+    tolerance: 0.05,
+    timeoutMs: 40_000
+  });
+  await driveForwardToPoint(page, [21, -22], Math.PI, {
+    tolerance: 0.05
   });
 });

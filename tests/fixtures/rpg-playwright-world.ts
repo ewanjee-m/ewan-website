@@ -831,7 +831,14 @@ export async function rotateCameraToYaw(page: Page, targetYaw: number) {
                 reject(
                   new Error(
                     `camera turn safety failed: boom=${boom}; ` +
-                      `violation=${violation}; diagnostic=${diagnostic}`
+                      `violation=${violation}; diagnostic=${diagnostic}; ` +
+                      `facing=${renderer?.dataset.cameraFacingDot}; ` +
+                      `collision=${renderer?.dataset.cameraCollisionAdjustment}; ` +
+                      `lateral=${renderer?.dataset.cameraLateralCollisionEscape}; ` +
+                      `transitionFallback=${renderer?.dataset.cameraTransitionCollisionFallback}; ` +
+                      `finalFallback=${renderer?.dataset.cameraFinalCollisionFallback}; ` +
+                      `correction=${renderer?.dataset.cameraSafetyCorrection}; ` +
+                      `offset=${renderer?.dataset.cameraSafetyOffset}`
                   )
                 );
                 return;
@@ -2332,6 +2339,13 @@ export async function driveWithKeyboardToPoint(
                   `yaw=${renderer.dataset.cameraYaw}; ` +
                   `pitch=${renderer.dataset.cameraPitch}; ` +
                   `boom=${renderer.dataset.cameraBoom}; ` +
+                  `facing=${renderer.dataset.cameraFacingDot}; ` +
+                  `collision=${renderer.dataset.cameraCollisionAdjustment}; ` +
+                  `lateral=${renderer.dataset.cameraLateralCollisionEscape}; ` +
+                  `transitionFallback=${renderer.dataset.cameraTransitionCollisionFallback}; ` +
+                  `finalFallback=${renderer.dataset.cameraFinalCollisionFallback}; ` +
+                  `correction=${renderer.dataset.cameraSafetyCorrection}; ` +
+                  `offset=${renderer.dataset.cameraSafetyOffset}; ` +
                   `region=${renderer.dataset.navigationRegion}`
               );
             }
