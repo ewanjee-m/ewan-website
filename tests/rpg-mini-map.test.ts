@@ -132,6 +132,16 @@ describe("RPG terrain map projection", () => {
     );
   });
 
+  it("rejects a polygon outside the registered map terrain", () => {
+    expect(() =>
+      projectRpgWorldPolygon([
+        [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
+        [Number.MAX_SAFE_INTEGER - 1, Number.MAX_SAFE_INTEGER],
+        [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER - 1]
+      ])
+    ).toThrow(RangeError);
+  });
+
   it("keeps the independent coastline, transition, and five-node golden exact", () => {
     expect(RPG_REFERENCE_MAP_COASTLINE).toEqual(GOLDEN_COASTLINE);
     expect(Object.fromEntries(RPG_REFERENCE_MAP_TRANSITIONS.map(({ id, points }) => [id, points]))).toEqual(GOLDEN_TRANSITIONS);

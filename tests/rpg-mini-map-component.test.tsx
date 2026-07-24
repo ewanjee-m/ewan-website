@@ -123,6 +123,28 @@ describe("RPG mini-map", () => {
     expect(
       container.querySelector(`[data-map-bridge="${RPG_WORLD_BRIDGE.id}"]`)
     ).not.toBeNull();
+    for (const zone of container.querySelectorAll(
+      ".rpg-map-terrain-zone"
+    )) {
+      expect(zone).toHaveAttribute("fill", "#dfcfaa");
+      expect(zone).toHaveAttribute("stroke", "#8d745b");
+      expect(zone).toHaveAttribute("stroke-width", "2");
+    }
+    const water = container.querySelector(".rpg-map-terrain-water");
+    expect(water).toHaveAttribute("fill", "#8bc9d9");
+    expect(water).toHaveAttribute("stroke", "#4d91a8");
+    expect(water).toHaveAttribute("stroke-width", "2");
+    for (const route of container.querySelectorAll(
+      ".rpg-map-terrain-route"
+    )) {
+      expect(route).toHaveAttribute("fill", "#d6b184");
+      expect(route).toHaveAttribute("stroke", "#9a734b");
+      expect(route).toHaveAttribute("stroke-width", "2");
+    }
+    const bridge = container.querySelector(".rpg-map-terrain-bridge");
+    expect(bridge).toHaveAttribute("fill", "#b67d52");
+    expect(bridge).toHaveAttribute("stroke", "#74462d");
+    expect(bridge).toHaveAttribute("stroke-width", "2");
     const sourceIds = [
       ...container.querySelectorAll<SVGElement>("[data-map-source-id]")
     ].map((element) => element.dataset.mapSourceId!);

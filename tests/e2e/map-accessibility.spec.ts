@@ -130,7 +130,7 @@ test("keyboard movement updates the live world position from the airport spawn",
   expect(moved[1]).toBe(0);
 });
 
-test("Canvas2D maps expose five destinations and travel atomically to Hanabi without runtime errors", async ({
+test("Canvas2D maps inspect five destinations without moving the player or loading terrain images", async ({
   page
 }) => {
   const evidence = collectRuntimeEvidence(page);
@@ -149,14 +149,15 @@ test("Canvas2D maps expose five destinations and travel atomically to Hanabi wit
   await expect(miniMap).toBeVisible();
   await expect(miniMapCanvas).toBeVisible();
   await expect(
-    miniMapCanvas.locator(
-      '[data-map-layer="terrain"][data-map-source-id="approved-world-environment-concept"]'
-    )
+    miniMapCanvas.locator('[data-map-layer="model-terrain"]')
   ).toHaveCount(1);
+  await expect(miniMapCanvas.locator("image")).toHaveCount(0);
+  const playerPosition = await world.getAttribute("data-player-position");
   const navigationRevision = await world.getAttribute("data-navigation-revision");
+  expect(playerPosition).not.toBeNull();
   expect(navigationRevision).not.toBeNull();
-  if (navigationRevision === null) {
-    throw new Error("world navigation revision is missing");
+  if (playerPosition === null || navigationRevision === null) {
+    throw new Error("world navigation state is missing");
   }
   await expect(miniMapCanvas.locator('[data-map-layer="player"]')).toHaveAttribute(
     "data-navigation-revision",
@@ -170,25 +171,43 @@ test("Canvas2D maps expose five destinations and travel atomically to Hanabi wit
   });
   const dialog = page.getByRole("dialog", { name: "World map" });
   await expect(dialog).toBeVisible();
+  await expect(
+    dialog.locator('[data-map-layer="model-terrain"]')
+  ).toHaveCount(1);
+  await expect(dialog.locator("svg image")).toHaveCount(0);
 
-  const travelButtons = dialog.getByRole("button", { name: /^Travel to:/ });
-  await expect(travelButtons).toHaveCount(5);
+  const inspectButtons = dialog.getByRole("button", { name: /^Inspect:/ });
+  await expect(inspectButtons).toHaveCount(5);
   for (const destination of DESTINATIONS) {
     await expect(
-      dialog.getByRole("button", { name: `Travel to: ${destination}` })
+      dialog.getByRole("button", { name: `Inspect: ${destination}` })
     ).toHaveCount(1);
   }
 
-  await runAction(evidence, "travel to Hanabi", async () => {
+  const selectedDescription = dialog.getByTestId(
+    "world-map-selected-description"
+  );
+  const initialDescription = await selectedDescription.textContent();
+  await runAction(evidence, "inspect Hanabi", async () => {
     await dialog
-      .getByRole("button", { name: "Travel to: Hanabi" })
+      .getByRole("button", { name: "Inspect: Hanabi" })
       .click();
   });
-  await expect(dialog).toBeHidden();
-  await expect(world).toHaveAttribute("data-current-zone", "hanabi");
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Inspect: Hanabi" })
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(selectedDescription).toHaveText(
+    "Hanabi torii, stalls, lanterns, and fireworks"
+  );
+  expect(await selectedDescription.textContent()).not.toBe(initialDescription);
   await expect(world).toHaveAttribute(
     "data-player-position",
-    "26.000,0.000,-18.000"
+    playerPosition
+  );
+  await expect(world).toHaveAttribute(
+    "data-navigation-revision",
+    navigationRevision
   );
 
   const glbRequests = evidence.requestUrls.filter((url) => {

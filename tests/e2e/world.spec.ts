@@ -387,8 +387,13 @@ test.describe("mobile portrait world", () => {
     const miniMap = page.locator(".rpg-mini-map");
     await expect(miniMap).toHaveAttribute("data-expanded", "false");
     await page.getByRole("button", { name: "Expand mini-map" }).click();
+    const miniMapCanvas = page.locator(".rpg-mini-map-canvas");
     await expect(miniMap).toHaveAttribute("data-expanded", "true");
-    await expect(page.locator(".rpg-mini-map-canvas")).toBeVisible();
+    await expect(miniMapCanvas).toBeVisible();
+    await expect(
+      miniMapCanvas.locator('[data-map-layer="model-terrain"]')
+    ).toHaveCount(1);
+    await expect(miniMapCanvas.locator("image")).toHaveCount(0);
     expectFullyVisible(await miniMap.boundingBox(), viewport);
     await page.getByRole("button", { name: "Collapse mini-map" }).click();
 
@@ -409,12 +414,38 @@ test.describe("mobile portrait world", () => {
     await page
       .getByRole("button", { name: "Open world map (M key)" })
       .click();
+    const world = page.getByTestId("world-view");
+    const playerPosition = await world.getAttribute("data-player-position");
+    const navigationRevision = await world.getAttribute(
+      "data-navigation-revision"
+    );
+    expect(playerPosition).not.toBeNull();
+    expect(navigationRevision).not.toBeNull();
     const map = page.getByRole("dialog", { name: "World map" });
     await expect(map).toBeVisible();
     expectFullyVisible(await map.boundingBox(), viewport);
     await expect(
-      map.getByRole("button", { name: /^Travel to:/ })
+      map.locator('[data-map-layer="model-terrain"]')
+    ).toHaveCount(1);
+    await expect(map.locator("svg image")).toHaveCount(0);
+    await expect(
+      map.getByRole("button", { name: /^Inspect:/ })
     ).toHaveCount(5);
+    const selectedDescription = map.getByTestId(
+      "world-map-selected-description"
+    );
+    const initialDescription = await selectedDescription.textContent();
+    await map.getByRole("button", { name: "Inspect: Hanabi" }).click();
+    await expect(map).toBeVisible();
+    await expect(selectedDescription).toHaveText(
+      "Hanabi torii, stalls, lanterns, and fireworks"
+    );
+    expect(await selectedDescription.textContent()).not.toBe(initialDescription);
+    await expect(world).toHaveAttribute("data-player-position", playerPosition!);
+    await expect(world).toHaveAttribute(
+      "data-navigation-revision",
+      navigationRevision!
+    );
     await page.getByRole("button", { name: "Close world map" }).click();
 
     const overflow = await page.evaluate(() => ({
@@ -518,7 +549,11 @@ test.describe("mobile landscape world", () => {
     await expect(map).toBeVisible();
     expectFullyVisible(await map.boundingBox(), viewport);
     await expect(
-      map.getByRole("button", { name: /^Travel to:/ })
+      map.locator('[data-map-layer="model-terrain"]')
+    ).toHaveCount(1);
+    await expect(map.locator("svg image")).toHaveCount(0);
+    await expect(
+      map.getByRole("button", { name: /^Inspect:/ })
     ).toHaveCount(5);
   });
 });
