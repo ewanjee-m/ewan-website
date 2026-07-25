@@ -11,8 +11,6 @@ import {
   medianRpgRoutePulse,
   mergeRpgRoutePulseFeedback,
   planRpgRoutePulse,
-  rankRpgRouteKeyboardPulses,
-  rankRpgRouteKeyboardPulsesByRadius,
   runBalancedRpgRouteKeyboardPulse,
   selectRpgRouteKeyboardPulse,
   RPG_ROUTE_STALL_FRAME_LIMIT
@@ -147,74 +145,34 @@ describe("RPG route closed-loop steering", () => {
     ).toBeLessThanOrEqual(0.05);
   });
 
-  it("selects the best normalized camera-relative key vector across yaw wraparound", () => {
+  it("turns toward a bearing across the yaw wraparound rather than the long way", () => {
     const cameraYaw = Math.PI - 0.02;
     const desiredYaw = -Math.PI + Math.PI / 4 - 0.02;
-    const pulse = selectRpgRouteKeyboardPulse(cameraYaw, desiredYaw);
-    expect(pulse.keys).toEqual(["a", "w"]);
-    expect(Math.hypot(pulse.inputX, pulse.inputY)).toBeCloseTo(1, 12);
-    expect(pulse.alignment).toBeCloseTo(1, 12);
-    expect(pulse).not.toHaveProperty("cameraYaw");
+    const pulse = selectRpgRouteKeyboardPulse({ cameraYaw, desiredWorldYaw: desiredYaw });
+    expect(pulse.aligned).toBe(false);
+    // The short way across the wrap is a quarter turn to the left, which is
+    // what "a" does; the long way would swing seven eighths of a circle.
+    expect(pulse.keys).toEqual(["a"]);
+    expect(pulse.error).toBeCloseTo(Math.PI / 4, 12);
   });
 
-  it("chooses the maximum-dot octant for a direction between cardinal inputs", () => {
-    // A camera at yaw 0 looks along +Z, which puts world +X on its left, so a
-    // bearing between +Z and +X is pressed as forward plus left.
-    const pulse = selectRpgRouteKeyboardPulse(0, 0.7);
-    expect(pulse.keys).toEqual(["a", "w"]);
-    expect(pulse.alignment).toBeGreaterThan(Math.cos(0.7));
-    expect(pulse.alignment).toBeGreaterThan(Math.sin(0.7));
-    expect(pulse.worldX).toBeGreaterThan(0);
-    expect(pulse.worldZ).toBeGreaterThan(0);
+  it("swings the shorter way and only then walks", () => {
+    // A camera at yaw 0 looks along +Z. A bearing at +0.7 is to its left, so
+    // the visitor turns left until they are lined up and then presses forward.
+    expect(selectRpgRouteKeyboardPulse({ cameraYaw: 0, desiredWorldYaw: 0.7 }).keys).toEqual(["a"]);
+    expect(selectRpgRouteKeyboardPulse({ cameraYaw: 0, desiredWorldYaw: -0.7 }).keys).toEqual(["d"]);
+    const lined = selectRpgRouteKeyboardPulse({ cameraYaw: 0.7, desiredWorldYaw: 0.7 });
+    expect(lined.aligned).toBe(true);
+    expect(lined.keys).toEqual(["w"]);
   });
 
-  it("offers adjacent diagonal pulses after a blocked cardinal without duplicates", () => {
-    const ranked = rankRpgRouteKeyboardPulses(0, 0.321);
-    expect(ranked.map(({ keys }) => keys.join("+"))).toEqual([
-      "w",
-      "a+w",
-      "d+w",
-      "a",
-      "d",
-      "a+s",
-      "d+s",
-      "s"
-    ]);
-    expect(new Set(ranked.map(({ keys }) => keys.join("+"))).size).toBe(8);
-  });
-
-  it("converges the final Hanabi lattice miss by predicted radius within 0.05", () => {
-    let targetDeltaX = 26 - 26.083183047735368;
-    let targetDeltaZ = -18 - -18.057197812818355;
-    const cameraYaw = 2.6861551114382047;
-    const predictedStep = 1.9 / 24;
-    let mirrorSign: -1 | 1 = 1;
-    for (let pulse = 0; pulse < 8; pulse += 1) {
-      const distance = Math.hypot(targetDeltaX, targetDeltaZ);
-      if (distance <= 0.05) break;
-      const directYaw = Math.atan2(targetDeltaX, targetDeltaZ);
-      const plan = planRpgRoutePulse({
-        distance,
-        predictedStep,
-        tolerance: 0.05,
-        directYaw,
-        mirrorSign
-      });
-      mirrorSign = mirrorSign === 1 ? -1 : 1;
-      const [best] = rankRpgRouteKeyboardPulsesByRadius({
-        cameraYaw,
-        desiredWorldYaw: plan.candidates[0],
-        targetDeltaX,
-        targetDeltaZ,
-        predictedStep,
-        desiredNextDistance: plan.desiredNextDistance
-      });
-      targetDeltaX -= best.worldX * predictedStep;
-      targetDeltaZ -= best.worldZ * predictedStep;
-    }
-    expect(Math.hypot(targetDeltaX, targetDeltaZ)).toBeLessThanOrEqual(
-      0.05
-    );
+  it("treats a bearing inside the tolerance as good enough to walk", () => {
+    const nearly = selectRpgRouteKeyboardPulse({
+      cameraYaw: 0,
+      desiredWorldYaw: (2 * Math.PI) / 180
+    });
+    expect(nearly.aligned).toBe(true);
+    expect(nearly.keys).toEqual(["w"]);
   });
 
   it("balances every keydown with keyup when a pulse is blocked or throws", async () => {

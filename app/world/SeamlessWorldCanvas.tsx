@@ -168,6 +168,7 @@ function SeamlessWorldContents({
       <ChaseOrbitCamera3d
         runtime={runtime}
         input={props.input}
+        inputLocked={props.inputLocked || !worldReady}
         navigation={navigation}
         playerPosition={playerPosition}
         playerVisibleHeight={

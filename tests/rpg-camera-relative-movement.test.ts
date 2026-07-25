@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   advanceChaseOrbitCamera,
@@ -79,53 +77,31 @@ describe("camera relative movement", () => {
     }
   });
 
-  it("walks toward the camera's right hand for right input", () => {
-    for (const yaw of YAWS) {
-      const basis = getChaseOrbitCameraBasis(yaw);
-      const direction = resolveCameraRelativeDirection(
-        { x: 1, y: 0, runRequested: false },
-        yaw
-      );
-      expect(direction.x).toBeCloseTo(basis.rightX, 10);
-      expect(direction.z).toBeCloseTo(basis.rightZ, 10);
-    }
-  });
-
-  it("walks toward the camera's left hand for left input", () => {
-    for (const yaw of YAWS) {
-      const basis = getChaseOrbitCameraBasis(yaw);
-      const direction = resolveCameraRelativeDirection(
-        { x: -1, y: 0, runRequested: false },
-        yaw
-      );
-      const alongRight = direction.x * basis.rightX + direction.z * basis.rightZ;
-      expect(alongRight).toBeCloseTo(-1, 10);
-    }
-  });
-
-  it("moves the runtime to the camera's left when the left key is held", () => {
-    const yaw = 0;
-    const basis = getChaseOrbitCameraBasis(yaw);
-    const runtime = createWorldRuntime();
-    const before = runtime.getNavigationSnapshot().position;
-    runtime.setMovement({ x: -1, y: 0, runRequested: false });
-    runtime.advance(0.2, yaw);
-    const after = runtime.getNavigationSnapshot().position;
-
-    const alongRight =
-      (after[0] - before[0]) * basis.rightX +
-      (after[2] - before[2]) * basis.rightZ;
-    expect(alongRight).toBeLessThan(0);
+  it("carries a half-pushed stick at half pace", () => {
+    // The stick is analogue, so a gentle push has to be a gentle walk rather
+    // than the same stride at a different angle.
+    const gentle = resolveCameraRelativeDirection(
+      { x: 0, y: 0.5, runRequested: false },
+      0.4
+    );
+    expect(gentle.strength).toBeCloseTo(0.5, 10);
+    const full = resolveCameraRelativeDirection(
+      { x: 0, y: 1, runRequested: false },
+      0.4
+    );
+    expect(gentle.x).toBeCloseTo(full.x, 10);
+    expect(gentle.z).toBeCloseTo(full.z, 10);
   });
 });
 
-describe("chase camera recentering", () => {
-  /**
-   * Movement is resolved against the camera and the camera swings toward the
-   * heading, so a lateral hold used to feed itself: the heading led the camera
-   * by a quarter turn, the camera chased it, and the walk direction rotated
-   * with it. The visitor spun on the spot instead of walking sideways.
-   */
+/**
+ * The visitor turns to face where they want to go and then walks there, and
+ * the view sits behind their eyes throughout. What this replaced was a camera
+ * that chased a heading which was itself derived from the camera: a sideways
+ * key fed that loop and walked the visitor round a closed circle instead of
+ * across the town.
+ */
+describe("turning and walking together", () => {
   function driveHeldInput(
     movement: { x: number; y: number },
     seconds: number
@@ -135,21 +111,16 @@ describe("chase camera recentering", () => {
     const startYaw = camera.yaw;
     const before = runtime.getNavigationSnapshot().position;
     const step = 1 / 60;
-    let elapsed = 0;
     let arcLength = 0;
     let previous = before;
 
     runtime.setMovement({ ...movement, runRequested: false });
     for (let frame = 0; frame < Math.round(seconds / step); frame += 1) {
-      elapsed += step;
       const snapshot = runtime.getNavigationSnapshot();
       advanceChaseOrbitCamera(camera, {
         deltaSeconds: step,
-        elapsedSeconds: elapsed,
         drag: restingDrag(),
-        moving: snapshot.moving,
-        movementIntent: movement,
-        headingYaw: Math.atan2(snapshot.heading[0], snapshot.heading[2]),
+        turn: movement.x,
         navigationRegion: snapshot.navigationRegion,
         viewport: "desktop"
       });
@@ -167,177 +138,59 @@ describe("chase camera recentering", () => {
     };
   }
 
-  /**
-   * A chase camera's whole job is to keep the visitor's back to the viewer, so
-   * it has to swing in behind them however they walk, not only when they walk
-   * straight ahead. It just has to do it slowly: movement is resolved against
-   * the camera, so a fast chase turns the walk with the view and the visitor
-   * pirouettes instead of travelling. Slow enough and the same coupling reads
-   * as a wide, natural curve.
-   */
-  /**
-   * Movement is resolved against the camera, so a camera that chases the
-   * heading can never catch it while a lateral key is held: the heading stays
-   * a quarter turn ahead for as long as the key is down. Fast, that is a
-   * pirouette. Slow, it is a circle. Either way the visitor ends up back where
-   * they started, which is useless in a world they have to cross. Sideways
-   * means sideways: the view holds still and the walk is a straight line.
-   */
-  it("walks a straight line when a lateral key is held", () => {
-    for (const seconds of [2, 8]) {
-      const held = driveHeldInput({ x: -1, y: 0 }, seconds);
-      expect(held.yawWind).toBeLessThan((5 * Math.PI) / 180);
-      // A straight walk covers its arc; a circle folds back on itself.
-      expect(held.travelled / (held.arcLength ?? 1)).toBeGreaterThan(0.98);
-    }
+  it("turns on the spot without carrying the visitor anywhere", () => {
+    const held = driveHeldInput({ x: -1, y: 0 }, 1);
+    expect(held.yawWind).toBeGreaterThan((100 * Math.PI) / 180);
+    expect(held.arcLength).toBe(0);
+    expect(held.travelled).toBe(0);
   });
 
-  it("walks a straight line on a held diagonal too", () => {
-    const held = driveHeldInput(
-      { x: -Math.SQRT1_2, y: Math.SQRT1_2 },
-      8
-    );
-    expect(held.yawWind).toBeLessThan((5 * Math.PI) / 180);
-    expect(held.travelled / (held.arcLength ?? 1)).toBeGreaterThan(0.98);
+  it("walks a straight line when only forward is held", () => {
+    const held = driveHeldInput({ x: 0, y: 1 }, 2);
+    expect(held.yawWind).toBe(0);
+    expect(held.travelled).toBeGreaterThan(5);
+    expect(held.travelled / held.arcLength).toBeGreaterThan(0.999);
   });
 
-  it("swings in behind the visitor once they walk straight ahead again", () => {
-    // The camera is left pointing somewhere else, as a drag would leave it,
-    // and the heading is derived from it exactly as the runtime does.
+  it("curves rather than pirouettes when both are held", () => {
+    // Holding forward and a turn together is how a visitor rounds a corner.
+    // It has to cover ground, not spin them where they stand.
+    const held = driveHeldInput({ x: 1, y: 1 }, 1);
+    expect(held.arcLength).toBeGreaterThan(2);
+    expect(held.yawWind).toBeGreaterThan((100 * Math.PI) / 180);
+  });
+
+  it("keeps the visitor's eyes and the view pointing the same way throughout", () => {
     const runtime = createWorldRuntime();
     const camera = runtime.getCameraState();
-    camera.yaw = 1.2;
-    camera.lastManualInputSeconds = 0;
-    const movement = { x: 0, y: 1 };
     const step = 1 / 60;
-    let elapsed = 0;
 
-    runtime.setMovement({ ...movement, runRequested: false });
-    for (let frame = 0; frame < 600; frame += 1) {
-      elapsed += step;
-      const snapshot = runtime.getNavigationSnapshot();
-      advanceChaseOrbitCamera(camera, {
-        deltaSeconds: step,
-        elapsedSeconds: elapsed,
-        drag: restingDrag(),
-        moving: snapshot.moving,
-        movementIntent: movement,
-        headingYaw: Math.atan2(snapshot.heading[0], snapshot.heading[2]),
-        navigationRegion: snapshot.navigationRegion,
-        viewport: "desktop"
-      });
-      runtime.advance(step, camera.yaw);
+    for (const movement of [
+      { x: 0, y: 1 },
+      { x: -1, y: 0 },
+      { x: 0.6, y: -1 },
+      { x: 0, y: 0 }
+    ]) {
+      runtime.setMovement({ ...movement, runRequested: false });
+      for (let frame = 0; frame < 40; frame += 1) {
+        const snapshot = runtime.getNavigationSnapshot();
+        advanceChaseOrbitCamera(camera, {
+          deltaSeconds: step,
+          drag: restingDrag(),
+          turn: movement.x,
+          navigationRegion: snapshot.navigationRegion,
+          viewport: "desktop"
+        });
+        runtime.advance(step, camera.yaw);
+        const heading = runtime.getNavigationSnapshot().heading;
+        const basis = getChaseOrbitCameraBasis(camera.yaw);
+        expect(heading[0]).toBeCloseTo(basis.forwardX, 10);
+        expect(heading[2]).toBeCloseTo(basis.forwardZ, 10);
+      }
     }
-
-    const snapshot = runtime.getNavigationSnapshot();
-    const headingYaw = Math.atan2(snapshot.heading[0], snapshot.heading[2]);
-    expect(Math.abs(headingYaw - camera.yaw)).toBeLessThan(
-      (5 * Math.PI) / 180
-    );
-  });
-
-  it("still swings in behind the visitor when they walk forward", () => {
-    const runtime = createWorldRuntime();
-    const camera = runtime.getCameraState();
-    camera.yaw = 1.2;
-    const step = 1 / 60;
-    let elapsed = 0;
-    const movement = { x: 0, y: 1 };
-
-    runtime.setMovement({ ...movement, runRequested: false });
-    for (let frame = 0; frame < 180; frame += 1) {
-      elapsed += step;
-      const snapshot = runtime.getNavigationSnapshot();
-      advanceChaseOrbitCamera(camera, {
-        deltaSeconds: step,
-        elapsedSeconds: elapsed,
-        drag: restingDrag(),
-        moving: snapshot.moving,
-        movementIntent: movement,
-        headingYaw: Math.atan2(snapshot.heading[0], snapshot.heading[2]),
-        navigationRegion: snapshot.navigationRegion,
-        viewport: "desktop"
-      });
-      runtime.advance(step, camera.yaw);
-    }
-
-    const snapshot = runtime.getNavigationSnapshot();
-    const headingYaw = Math.atan2(snapshot.heading[0], snapshot.heading[2]);
-    expect(Math.abs(camera.yaw - headingYaw)).toBeLessThan(
-      (5 * Math.PI) / 180
-    );
-  });
-
-  it("leaves a dragged view alone while the visitor is not walking on", () => {
-    // Dragging is the visitor saying where they want to look. Pulling the view
-    // back a heartbeat later takes the camera off them again.
-    const state = createChaseOrbitCameraState();
-    const drag = () =>
-      advanceChaseOrbitCamera(state, {
-        deltaSeconds: 1 / 60,
-        elapsedSeconds: 1,
-        drag: { deltaX: -160, deltaY: 0, pointerKind: "mouse" },
-        moving: true,
-        movementIntent: { x: 0, y: 1 },
-        headingYaw: 0,
-        navigationRegion: airportRegion,
-        viewport: "desktop"
-      });
-    drag();
-    const chosenYaw = state.yaw;
-    expect(Math.abs(chosenYaw)).toBeGreaterThan((20 * Math.PI) / 180);
-
-    // Two seconds of standing and stepping sideways must not undo the choice.
-    // Walking straight ahead is what asks for the view back, and it has its own
-    // test below.
-    for (let frame = 0; frame < 120; frame += 1) {
-      advanceChaseOrbitCamera(state, {
-        deltaSeconds: 1 / 60,
-        elapsedSeconds: 1 + (frame + 1) / 60,
-        drag: { deltaX: 0, deltaY: 0, pointerKind: "mouse" },
-        moving: true,
-        movementIntent: { x: -1, y: 0 },
-        headingYaw: 0,
-        navigationRegion: airportRegion,
-        viewport: "desktop"
-      });
-    }
-    expect(state.yaw).toBeCloseTo(chosenYaw, 10);
-  });
-
-  it("lets the visitor look further up and down than a shallow sweep", () => {
-    const state = createChaseOrbitCameraState();
-    for (let frame = 0; frame < 90; frame += 1) {
-      advanceChaseOrbitCamera(state, {
-        deltaSeconds: 1 / 60,
-        elapsedSeconds: (frame + 1) / 60,
-        drag: { deltaX: 0, deltaY: 40, pointerKind: "mouse" },
-        moving: false,
-        movementIntent: { x: 0, y: 0 },
-        headingYaw: 0,
-        navigationRegion: airportRegion,
-        viewport: "desktop"
-      });
-    }
-    // High enough to look down over the town, which a 55 degree ceiling cannot.
-    expect((state.pitch * 180) / Math.PI).toBeGreaterThan(66);
-  });
-
-  it("hands the live camera the key being held", () => {
-    // The gate is worthless if the component never tells the camera what is
-    // pressed: an absent intent reads as "no reason not to follow" and the
-    // visitor is walked in a circle again. Every unit test here passes an
-    // intent explicitly, so only reading the wiring catches this.
-    const source = readFileSync(
-      resolve(process.cwd(), "app/world/ChaseOrbitCamera3d.tsx"),
-      "utf8"
-    );
-    expect(source).toMatch(/movementIntent:\s*input\.readMovement\(/);
   });
 
   it("starts the visitor with their back to the camera", () => {
-    // Standing still never recentres, so the spawn heading has to already
-    // agree with the spawn camera or the visitor opens on their own profile.
     const runtime = createWorldRuntime();
     const camera = runtime.getCameraState();
     const basis = getChaseOrbitCameraBasis(camera.yaw);
@@ -346,90 +199,30 @@ describe("chase camera recentering", () => {
     expect(heading[2]).toBeCloseTo(basis.forwardZ, 10);
   });
 
+  it("lets the visitor look further up and down than a shallow sweep", () => {
+    const state = createChaseOrbitCameraState();
+    for (let frame = 0; frame < 90; frame += 1) {
+      advanceChaseOrbitCamera(state, {
+        deltaSeconds: 1 / 60,
+        drag: { deltaX: 0, deltaY: 40, pointerKind: "mouse" },
+        navigationRegion: airportRegion,
+        viewport: "desktop"
+      });
+    }
+    // High enough to look down over the town, which a 55 degree ceiling cannot.
+    expect((state.pitch * 180) / Math.PI).toBeGreaterThan(66);
+  });
+
   it("leaves the resting state untouched when nothing is held", () => {
     const state = createChaseOrbitCameraState();
     const yaw = state.yaw;
     advanceChaseOrbitCamera(state, {
       deltaSeconds: 1 / 60,
-      elapsedSeconds: 5,
       drag: restingDrag(),
-      moving: false,
-      movementIntent: { x: 0, y: 0 },
-      headingYaw: 2.4,
-      navigationRegion: {
-        kind: "zone",
-        regionId: "airport",
-        displayZoneId: "airport",
-        highlightedZoneIds: ["airport"]
-      },
+      turn: 0,
+      navigationRegion: airportRegion,
       viewport: "desktop"
     });
     expect(state.yaw).toBe(yaw);
-  });
-});
-
-describe("walking forward brings the view back", () => {
-  /**
-   * A drag is the visitor choosing where to look, and standing still or
-   * stepping sideways it keeps that choice. But pressing forward is the
-   * visitor saying "this way now", and waiting three and a half seconds
-   * before the view agrees reads as the camera ignoring the key.
-   */
-  it("starts returning as soon as the visitor walks forward", () => {
-    const state = createChaseOrbitCameraState();
-    state.yaw = 1;
-    state.lastManualInputSeconds = 10;
-    const before = state.yaw;
-
-    advanceChaseOrbitCamera(state, {
-      deltaSeconds: 1 / 60,
-      elapsedSeconds: 10.2,
-      drag: restingDrag(),
-      moving: true,
-      movementIntent: { x: 0, y: 1 },
-      headingYaw: 0,
-      navigationRegion: airportRegion,
-      viewport: "desktop"
-    });
-
-    expect(state.yaw).toBeLessThan(before);
-  });
-
-  it("still holds a dragged view while the visitor stands still", () => {
-    const state = createChaseOrbitCameraState();
-    state.yaw = 1;
-    state.lastManualInputSeconds = 10;
-
-    advanceChaseOrbitCamera(state, {
-      deltaSeconds: 1 / 60,
-      elapsedSeconds: 10.2,
-      drag: restingDrag(),
-      moving: false,
-      movementIntent: { x: 0, y: 0 },
-      headingYaw: 0,
-      navigationRegion: airportRegion,
-      viewport: "desktop"
-    });
-
-    expect(state.yaw).toBe(1);
-  });
-
-  it("still holds a dragged view while the visitor steps sideways", () => {
-    const state = createChaseOrbitCameraState();
-    state.yaw = 1;
-    state.lastManualInputSeconds = 10;
-
-    advanceChaseOrbitCamera(state, {
-      deltaSeconds: 1 / 60,
-      elapsedSeconds: 10.2,
-      drag: restingDrag(),
-      moving: true,
-      movementIntent: { x: -1, y: 0 },
-      headingYaw: 0,
-      navigationRegion: airportRegion,
-      viewport: "desktop"
-    });
-
-    expect(state.yaw).toBe(1);
   });
 });

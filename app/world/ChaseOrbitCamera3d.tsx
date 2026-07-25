@@ -18,7 +18,6 @@ import {
   advanceChaseOrbitCamera,
   getChaseOrbitCameraDiagnostic,
   getRegionCameraProfile,
-  shortestCameraYawError
 } from "./ChaseOrbitCamera";
 import type { InputController } from "./InputController";
 import {
@@ -101,6 +100,11 @@ export function resolveRpgCameraLookQuaternionInto(
 export interface ChaseOrbitCamera3dProps {
   runtime: WorldRuntime;
   input: InputController;
+  /**
+   * True while a dialog owns the keyboard. Turning is movement now, so it has
+   * to stop when movement does, or reading a plaque spins the town around.
+   */
+  inputLocked?: boolean;
   navigation: RefObject<WorldNavigationSnapshot>;
   playerPosition: RefObject<Vector3>;
   playerVisibleHeight: number;
@@ -202,6 +206,7 @@ export function forEachRpgCameraOccluderMaterial(
 export function ChaseOrbitCamera3d({
   runtime,
   input,
+  inputLocked = false,
   navigation: navigationRef,
   playerPosition: playerPositionRef,
   playerVisibleHeight,
@@ -210,6 +215,9 @@ export function ChaseOrbitCamera3d({
 }: ChaseOrbitCamera3dProps) {
   const { camera, scene, size } = useThree();
   const cameraRef = useRef(camera);
+  // When the visitor last moved the view by hand, which only the look
+  // rotation cares about: it snaps rather than eases while they are dragging.
+  const lastManualLookSeconds = useRef(Number.NEGATIVE_INFINITY);
   const drag = useRef<WorldCameraDragIntent>({
     deltaX: 0,
     deltaY: 0,
@@ -273,14 +281,14 @@ export function ChaseOrbitCamera3d({
 
   useFrame(({ clock }, delta) => {
     const snapshot = navigationRef.current;
-    const headingYaw = Math.atan2(snapshot.heading[0], snapshot.heading[2]);
+    const pending = input.consumeCameraDrag(drag.current);
+    if (pending.deltaX !== 0 || pending.deltaY !== 0) {
+      lastManualLookSeconds.current = clock.elapsedTime;
+    }
     advanceChaseOrbitCamera(runtime.getCameraState(), {
       deltaSeconds: delta,
-      elapsedSeconds: clock.elapsedTime,
-      drag: input.consumeCameraDrag(drag.current),
-      moving: snapshot.moving,
-      movementIntent: input.readMovement(cameraMovement.current),
-      headingYaw,
+      drag: pending,
+      turn: inputLocked ? 0 : input.readMovement(cameraMovement.current).x,
       navigationRegion: snapshot.navigationRegion,
       viewport: mobile.current ? "mobile" : "desktop"
     });
@@ -341,7 +349,7 @@ export function ChaseOrbitCamera3d({
     );
     const accelerateLook = shouldAccelerateRpgCameraLook({
       elapsedSeconds: clock.elapsedTime,
-      lastManualInputSeconds: state.lastManualInputSeconds,
+      lastManualInputSeconds: lastManualLookSeconds.current,
       lateralCollisionEscape: usedLateralCollisionEscape
     });
 
@@ -632,7 +640,6 @@ export function ChaseOrbitCamera3d({
       }
     }
 
-    const headingYaw = Math.atan2(snapshot.heading[0], snapshot.heading[2]);
     const boom = activeCamera.position.distanceTo(focus.current);
     const cameraFacingDot = -cameraRight.current
       .set(0, 0, -1)
@@ -675,12 +682,6 @@ export function ChaseOrbitCamera3d({
         `${safetyOffset.current.x},${safetyOffset.current.y},${safetyOffset.current.z}`;
       telemetryNode.dataset.cameraSafe = String(
         safetyViolationSeconds.current <= 0.25
-      );
-      telemetryNode.dataset.cameraRecentering = String(
-        snapshot.moving &&
-          clock.elapsedTime - state.lastManualInputSeconds >= 0.8 &&
-          Math.abs(shortestCameraYawError(state.yaw, headingYaw)) >
-            (5 * Math.PI) / 180
       );
       telemetryNode.dataset.cameraDiagnostic = getChaseOrbitCameraDiagnostic({
         collisionIsFinite: collisionIsFinite.current,

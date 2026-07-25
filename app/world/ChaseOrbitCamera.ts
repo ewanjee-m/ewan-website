@@ -66,18 +66,23 @@ const MINIMUM_CAMERA_PITCH_DEGREES = 0;
  */
 const MAXIMUM_CAMERA_PITCH_DEGREES = 74;
 /**
- * How long a drag holds the view before the walk is allowed to pull it back.
- * A drag is the visitor saying where they want to look, so taking the view off
- * them again after a heartbeat makes the camera feel like it is fighting them.
- * They keep it until they have walked on for a few seconds.
+ * How fast the visitor comes about with the turn key held. A half circle takes
+ * 1.2 seconds, which is a step of walking: fast enough to answer a wrong turn,
+ * slow enough that the town does not smear past.
  */
-const MANUAL_LOOK_GRACE_SECONDS = 3.5;
+const TURN_RATE_RADIANS_PER_SECOND = Math.PI / 1.2;
 
 export interface ChaseOrbitCameraState {
   yaw: number;
   pitch: number;
+  /**
+   * How far above or below the zone's own framing the visitor has dragged.
+   * Kept separately from `pitch` so that walking on, or crossing into a zone
+   * that frames the world differently, moves the base under them without
+   * taking away the sky they chose to look at.
+   */
+  pitchOffsetRadians: number;
   distance: number;
-  lastManualInputSeconds: number;
 }
 
 export type ChaseOrbitCameraDiagnostic =
@@ -179,49 +184,6 @@ export function getChaseOrbitCameraBasis(yaw: number) {
   };
 }
 
-/**
- * How long the view takes to halve the angle between itself and the way the
- * visitor is walking.
- *
- * A chase camera has to swing in behind the visitor however they walk, or they
- * spend the session looking at their own profile. But movement is resolved
- * against the camera, so chasing the heading feeds itself: the heading leads
- * the camera, the camera turns toward it, and the walk direction turns with
- * the camera. At the 0.18s this used to run at, that loop spun the visitor
- * almost twice on the spot in two seconds while moving them 0.17 units. Slowed
- * to 1.4s the identical coupling becomes a wide, natural curve: about a 4 unit
- * radius at walking pace, which reads as leaning into a turn.
- */
-const RECENTER_HALFLIFE_SECONDS = 1.4;
-
-/**
- * How much sideways is too much for the view to follow.
- *
- * Movement is resolved against the camera, so the heading is always the
- * camera's yaw plus the angle of the key being held. A camera that chases that
- * heading can therefore never catch it while a sideways key is down — the gap
- * stays open for as long as the key is held, and the visitor is walked around
- * a circle back to where they started. Chasing fast makes it a pirouette;
- * chasing slowly only makes the circle wider. Neither is a walk.
- *
- * So the view follows a walk that is roughly straight ahead, and holds still
- * for a sideways one. Straight ahead is also the only case where following has
- * anything to do: the heading and the yaw already agree, and what the recentre
- * corrects is the gap a drag left behind.
- */
-const RECENTER_LATERAL_LIMIT = 0.35;
-
-export function shouldRecenterChaseOrbitCamera(
-  movementIntent: Readonly<{ x: number; y: number }> | undefined
-) {
-  if (!movementIntent) return true;
-  const { x, y } = movementIntent;
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-  const length = Math.hypot(x, y);
-  if (length <= 1e-8) return false;
-  return y / length > 0 && Math.abs(x / length) <= RECENTER_LATERAL_LIMIT;
-}
-
 export function createChaseOrbitCameraState(): ChaseOrbitCameraState {
   // Opens on the airport framing rather than on a value of its own. Written
   // down separately, the two drifted apart and the world opened at the old
@@ -229,8 +191,8 @@ export function createChaseOrbitCameraState(): ChaseOrbitCameraState {
   return {
     yaw: 0,
     pitch: (PROFILE.airport.pitchDegrees * Math.PI) / 180,
-    distance: PROFILE.airport.distance,
-    lastManualInputSeconds: Number.NEGATIVE_INFINITY
+    pitchOffsetRadians: 0,
+    distance: PROFILE.airport.distance
   };
 }
 
@@ -238,19 +200,25 @@ function damp(value: number, target: number, halflife: number, delta: number) {
   return target + (value - target) * Math.pow(0.5, delta / halflife);
 }
 
-export function shortestCameraYawError(value: number, target: number) {
-  return Math.atan2(Math.sin(target - value), Math.cos(target - value));
-}
-
+/**
+ * Where the visitor is looking, which is also which way they are facing.
+ *
+ * The camera's yaw is the only record of the direction the visitor faces:
+ * the body reads it, and walking is resolved along it. Keeping one value
+ * rather than two is what makes it impossible for the view and the eyes to
+ * disagree, and it is also what removed the old spin — when the camera chased
+ * a heading that was itself derived from the camera, a sideways key fed the
+ * loop and walked the visitor in a closed circle.
+ *
+ * `turn` is the left-right axis of whatever the visitor is holding: a key, or
+ * how far a thumb has pushed the stick. It swings them where they stand.
+ */
 export function advanceChaseOrbitCamera(
   state: ChaseOrbitCameraState,
   input: {
     deltaSeconds: number;
-    elapsedSeconds: number;
     drag: Readonly<WorldCameraDragIntent>;
-    moving: boolean;
-    movementIntent?: Readonly<{ x: number; y: number }>;
-    headingYaw: number;
+    turn?: number;
     navigationRegion: NavigationRegion;
     viewport?: "desktop" | "mobile";
   }
@@ -260,45 +228,31 @@ export function advanceChaseOrbitCamera(
     input.navigationRegion,
     input.viewport ?? "desktop"
   );
-  if (input.drag.deltaX !== 0 || input.drag.deltaY !== 0) {
-    state.yaw -= input.drag.deltaX * sensitivity;
-    state.pitch = Math.min(
-      (MAXIMUM_CAMERA_PITCH_DEGREES * Math.PI) / 180,
-      Math.max(
-        (MINIMUM_CAMERA_PITCH_DEGREES * Math.PI) / 180,
-        state.pitch + input.drag.deltaY * sensitivity
-      )
-    );
-    state.lastManualInputSeconds = input.elapsedSeconds;
-  } else if (
-    input.moving &&
-    // Walking straight ahead is the visitor saying "this way now", so it ends
-    // the grace a drag bought rather than waiting it out. Standing still or
-    // stepping sideways keeps the view they chose.
-    (shouldRecenterChaseOrbitCamera(input.movementIntent) ||
-      input.elapsedSeconds - state.lastManualInputSeconds >=
-        MANUAL_LOOK_GRACE_SECONDS)
-  ) {
-    if (shouldRecenterChaseOrbitCamera(input.movementIntent)) {
-      const error = shortestCameraYawError(state.yaw, input.headingYaw);
-      state.yaw +=
-        error *
-        (1 - Math.pow(0.5, input.deltaSeconds / RECENTER_HALFLIFE_SECONDS));
-    }
-    // Pitch belongs to the zone the visitor is standing in, not to the
-    // direction they happen to be walking, so it settles either way.
-    state.pitch = damp(
-      state.pitch,
-      (profile.pitchDegrees * Math.PI) / 180,
-      0.2,
-      input.deltaSeconds
-    );
-  }
-  state.distance = damp(
-    state.distance,
-    profile.distance,
-    0.2,
-    input.deltaSeconds
+  const delta = Math.min(0.25, Math.max(0, input.deltaSeconds));
+  const turn = Number.isFinite(input.turn)
+    ? Math.min(1, Math.max(-1, input.turn ?? 0))
+    : 0;
+
+  // Turning right lowers the yaw, and dragging right lowers it by the same
+  // sign, so a key and a drag can never disagree about which way is right.
+  state.yaw -= turn * TURN_RATE_RADIANS_PER_SECOND * delta;
+  state.yaw -= input.drag.deltaX * sensitivity;
+  state.yaw = Math.atan2(Math.sin(state.yaw), Math.cos(state.yaw));
+
+  // Up and down is the visitor's alone. The zone moves the base under their
+  // offset, so crossing into the fireworks lowers the framing without taking
+  // back the sky they dragged into view.
+  const basePitch = (profile.pitchDegrees * Math.PI) / 180;
+  state.pitchOffsetRadians += input.drag.deltaY * sensitivity;
+  state.pitchOffsetRadians = Math.min(
+    (MAXIMUM_CAMERA_PITCH_DEGREES * Math.PI) / 180 - basePitch,
+    Math.max(
+      (MINIMUM_CAMERA_PITCH_DEGREES * Math.PI) / 180 - basePitch,
+      state.pitchOffsetRadians
+    )
   );
+  state.pitch = basePitch + state.pitchOffsetRadians;
+
+  state.distance = damp(state.distance, profile.distance, 0.2, delta);
   return state;
 }

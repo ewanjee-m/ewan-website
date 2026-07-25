@@ -46,15 +46,17 @@ const RPG_CANONICAL_ROUTE_LENGTH = RPG_CANONICAL_ROUTE.reduce(
  * world axes only ever worked because the two frames used to be confused with
  * each other.
  */
-function intentTowards(dx: number, dz: number, runRequested = false) {
-  const length = Math.max(Math.hypot(dx, dz), 1e-8);
-  return {
-    x: (dx / length) * CAMERA_BASIS.rightX + (dz / length) * CAMERA_BASIS.rightZ,
-    y:
-      (dx / length) * CAMERA_BASIS.forwardX +
-      (dz / length) * CAMERA_BASIS.forwardZ,
-    runRequested
-  };
+/**
+ * The bearing the visitor has to be facing for a forward key to carry them
+ * toward a world point. Travel is along the facing only, so a destination is
+ * turned toward rather than pressed sideways into.
+ */
+function yawTowards(dx: number, dz: number) {
+  return Math.atan2(dx, dz);
+}
+
+function walkForward(runRequested = false) {
+  return { x: 0, y: 1, runRequested };
 }
 
 describe("WorldRuntime", () => {
@@ -97,8 +99,8 @@ describe("WorldRuntime", () => {
       const position = runtime.getNavigationSnapshot().position;
       const dx = pose.position[0] - position[0];
       const dz = pose.position[2] - position[2];
-      runtime.setMovement(intentTowards(dx, dz));
-      runtime.advance(1 / 120, CAMERA_YAW);
+      runtime.setMovement(walkForward());
+      runtime.advance(1 / 120, yawTowards(dx, dz));
       const next = runtime.getNavigationSnapshot().position;
       expect(
         isRpgPositionOutsideMovingBus(next[0], next[2], pose)
@@ -160,7 +162,12 @@ describe("WorldRuntime", () => {
 
     for (let index = 1; index < RPG_CANONICAL_ROUTE.length; index += 1) {
       const target = RPG_CANONICAL_ROUTE[index];
-      for (;;) {
+      // Bounded rather than open. An unbounded walk-until-arrived loop turns
+      // any regression that stops the visitor short into a hung suite instead
+      // of a failed assertion, which is what happened when travel stopped
+      // answering a sideways key.
+      let steps = 0;
+      for (; steps < 200_000; steps += 1) {
         const current = runtime.getNavigationSnapshot().position;
         const dx = target[0] - current[0];
         const dz = target[1] - current[2];
@@ -170,13 +177,14 @@ describe("WorldRuntime", () => {
           framePattern[frame % framePattern.length],
           remaining / speed
         );
-        runtime.setMovement(intentTowards(dx, dz, runRequested));
-        runtime.advance(delta, CAMERA_YAW);
+        runtime.setMovement(walkForward(runRequested));
+        runtime.advance(delta, yawTowards(dx, dz));
         elapsedSeconds += delta;
         frame += 1;
         const zone = runtime.getNavigationSnapshot().currentZoneId;
         if (visitedZones.at(-1) !== zone) visitedZones.push(zone);
       }
+      expect(steps, `stuck short of ${target.join(",")}`).toBeLessThan(200_000);
     }
 
     runtime.setMovement({ x: 0, y: 0, runRequested: false });
@@ -249,24 +257,24 @@ describe("WorldRuntime", () => {
 
   it("moves from active input and stops after input is released", () => {
     const runtime = createWorldRuntime();
-    runtime.setMovement({ x: -1, y: 0, runRequested: false });
-    runtime.advance(0.1, 0);
+    runtime.setMovement(walkForward());
+    runtime.advance(0.1, CAMERA_YAW);
 
     const moving = runtime.getNavigationSnapshot();
-    // A left key walks toward the camera's left hand, so the heading is the
-    // camera's right hand negated rather than a fixed world axis.
-    expect(moving.heading[0]).toBeCloseTo(-CAMERA_BASIS.rightX, 12);
-    expect(moving.heading[2]).toBeCloseTo(-CAMERA_BASIS.rightZ, 12);
+    // The visitor faces the way the view looks and walks along it, so the
+    // heading is the camera's forward rather than a fixed world axis.
+    expect(moving.heading[0]).toBeCloseTo(CAMERA_BASIS.forwardX, 12);
+    expect(moving.heading[2]).toBeCloseTo(CAMERA_BASIS.forwardZ, 12);
     expect(
-      (moving.position[0] - RPG_WORLD_SPAWN[0]) * CAMERA_BASIS.rightX +
-        (moving.position[2] - RPG_WORLD_SPAWN[2]) * CAMERA_BASIS.rightZ
-    ).toBeLessThan(0);
+      (moving.position[0] - RPG_WORLD_SPAWN[0]) * CAMERA_BASIS.forwardX +
+        (moving.position[2] - RPG_WORLD_SPAWN[2]) * CAMERA_BASIS.forwardZ
+    ).toBeGreaterThan(0);
     expect(moving.moving).toBe(true);
     expect(moving.locomotion).toBe("walk");
 
     runtime.setMovement({ x: 0, y: 0, runRequested: false });
     const stoppedAt = runtime.getNavigationSnapshot().position;
-    runtime.advance(0.1, 0);
+    runtime.advance(0.1, CAMERA_YAW);
 
     const stopped = runtime.getNavigationSnapshot();
     expect(stopped.position).toEqual(stoppedAt);
@@ -274,39 +282,38 @@ describe("WorldRuntime", () => {
     expect(stopped.locomotion).toBe("idle");
   });
 
-  it("normalizes diagonal input so it is not faster than one axis", () => {
-    const axis = createWorldRuntime();
-    const diagonal = createWorldRuntime();
+  it("walks at the same pace whether or not the visitor is turning", () => {
+    // Rounding a corner is holding forward and a turn together. Turning is
+    // spent on the view, so it must not add to or take from the stride.
+    const straight = createWorldRuntime();
+    const turning = createWorldRuntime();
 
-    axis.setMovement({ x: 1, y: 0, runRequested: false });
-    diagonal.setMovement({ x: 1, y: 1, runRequested: false });
-    axis.advance(0.1, 0);
-    diagonal.advance(0.1, 0);
+    straight.setMovement({ x: 0, y: 1, runRequested: false });
+    turning.setMovement({ x: 1, y: 1, runRequested: false });
+    straight.advance(0.1, CAMERA_YAW);
+    turning.advance(0.1, CAMERA_YAW);
 
-    const axisPosition = axis.getNavigationSnapshot().position;
-    const diagonalPosition = diagonal.getNavigationSnapshot().position;
+    const travelled = (position: readonly number[]) =>
+      Math.hypot(
+        position[0] - RPG_WORLD_SPAWN[0],
+        position[2] - RPG_WORLD_SPAWN[2]
+      );
     expect(
-      Math.hypot(
-        diagonalPosition[0] - RPG_WORLD_SPAWN[0],
-        diagonalPosition[2] - RPG_WORLD_SPAWN[2]
-      )
+      travelled(turning.getNavigationSnapshot().position)
     ).toBeCloseTo(
-      Math.hypot(
-        axisPosition[0] - RPG_WORLD_SPAWN[0],
-        axisPosition[2] - RPG_WORLD_SPAWN[2]
-      ),
-      8
+      travelled(straight.getNavigationSnapshot().position),
+      10
     );
   });
 
   it("moves at half speed for half-strength analog input with a unit heading", () => {
     const full = createWorldRuntime();
     const half = createWorldRuntime();
-    full.setMovement({ x: -1, y: 0, runRequested: false });
-    half.setMovement({ x: -0.5, y: 0, runRequested: false });
+    full.setMovement({ x: 0, y: 1, runRequested: false });
+    half.setMovement({ x: 0, y: 0.5, runRequested: false });
 
-    full.advance(0.1, 0);
-    half.advance(0.1, 0);
+    full.advance(0.1, CAMERA_YAW);
+    half.advance(0.1, CAMERA_YAW);
 
     const fullSnapshot = full.getNavigationSnapshot();
     const halfSnapshot = half.getNavigationSnapshot();
@@ -319,22 +326,26 @@ describe("WorldRuntime", () => {
       travelled(fullSnapshot.position) * 0.5,
       10
     );
-    // Half strength still walks the same way: toward the camera's left hand.
-    expect(halfSnapshot.heading[0]).toBeCloseTo(-CAMERA_BASIS.rightX, 12);
-    expect(halfSnapshot.heading[2]).toBeCloseTo(-CAMERA_BASIS.rightZ, 12);
+    // Half strength still walks the same way: along the visitor's own line.
+    expect(halfSnapshot.heading[0]).toBeCloseTo(CAMERA_BASIS.forwardX, 12);
+    expect(halfSnapshot.heading[2]).toBeCloseTo(CAMERA_BASIS.forwardZ, 12);
   });
 
   it("never leaves the world boundary or walkable navigation space", () => {
-    for (const movement of [
-      { x: -1, y: 0, runRequested: true },
-      { x: 1, y: 0, runRequested: true },
-      { x: 0, y: -1, runRequested: true },
-      { x: 0, y: 1, runRequested: true }
-    ]) {
+    // Every bearing, forwards and backwards. Sideways is not a direction the
+    // visitor can travel any more, so the sweep is over facings instead.
+    for (const [yaw, forward] of [
+      [0, 1],
+      [Math.PI / 2, 1],
+      [Math.PI, 1],
+      [-Math.PI / 2, 1],
+      [0, -1],
+      [2.3, -1]
+    ] as const) {
       const runtime = createWorldRuntime();
-      runtime.setMovement(movement);
+      runtime.setMovement({ x: 0, y: forward, runRequested: true });
       for (let frame = 0; frame < 400; frame += 1) {
-        runtime.advance(0.25, 0);
+        runtime.advance(0.25, yaw);
       }
       const [x, , z] = runtime.getNavigationSnapshot().position;
       expect(x).toBeGreaterThanOrEqual(RPG_WORLD_BOUNDS.minimumX);
@@ -351,10 +362,10 @@ describe("WorldRuntime", () => {
     });
     // Aim at the blocked +X edge and the free +Z edge in world terms; pressing
     // raw axis values would walk away from the blocker and test nothing.
-    runtime.setMovement(intentTowards(1, 1));
+    runtime.setMovement(walkForward());
 
     for (let frame = 0; frame < 10; frame += 1) {
-      runtime.advance(0.1, CAMERA_YAW);
+      runtime.advance(0.1, yawTowards(1, 1));
     }
 
     const [x, , z] = runtime.getNavigationSnapshot().position;
@@ -367,9 +378,9 @@ describe("WorldRuntime", () => {
       canOccupyDynamic: ([x]) => x < -26 || x > -25.5
     });
     // Run straight at the wall band in world +X, which is where it sits.
-    runtime.setMovement(intentTowards(1, 0, true));
+    runtime.setMovement(walkForward(true));
 
-    runtime.advance(1, CAMERA_YAW);
+    runtime.advance(1, yawTowards(1, 0));
 
     expect(runtime.getNavigationSnapshot().position[0]).toBeLessThan(-26);
   });
@@ -423,8 +434,10 @@ describe("WorldRuntime", () => {
     const runtime = createWorldRuntime();
     const initial = runtime.getNavigationSnapshot();
 
-    runtime.setMovement({ x: 1, y: 0, runRequested: false });
-    runtime.advance(1 / 60, 0);
+    // Forward rather than sideways: a turn key changes the view, not the
+    // world, so it would publish nothing for this to inspect.
+    runtime.setMovement(walkForward());
+    runtime.advance(1 / 60, CAMERA_YAW);
     const moved = runtime.getNavigationSnapshot();
 
     expect(moved).not.toBe(initial);

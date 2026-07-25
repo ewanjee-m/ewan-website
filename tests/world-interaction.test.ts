@@ -1,4 +1,3 @@
-import { getChaseOrbitCameraBasis } from "../app/world/ChaseOrbitCamera";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useFrame } from "@react-three/fiber";
@@ -24,23 +23,16 @@ vi.mock("@react-three/fiber", () => ({
   useFrame: vi.fn()
 }));
 
-const CAMERA_YAW = 0;
-const CAMERA_BASIS = getChaseOrbitCameraBasis(CAMERA_YAW);
-
 /**
- * Keys are read in the camera's frame, so a world-space bearing has to be
- * expressed against the camera basis before it can be pressed.
+ * The visitor walks the way they face, so a world-space bearing is turned
+ * toward rather than pressed sideways into. This is the bearing the camera has
+ * to hold for a forward key to carry them there.
  */
-function pressTowardWorld(dx: number, dz: number) {
-  const length = Math.max(Math.hypot(dx, dz), 1e-8);
-  return {
-    x: (dx / length) * CAMERA_BASIS.rightX + (dz / length) * CAMERA_BASIS.rightZ,
-    y:
-      (dx / length) * CAMERA_BASIS.forwardX +
-      (dz / length) * CAMERA_BASIS.forwardZ,
-    runRequested: false
-  };
+function yawTowardWorld(dx: number, dz: number) {
+  return Math.atan2(dx, dz);
 }
+
+const WALK_FORWARD = { x: 0, y: 1, runRequested: false } as const;
 
 describe("world interaction", () => {
   it("requires proximity and a 60-degree facing cone", () => {
@@ -149,14 +141,16 @@ describe("world interaction", () => {
         const dz = approach[1] - z;
         const distance = Math.hypot(dx, dz);
         if (distance < 1e-4) break;
-        runtime.setMovement(pressTowardWorld(dx, dz));
-        runtime.advance(Math.min(1 / 60, distance / 1.61), CAMERA_YAW);
+        runtime.setMovement(WALK_FORWARD);
+        runtime.advance(
+          Math.min(1 / 60, distance / 1.61),
+          yawTowardWorld(dx, dz)
+        );
       }
-      // Face the terminal before reading the prompt: interaction needs both
-      // nearness and a look direction.
-      runtime.setMovement(pressTowardWorld(1, 0));
-      runtime.advance(0.1 / 1.61, CAMERA_YAW);
+      // Look at the terminal before reading the prompt: interaction needs both
+      // nearness and a look direction, and facing now follows the view.
       runtime.setMovement({ x: 0, y: 0, runRequested: false });
+      runtime.advance(0, yawTowardWorld(1, 0));
     };
 
     const available = createWorldRuntime();
@@ -181,14 +175,16 @@ describe("world interaction", () => {
         const dz = approach[1] - z;
         const distance = Math.hypot(dx, dz);
         if (distance < 1e-4) break;
-        runtime.setMovement(pressTowardWorld(dx, dz));
-        runtime.advance(Math.min(1 / 60, distance / 1.61), CAMERA_YAW);
+        runtime.setMovement(WALK_FORWARD);
+        runtime.advance(
+          Math.min(1 / 60, distance / 1.61),
+          yawTowardWorld(dx, dz)
+        );
       }
-      // Face the terminal before reading the prompt: interaction needs both
-      // nearness and a look direction.
-      runtime.setMovement(pressTowardWorld(1, 0));
-      runtime.advance(0.1 / 1.61, CAMERA_YAW);
+      // Look at the terminal before reading the prompt: interaction needs both
+      // nearness and a look direction, and facing now follows the view.
       runtime.setMovement({ x: 0, y: 0, runRequested: false });
+      runtime.advance(0, yawTowardWorld(1, 0));
     };
     const runtime = createWorldRuntime();
     driveToAirportApproach(runtime);

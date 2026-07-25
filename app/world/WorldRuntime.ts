@@ -31,23 +31,28 @@ const JUMP_VELOCITY = 6;
 const GRAVITY = 15;
 
 /**
- * Turns a screen-frame intent into a world heading using the camera's own
- * basis. Screen up walks away from the camera and screen right walks toward
- * the camera's right hand, so what the visitor presses is what they see.
+ * Where a movement intent carries the visitor.
+ *
+ * Only the forward axis moves anybody: the left-right axis turns them, and it
+ * is spent on the camera's yaw before this is called. So travel is always
+ * along the way they are facing, forwards or backwards, and never sideways.
+ * That is what lets the view sit behind their eyes at every moment — a
+ * sideways walk is exactly the case where the two cannot agree.
  */
 export function resolveCameraRelativeDirection(
   intent: Readonly<WorldMovementIntent>,
   yaw: number
 ) {
-  const length = Math.hypot(intent.x, intent.y);
-  if (length <= 1e-8) return { x: 0, z: 0, strength: 0 };
-  const x = intent.x / length;
-  const y = intent.y / length;
+  if (!Number.isFinite(intent.y)) return { x: 0, z: 0, strength: 0 };
+  const forward = Math.min(1, Math.max(-1, intent.y));
+  const strength = Math.abs(forward);
+  if (strength <= 1e-8) return { x: 0, z: 0, strength: 0 };
   const basis = getChaseOrbitCameraBasis(yaw);
+  const sign = forward < 0 ? -1 : 1;
   return {
-    x: x * basis.rightX + y * basis.forwardX,
-    z: x * basis.rightZ + y * basis.forwardZ,
-    strength: Math.min(1, length)
+    x: basis.forwardX * sign,
+    z: basis.forwardZ * sign,
+    strength
   };
 }
 
@@ -67,8 +72,8 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
   const cameraState = createChaseOrbitCameraState();
   let x = RPG_WORLD_SPAWN[0];
   let z = RPG_WORLD_SPAWN[2];
-  // Standing still never recentres the view, so the visitor has to start
-  // already facing away from the camera or the world opens on their profile.
+  // The visitor faces wherever the camera looks, so the two agree from the
+  // first frame rather than the world opening on their profile.
   const spawnBasis = getChaseOrbitCameraBasis(cameraState.yaw);
   const spawnHeading: WorldPoint3 = [spawnBasis.forwardX, 0, spawnBasis.forwardZ];
   let heading: WorldPoint3 = spawnHeading;
@@ -90,7 +95,9 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
     const region = freezeWorldNavigationRegion(resolvedRegion);
     const surfaceHeight = getSurfaceHeight([x, z]);
     const grounded = jumpOffset === 0;
-    const speed = Math.hypot(movement.x, movement.y);
+    // Turning on the spot is not travelling, so the walk cycle does not run
+    // while the visitor is only swinging round to look somewhere else.
+    const speed = Math.abs(movement.y);
     const nearInteractionId =
       findWorldInteractionTarget({
         position: [x, surfaceHeight + jumpOffset, z],
@@ -178,8 +185,12 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
           if (canOccupy([x, nextZ])) z = nextZ;
         }
       }
-      if (direction.strength > 0) {
-        heading = [direction.x, 0, direction.z];
+      // Facing follows the view rather than the last step taken, so backing
+      // away from something keeps it in sight instead of turning the visitor's
+      // back on it.
+      const facing = getChaseOrbitCameraBasis(cameraYaw);
+      if (facing.forwardX !== heading[0] || facing.forwardZ !== heading[2]) {
+        heading = [facing.forwardX, 0, facing.forwardZ];
       }
       if (jumpVelocity !== 0 || jumpOffset > 0) {
         jumpVelocity -= GRAVITY * delta;

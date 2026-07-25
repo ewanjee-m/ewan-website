@@ -17,7 +17,6 @@ import {
   medianRpgRoutePulse,
   mergeRpgRoutePulseFeedback,
   planRpgRoutePulse,
-  rankRpgRouteKeyboardPulsesByRadius,
   runBalancedRpgRouteKeyboardPulse,
   RPG_ROUTE_STALL_FRAME_LIMIT
 } from "./rpg-route-steering.ts";
@@ -2360,17 +2359,13 @@ export async function driveWithKeyboardToPoint(
       if (!Number.isFinite(currentCameraYaw)) {
         throw new Error("data-camera-yaw is missing or non-finite");
       }
-      const keyboardPulses = rankRpgRouteKeyboardPulsesByRadius({
-        cameraYaw: currentCameraYaw,
-        desiredWorldYaw: plan.candidates[0],
-        targetDeltaX: deltaX,
-        targetDeltaZ: deltaZ,
-        predictedStep,
-        desiredNextDistance: plan.desiredNextDistance
-      });
+      // The visitor travels along the way they face, so each candidate bearing
+      // is turned toward and then stepped along. Pressing a sideways key here
+      // would swing them rather than nudge them off the line.
       let advanced = false;
-      for (const pulse of keyboardPulses) {
-        if (await advanceOneObservedFrame(pulse.keys, initial)) {
+      for (const candidateYaw of plan.candidates) {
+        await rotateCameraToYaw(page, candidateYaw);
+        if (await advanceOneObservedFrame(["w"], initial)) {
           advanced = true;
           break;
         }
@@ -2378,7 +2373,7 @@ export async function driveWithKeyboardToPoint(
       if (!advanced) {
         throw new Error(
           `keyboard pulse candidates were blocked at ${initial.positionRaw}; ` +
-            `target=${target.join(",")}`
+            `target=${target.join(",")} cameraYaw=${currentCameraYaw}`
         );
       }
       continue;

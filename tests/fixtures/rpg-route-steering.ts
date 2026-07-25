@@ -1,5 +1,3 @@
-import { resolveCameraRelativeDirection } from "../../app/world/WorldRuntime";
-
 export interface RpgRoutePulsePlan {
   readonly desiredNextDistance: number;
   readonly candidates: readonly number[];
@@ -8,21 +6,6 @@ export interface RpgRoutePulsePlan {
 export const RPG_ROUTE_STALL_FRAME_LIMIT = 8;
 
 export type RpgRouteKeyboardKey = "a" | "d" | "s" | "w";
-
-const RPG_ROUTE_KEYBOARD_INPUTS = [
-  { keys: ["w"], inputX: 0, inputY: 1 },
-  { keys: ["d", "w"], inputX: Math.SQRT1_2, inputY: Math.SQRT1_2 },
-  { keys: ["d"], inputX: 1, inputY: 0 },
-  { keys: ["d", "s"], inputX: Math.SQRT1_2, inputY: -Math.SQRT1_2 },
-  { keys: ["s"], inputX: 0, inputY: -1 },
-  { keys: ["a", "s"], inputX: -Math.SQRT1_2, inputY: -Math.SQRT1_2 },
-  { keys: ["a"], inputX: -1, inputY: 0 },
-  { keys: ["a", "w"], inputX: -Math.SQRT1_2, inputY: Math.SQRT1_2 }
-] as const satisfies readonly {
-  keys: readonly RpgRouteKeyboardKey[];
-  inputX: number;
-  inputY: number;
-}[];
 
 export function advanceRpgRouteStallState(
   previousPosition: string,
@@ -75,76 +58,34 @@ export function mergeRpgRoutePulseFeedback(
     .slice(-3);
 }
 
-export function selectRpgRouteKeyboardPulse(
-  cameraYaw: number,
-  desiredWorldYaw: number
-) {
-  return rankRpgRouteKeyboardPulses(cameraYaw, desiredWorldYaw)[0];
-}
-
-export function rankRpgRouteKeyboardPulses(
-  cameraYaw: number,
-  desiredWorldYaw: number
-) {
-  const desiredX = Math.sin(desiredWorldYaw);
-  const desiredZ = Math.cos(desiredWorldYaw);
-  return RPG_ROUTE_KEYBOARD_INPUTS.map((candidate) => {
-    // Ask the runtime where a key press actually goes rather than restating
-    // the mapping here. A private copy of this maths is what let the lateral
-    // axis stay mirrored for so long.
-    const { x: worldX, z: worldZ } = resolveCameraRelativeDirection(
-      { x: candidate.inputX, y: candidate.inputY, runRequested: false },
-      cameraYaw
-    );
-    const alignment = worldX * desiredX + worldZ * desiredZ;
-    return {
-      keys: candidate.keys,
-      inputX: candidate.inputX,
-      inputY: candidate.inputY,
-      worldX,
-      worldZ,
-      alignment
-    };
-  }).sort((left, right) => right.alignment - left.alignment);
-}
-
-export function rankRpgRouteKeyboardPulsesByRadius({
+/**
+ * Which way to swing, and whether to walk yet.
+ *
+ * The visitor travels along the way they face, so a bearing is turned toward
+ * rather than pressed sideways into. Pressing "a" raises the yaw and "d" lowers
+ * it, the same hand a drag turns.
+ */
+export function selectRpgRouteKeyboardPulse({
   cameraYaw,
   desiredWorldYaw,
-  targetDeltaX,
-  targetDeltaZ,
-  predictedStep,
-  desiredNextDistance
+  toleranceRadians = (3 * Math.PI) / 180
 }: {
   cameraYaw: number;
   desiredWorldYaw: number;
-  targetDeltaX: number;
-  targetDeltaZ: number;
-  predictedStep: number;
-  desiredNextDistance: number;
+  toleranceRadians?: number;
 }) {
-  return rankRpgRouteKeyboardPulses(
-    cameraYaw,
-    desiredWorldYaw
-  )
-    .map((candidate) => {
-      const predictedRadius = Math.hypot(
-        targetDeltaX - candidate.worldX * predictedStep,
-        targetDeltaZ - candidate.worldZ * predictedStep
-      );
-      return {
-        ...candidate,
-        predictedRadius,
-        radiusError: Math.abs(
-          predictedRadius - desiredNextDistance
-        )
-      };
-    })
-    .sort(
-      (left, right) =>
-        left.radiusError - right.radiusError ||
-        right.alignment - left.alignment
-    );
+  const error = Math.atan2(
+    Math.sin(desiredWorldYaw - cameraYaw),
+    Math.cos(desiredWorldYaw - cameraYaw)
+  );
+  const aligned = Math.abs(error) <= toleranceRadians;
+  return {
+    error,
+    aligned,
+    keys: (aligned
+      ? ["w"]
+      : [error > 0 ? "a" : "d"]) as readonly RpgRouteKeyboardKey[]
+  };
 }
 
 export async function runBalancedRpgRouteKeyboardPulse<T>({
