@@ -80,6 +80,7 @@ describe("localized messages", () => {
       expand: "미니맵 펼치기",
       collapse: "미니맵 접기",
       currentPosition: "현재 위치",
+      nextDestination: "다음 목적지",
       mainRoute: "주 경로",
       north: "북쪽",
       destinations: {
@@ -95,6 +96,7 @@ describe("localized messages", () => {
       expand: "ミニマップを開く",
       collapse: "ミニマップを閉じる",
       currentPosition: "現在地",
+      nextDestination: "次の目的地",
       mainRoute: "メインルート",
       north: "北",
       destinations: {
@@ -110,6 +112,7 @@ describe("localized messages", () => {
       expand: "Expand mini-map",
       collapse: "Collapse mini-map",
       currentPosition: "Current position",
+      nextDestination: "Next destination",
       mainRoute: "Main route",
       north: "North",
       destinations: {
@@ -130,6 +133,7 @@ describe("localized messages", () => {
       hint: "Select a place to inspect it. Walk there through the world.",
       inspect: "Inspect",
       currentPosition: "Current position",
+      nextDestination: "Next destination",
       mainRoute: "Main route",
       north: "North is up",
       legendLabel: "Map legend",

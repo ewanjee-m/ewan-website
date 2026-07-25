@@ -19,8 +19,8 @@ import {
   isOutsideRpgSpawnClearance,
   RPG_LANTERN_STRING_SUPPORT_ENDPOINTS,
   RPG_LANTERN_STRING_WIRES,
-  RPG_PALM_FRONDS,
-  RPG_PALM_TRUNKS,
+  RPG_PINE_TIERS,
+  RPG_PINE_TRUNKS,
   RPG_PLANTER_FOLIAGE,
   RPG_PLANTER_WALLS,
   RPG_PLAZA_PAVING,
@@ -63,7 +63,7 @@ const GROUND_LEVEL_DECOR: readonly (readonly [
 ])[] = [
   ["planter-walls", RPG_PLANTER_WALLS],
   ["hedges", RPG_HEDGE_BLOCKS],
-  ["palm-trunks", RPG_PALM_TRUNKS],
+  ["pine-trunks", RPG_PINE_TRUNKS],
   ["grills", RPG_STALL_GRILL_BODIES],
   ["bus-stop", RPG_BUS_STOP_STRUCTURES],
   ["utility-poles", RPG_UTILITY_POLES]
@@ -294,7 +294,7 @@ describe("RPG town street life", () => {
     expect(RPG_PLANTER_FOLIAGE.length).toBeGreaterThanOrEqual(
       RPG_PLANTER_WALLS.length
     );
-    expect(RPG_PALM_FRONDS.length).toBeGreaterThan(RPG_PALM_TRUNKS.length);
+    expect(RPG_PINE_TIERS.length).toBeGreaterThan(RPG_PINE_TRUNKS.length);
   });
 
   it("keeps every tall prop out of the airport spawn clearance", () => {
@@ -349,13 +349,13 @@ describe("RPG town street life", () => {
   it("exposes every new column prop to the chase camera in one occluder source", () => {
     expect(RPG_TOWN_COLUMN_PROPS.length).toBeGreaterThanOrEqual(
       RPG_UTILITY_POLES.length +
-        RPG_PALM_TRUNKS.length +
+        RPG_PINE_TRUNKS.length +
         RPG_BUS_STOP_STRUCTURES.length
     );
 
     for (const group of [
       RPG_UTILITY_POLES,
-      RPG_PALM_TRUNKS,
+      RPG_PINE_TRUNKS,
       RPG_BUS_STOP_STRUCTURES
     ]) {
       for (const prop of group) {

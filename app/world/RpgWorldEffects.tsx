@@ -19,6 +19,7 @@ import {
   calculateRpgFireworkFrameInto,
   createRpgHanabiShell,
   getRpgHanabiRenderBudget,
+  resolveRpgHanabiIntensity,
   type RpgFireworkFrame,
   type RpgFireworkFrameInput,
   type RpgHanabiBurst
@@ -164,11 +165,12 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
     const state = presentation.current;
     const sakuraIntensity =
       state.zoneWeights.sakura * state.effectIntensity * (petalCount / 156);
-    const hanabiIntensity =
-      state.zoneWeights.hanabi *
-      state.effectIntensity *
-      (qualitySettings.fireworks.particlesPerBurst /
-        getRpgHanabiRenderBudget("high").particlesPerBurst);
+    const hanabiIntensity = resolveRpgHanabiIntensity({
+      hanabiZoneWeight: state.zoneWeights.hanabi,
+      particlesPerBurst: qualitySettings.fireworks.particlesPerBurst,
+      referenceParticlesPerBurst:
+        getRpgHanabiRenderBudget("high").particlesPerBurst
+    });
     if (petalMaterial.current) {
       petalMaterial.current.opacity = Math.min(1, sakuraIntensity);
     }
@@ -258,6 +260,11 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
               depthWrite={false}
               blending={2}
               toneMapped={false}
+              // Three mixes a fragment toward the fog colour and only then
+              // blends it additively, so a fogged spark ADDS bright sky
+              // instead of receding. The bursts sit past every zone's fog far
+              // plane, which turned each shell into a rectangle of haze.
+              fog={false}
             />
           </points>
           {hanabiBudget.shellLayers > 1 ? (
@@ -291,6 +298,7 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
                 depthWrite={false}
                 blending={2}
                 toneMapped={false}
+                fog={false}
               />
             </points>
           ) : null}

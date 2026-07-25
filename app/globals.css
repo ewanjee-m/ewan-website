@@ -126,6 +126,17 @@ a:focus-visible {
   letter-spacing: 0.18em;
 }
 
+/* Korean puts spaces between words but the default rule ignores them and
+   breaks between any two syllables: 제 세계에 오 / 신 것을 환 / 영합니다.
+   keep-all wraps on the spaces instead. break-word stays as the escape hatch
+   for a word wider than its own line, so keeping words whole can never push
+   text outside its box. Japanese is deliberately excluded — it has no spaces,
+   and keep-all would leave a whole sentence unbreakable. */
+.start-screen[data-locale="ko"] {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
 .start-card h1 {
   max-width: 12ch;
   margin: 0 auto;
@@ -173,6 +184,25 @@ a:focus-visible {
   filter: grayscale(0.6);
   opacity: 0.52;
   transform: none;
+}
+
+/* The start button exists in the server markup before React can answer a
+   click. It stays disabled until the page is interactive, and this pulse is
+   what tells the visitor the wait is temporary rather than broken. */
+.primary-action[aria-busy="true"] {
+  cursor: progress;
+  animation: primary-action-warmup 1.15s ease-in-out infinite;
+}
+
+@keyframes primary-action-warmup {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 0.78;
+  }
 }
 
 .character-select-card {
@@ -1057,144 +1087,95 @@ a:focus-visible {
   pointer-events: none;
 }
 
-.rpg-mini-map-background {
-  fill: #06111f;
-}
-
-.rpg-mini-map-land {
-  fill: #1c3350;
-  stroke: rgb(255 248 237 / 32%);
+/* Shared top-down terrain, used by the docked mini-map and the full map. */
+.rpg-map-terrain-zone {
+  opacity: 0.72;
+  stroke: rgb(58 44 30 / 55%);
   stroke-width: 1.4;
-}
-
-.rpg-mini-map-zone {
-  stroke: rgb(6 17 31 / 78%);
-  stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
 }
 
-.rpg-mini-map-zone[data-current="true"] {
-  stroke: #ffe9a8;
-  stroke-width: 2.6;
+.rpg-map-terrain-zone[data-highlighted="true"] {
+  opacity: 0.95;
 }
 
-.rpg-mini-map-zone-airport {
-  fill: #2e6f79;
+.rpg-map-terrain-zone[data-current="true"] {
+  stroke: #a8391f;
+  stroke-width: 3;
 }
 
-.rpg-mini-map-zone-tokyo {
-  fill: #3f59a2;
-}
-
-.rpg-mini-map-zone-gyukatsu {
-  fill: #8a6330;
-}
-
-.rpg-mini-map-zone-sakura {
-  fill: #8d4470;
-}
-
-.rpg-mini-map-zone-hanabi {
-  fill: #5a4494;
-}
-
-.rpg-mini-map-route-segment {
-  fill: #f4e9cd;
-  paint-order: stroke;
-  stroke: #06111f;
-  stroke-width: 2.6;
-}
-
-.rpg-mini-map-route-bridge {
-  fill: #f0a85f;
-}
-
-.rpg-mini-map-destination circle {
-  fill: #ffd166;
-  paint-order: stroke;
-  stroke: #06111f;
-  stroke-width: 2.2;
+.rpg-map-terrain-route {
   vector-effect: non-scaling-stroke;
 }
 
-.rpg-mini-map-destination[data-current="true"] circle {
-  fill: #fff6dc;
+.rpg-mini-map-destination-dot {
+  fill: #b4372c;
+  paint-order: stroke;
+  stroke: #fff6e2;
+  stroke-width: 4;
 }
 
-.rpg-mini-map-labels {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 0.4rem 0.45rem;
-  border: 1px solid rgb(246 189 85 / 42%);
-  border-top: 0;
-  border-radius: 0 0 0.75rem 0.75rem;
-  color: #fff8ed;
-  background: rgb(6 17 31 / 94%);
-  column-gap: 0.5rem;
-  font-size: 10px;
-  line-height: 1.35;
-  row-gap: 0.25rem;
+.rpg-mini-map-destination[data-current="true"] .rpg-mini-map-destination-dot {
+  fill: #2a2118;
+}
+
+.rpg-mini-map-destination-next {
+  fill: none;
+  stroke: #a8391f;
+  stroke-dasharray: 9 7;
+  stroke-width: 5;
 }
 
 .rpg-mini-map-label {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.3rem;
-  overflow-wrap: anywhere;
+  fill: #2a2118;
+  paint-order: stroke;
+  stroke: #efe3c8;
+  stroke-linejoin: round;
+  stroke-width: 7;
+  font-weight: 800;
 }
 
-.rpg-mini-map-label > span {
-  width: 0.55rem;
-  height: 0.55rem;
-  flex: none;
-  border: 1px solid rgb(6 17 31 / 78%);
-  border-radius: 50%;
-  background: #ffd166;
+.rpg-mini-map-destination[data-next="true"] .rpg-mini-map-label {
+  fill: #8f2d16;
 }
 
 .rpg-mini-map-player-halo {
-  fill: rgb(255 209 102 / 24%);
+  fill: rgb(255 255 255 / 42%);
+  stroke: rgb(42 33 24 / 45%);
+  stroke-width: 2;
 }
 
 .rpg-mini-map-player-disc {
-  fill: #0a1a30;
-  stroke: #ffd166;
-  stroke-width: 2;
-  vector-effect: non-scaling-stroke;
+  fill: #1b3f8f;
+  stroke: #fff6e2;
+  stroke-width: 3;
 }
 
 .rpg-mini-map-player-arrow {
-  fill: #fff;
+  fill: #fff6e2;
   paint-order: stroke;
-  stroke: #0a1a30;
+  stroke: #1b3f8f;
   stroke-linejoin: round;
-  stroke-width: 2.6;
-  vector-effect: non-scaling-stroke;
+  stroke-width: 4;
 }
 
 .rpg-mini-map-compass circle {
-  fill: rgb(6 17 31 / 88%);
-  stroke: rgb(255 248 237 / 48%);
-  stroke-width: 1.2;
-  vector-effect: non-scaling-stroke;
+  fill: rgb(239 227 200 / 92%);
+  stroke: rgb(123 100 72 / 80%);
+  stroke-width: 2;
 }
 
 .rpg-mini-map-compass path {
-  fill: #ff8f6b;
-  paint-order: stroke;
-  stroke: #06111f;
-  stroke-linejoin: round;
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
+  fill: #b4372c;
 }
 
 .rpg-mini-map-compass text {
-  fill: #fff8ed;
-  font-size: 64px;
+  fill: #2a2118;
+  font-size: 22px;
   font-weight: 800;
   text-anchor: middle;
 }
+
 
 .world-shell:has(.guide-panel) .rpg-mini-map,
 .world-shell:has(.portfolio-dialog) .rpg-mini-map,
@@ -1284,100 +1265,61 @@ a:focus-visible {
   border-radius: 1rem;
 }
 
-.rpg-world-map-background {
-  fill: #06111f;
-}
-
-.rpg-world-map-land {
-  fill: #1c3350;
-  stroke: rgb(255 248 237 / 32%);
-  stroke-width: 2.4;
-}
-
-.rpg-world-map-zone {
-  stroke: rgb(6 17 31 / 78%);
-  stroke-width: 2.4;
-  vector-effect: non-scaling-stroke;
-}
-
-.rpg-world-map-zone[data-current="true"] {
-  stroke: #ffe9a8;
-  stroke-width: 5;
-}
-
-.rpg-world-map-zone-airport {
-  fill: #2e6f79;
-}
-
-.rpg-world-map-zone-tokyo {
-  fill: #3f59a2;
-}
-
-.rpg-world-map-zone-gyukatsu {
-  fill: #8a6330;
-}
-
-.rpg-world-map-zone-sakura {
-  fill: #8d4470;
-}
-
-.rpg-world-map-zone-hanabi {
-  fill: #5a4494;
-}
-
-.rpg-world-map-route-segment {
-  fill: #f4e9cd;
+.rpg-world-map-destination-dot {
+  fill: #b4372c;
   paint-order: stroke;
-  stroke: #06111f;
-  stroke-width: 5;
+  stroke: #fff6e2;
+  stroke-width: 4;
 }
 
-.rpg-world-map-route-bridge {
-  fill: #f0a85f;
+.rpg-world-map-destination[data-current="true"] .rpg-world-map-destination-dot {
+  fill: #2a2118;
+}
+
+.rpg-world-map-destination-next {
+  fill: none;
+  stroke: #a8391f;
+  stroke-dasharray: 9 7;
+  stroke-width: 5;
 }
 
 .rpg-world-map-player-halo {
-  fill: rgb(255 209 102 / 22%);
+  fill: rgb(255 255 255 / 42%);
+  stroke: rgb(42 33 24 / 45%);
+  stroke-width: 2;
 }
 
 .rpg-world-map-player-disc {
-  fill: #0a1a30;
-  stroke: #ffd166;
-  stroke-width: 4;
-  vector-effect: non-scaling-stroke;
+  fill: #1b3f8f;
+  stroke: #fff6e2;
+  stroke-width: 3;
 }
 
 .rpg-world-map-player-arrow {
-  fill: #fff;
+  fill: #fff6e2;
   paint-order: stroke;
-  stroke: #0a1a30;
+  stroke: #1b3f8f;
   stroke-linejoin: round;
-  stroke-width: 5;
-  vector-effect: non-scaling-stroke;
+  stroke-width: 4;
 }
 
 .rpg-world-map-compass circle {
-  fill: rgb(6 17 31 / 88%);
-  stroke: rgb(255 248 237 / 48%);
-  stroke-width: 2.4;
-  vector-effect: non-scaling-stroke;
+  fill: rgb(239 227 200 / 92%);
+  stroke: rgb(123 100 72 / 80%);
+  stroke-width: 2;
 }
 
 .rpg-world-map-compass path {
-  fill: #ff8f6b;
-  paint-order: stroke;
-  stroke: #06111f;
-  stroke-linejoin: round;
-  stroke-width: 2;
-  vector-effect: non-scaling-stroke;
+  fill: #b4372c;
 }
 
 .rpg-world-map-compass text {
-  fill: #fff8ed;
-  font-size: 60px;
+  fill: #2a2118;
+  font-size: 22px;
   font-weight: 800;
   text-anchor: middle;
 }
+
 
 .rpg-world-map-zone-button {
   position: absolute;
@@ -1455,21 +1397,27 @@ a:focus-visible {
 }
 
 .rpg-world-map-legend-zone::before {
-  background: #3f59a2;
+  background: #b4372c;
 }
 
 .rpg-world-map-legend-route::before {
-  background: #f4e9cd;
+  background: #cbb896;
 }
 
 .rpg-world-map-legend-player::before {
-  border-color: #ffd166;
+  border-color: #fff6e2;
   border-radius: 50%;
-  background: #fff;
+  background: #1b3f8f;
+}
+
+.rpg-world-map-legend-next::before {
+  border-color: #a8391f;
+  border-radius: 50%;
+  background: transparent;
 }
 
 .rpg-world-map-legend-north::before {
-  background: #ff8f6b;
+  background: #efe3c8;
 }
 
 .rpg-world-map-scale-note {
@@ -1478,21 +1426,10 @@ a:focus-visible {
 }
 
 .rpg-world-map-scale-bar rect {
-  fill: #fff8ed;
+  fill: #fff6e2;
   paint-order: stroke;
-  stroke: #06111f;
+  stroke: rgb(6 17 31 / 85%);
   stroke-width: 3;
-}
-
-.rpg-world-map-scale-bar text {
-  fill: #fff8ed;
-  font-size: 15px;
-  font-weight: 800;
-  paint-order: stroke;
-  stroke: #06111f;
-  stroke-linejoin: round;
-  stroke-width: 4px;
-  text-anchor: middle;
 }
 
 @media (max-height: 620px) {

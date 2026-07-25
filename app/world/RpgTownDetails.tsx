@@ -35,6 +35,8 @@ type DecorationPoint = readonly [number, number, number];
 
 export const RPG_TOWN_SHORELINE_CAMERA_OCCLUSION_BATCH_ID =
   "shoreline-rocks";
+export const RPG_TOWN_GYUKATSU_OUTDOOR_CAMERA_OCCLUSION_BATCH_ID =
+  "gyukatsu-outdoor-details";
 
 export function markRpgTownShorelineRockBatch(
   batch: InstancedMesh | null
@@ -44,6 +46,16 @@ export function markRpgTownShorelineRockBatch(
     batch,
     RPG_TOWN_SHORELINE_CAMERA_OCCLUSION_BATCH_ID
   );
+}
+
+export function markRpgTownGyukatsuOutdoorBatch(group: Group | null) {
+  if (!group) return;
+  Object.assign(group.userData, {
+    cameraOccluder: true,
+    cameraOcclusionFadeBatch: true,
+    cameraOcclusionBatchId:
+      RPG_TOWN_GYUKATSU_OUTDOOR_CAMERA_OCCLUSION_BATCH_ID
+  });
 }
 
 export function isDecorationClusterVisible(
@@ -155,7 +167,13 @@ export const RpgTownDetails = memo(function RpgTownDetails({
         )}
       </Instances>
 
-      <group ref={gyukatsuGroup} name="far-gyukatsu-outdoor-details">
+      <group
+        ref={(group) => {
+          gyukatsuGroup.current = group;
+          markRpgTownGyukatsuOutdoorBatch(group);
+        }}
+        name="far-gyukatsu-outdoor-details"
+      >
         <Instances
           limit={RPG_GYUKATSU_OUTDOOR_DETAILS.length * 9}
           frames={1}

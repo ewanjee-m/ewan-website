@@ -77,6 +77,7 @@ const messages = {
       expand: "미니맵 펼치기",
       collapse: "미니맵 접기",
       currentPosition: "현재 위치",
+      nextDestination: "다음 목적지",
       mainRoute: "주 경로",
       north: "북쪽",
       destinations: {
@@ -94,6 +95,7 @@ const messages = {
       hint: "살펴볼 장소를 선택하세요. 월드 안에서 직접 걸어가세요.",
       inspect: "살펴보기",
       currentPosition: "현재 위치",
+      nextDestination: "다음 목적지",
       mainRoute: "주 경로",
       north: "위쪽이 북쪽",
       legendLabel: "지도 기호 설명",
@@ -272,6 +274,7 @@ const messages = {
       expand: "ミニマップを開く",
       collapse: "ミニマップを閉じる",
       currentPosition: "現在地",
+      nextDestination: "次の目的地",
       mainRoute: "メインルート",
       north: "北",
       destinations: {
@@ -289,6 +292,7 @@ const messages = {
       hint: "場所を選んで詳しく見てください。ワールド内を歩いて向かいましょう。",
       inspect: "詳しく見る",
       currentPosition: "現在地",
+      nextDestination: "次の目的地",
       mainRoute: "メインルート",
       north: "上が北",
       legendLabel: "地図の凡例",
@@ -468,6 +472,7 @@ const messages = {
       expand: "Expand mini-map",
       collapse: "Collapse mini-map",
       currentPosition: "Current position",
+      nextDestination: "Next destination",
       mainRoute: "Main route",
       north: "North",
       destinations: {
@@ -485,6 +490,7 @@ const messages = {
       hint: "Select a place to inspect it. Walk there through the world.",
       inspect: "Inspect",
       currentPosition: "Current position",
+      nextDestination: "Next destination",
       mainRoute: "Main route",
       north: "North is up",
       legendLabel: "Map legend",

@@ -6,35 +6,46 @@ import type { InstancedMesh } from "three";
 import type { SceneQualityLevel } from "./SceneQuality";
 import {
   RPG_ARCHITECTURE_FACADE_DETAILS,
+  RPG_ARCHITECTURE_GROUND_SKIRTS,
   RPG_ARCHITECTURE_STREET_PROPS,
   RPG_DISTRICT_ARCHITECTURE,
   RPG_PERIMETER_NEIGHBORHOOD,
+  RPG_SHOPFRONT_EAVES,
+  RPG_TILED_ROOF_STRUCTURES,
+  RPG_TILED_ROOF_THICKNESS,
   type RpgArchitectureFacadeDetail,
   type RpgArchitectureStreetProp,
   type RpgDistrictArchitecture,
-  type RpgPerimeterBuilding
+  type RpgPerimeterBuilding,
+  type RpgShopfrontEave,
+  type RpgTiledRoof
 } from "./RpgTownArchitectureLayout";
 import {
   getRpgStreetFacingRotation,
+  RPG_BOARD_FENCE_PANELS,
   RPG_BUS_STOP_SIGNS,
   RPG_BUS_STOP_STRUCTURES,
   RPG_CROSSWALK_PADS,
   RPG_EXTRA_CROSSWALK_STRIPES,
   RPG_HEDGE_BLOCKS,
   RPG_LANTERN_STRING_WIRES,
-  RPG_PALM_FRONDS,
-  RPG_PALM_TRUNKS,
+  RPG_NOREN_CURTAINS,
+  RPG_PINE_TIERS,
+  RPG_PINE_TRUNKS,
   RPG_PLANTER_FOLIAGE,
   RPG_PLANTER_WALLS,
   RPG_PLAZA_PAVING,
   RPG_ROOFTOP_CLUTTER,
+  RPG_SHOPFRONT_LATTICE,
   RPG_SHOPFRONT_SHADES,
   RPG_SHOPFRONT_SIGNS,
   RPG_STALL_GRILL_BODIES,
   RPG_STALL_GRILL_EMBERS,
+  RPG_STREET_TORII,
   RPG_UTILITY_CROSSARMS,
   RPG_UTILITY_POLES,
   RPG_UTILITY_WIRES,
+  RPG_VERTICAL_KANBAN,
   type RpgStreetLifeInstance
 } from "./RpgTownStreetLifeLayout";
 
@@ -54,6 +65,7 @@ interface RpgTownArchitectureProps {
 export const RPG_TOWN_CAMERA_FADEABLE_BATCH_IDS = [
   "canopies",
   "foliage",
+  "prop-posts",
   "overhead-cables",
   "festival-banners"
 ] as const;
@@ -97,24 +109,254 @@ const shellInstances: readonly ArchitectureInstance[] = districtBuildings.map(
   }
 );
 
-function createSlopedRoofs(
-  structure: RpgDistrictArchitecture | RpgPerimeterBuilding
+/**
+ * Local-to-world for an offset expressed in a structure's own axes. Under a Y
+ * rotation, local +X maps to (cos, 0, -sin) and local +Z to (sin, 0, cos).
+ * The old gable code skipped this, so a roof on a building rotated 90 degrees
+ * sat across its ridge instead of along it — visible on the east and west
+ * perimeter runs.
+ */
+function toWorld(
+  origin: readonly [number, number, number],
+  rotationY: number,
+  local: readonly [number, number, number]
+): readonly [number, number, number] {
+  const cos = Math.cos(rotationY);
+  const sin = Math.sin(rotationY);
+  return [
+    origin[0] + local[0] * cos + local[2] * sin,
+    origin[1] + local[1],
+    origin[2] - local[0] * sin + local[2] * cos
+  ];
+}
+
+/**
+ * The four upturned eave corners. Each is a short board kicked up and outward
+ * at the corner of the eave. It is a small amount of geometry for how much of
+ * the read it carries: a straight-cut eave looks like a shed roof, the same
+ * roof with corners flicked up reads as tile.
+ */
+function createEaveCornerFlicks(
+  roof: RpgTiledRoof
 ): ArchitectureInstance[] {
-  const [x, y, z] = structure.position;
-  const [width, height, depth] = structure.size;
-  const roofY = y + height / 2 + 0.17;
+  const [x, , z] = roof.position;
+  const halfWidth = roof.eaveWidth / 2;
+  const halfDepth = roof.eaveDepth / 2;
+  return [
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+    [1, 1]
+  ].map(([sideX, sideZ]) => ({
+    id: `${roof.id}-flick-${sideX > 0 ? "e" : "w"}${sideZ > 0 ? "n" : "s"}`,
+    position: toWorld([x, roof.eaveY + 0.16, z], roof.rotationY, [
+      sideX * (halfWidth - 0.22),
+      0,
+      sideZ * (halfDepth - 0.2)
+    ]),
+    scale: [0.78, 0.16, 0.56],
+    rotation: [sideZ * -0.24, roof.rotationY, sideX * 0.28],
+    color: roof.roofColor
+  }));
+}
 
-  if (structure.roofStyle === "gable") {
-    return [-1, 1].map((side) => ({
-      id: `${structure.id}-gable-${side}`,
-      position: [x, roofY, z + side * depth * 0.235],
-      scale: [width + 0.55, 0.15, depth * 0.6 + 0.24],
-      rotation: [side * 0.34, structure.rotationY, 0],
-      color: structure.accent
-    }));
-  }
+/**
+ * A gable roof: two tiled slopes meeting at a ridge, both projecting well past
+ * the wall on every side, with a fascia board hung under each eave so the
+ * overhang throws a readable shadow line onto the facade.
+ */
+function createGableRoof(roof: RpgTiledRoof): ArchitectureInstance[] {
+  const [x, , z] = roof.position;
+  const halfDepth = roof.eaveDepth / 2;
+  const slopeRun = Math.hypot(halfDepth, roof.ridgeRise);
+  const tilt = Math.atan2(roof.ridgeRise, halfDepth);
 
-  return [];
+  return [
+    ...[-1, 1].map((side): ArchitectureInstance => ({
+      id: `${roof.id}-slope-${side > 0 ? "north" : "south"}`,
+      position: toWorld(
+        [x, roof.eaveY + roof.ridgeRise / 2, z],
+        roof.rotationY,
+        [0, 0, (side * halfDepth) / 2]
+      ),
+      scale: [roof.eaveWidth, RPG_TILED_ROOF_THICKNESS, slopeRun],
+      rotation: [side * tilt, roof.rotationY, 0],
+      color: roof.roofColor
+    })),
+    {
+      id: `${roof.id}-ridge`,
+      position: toWorld(
+        [x, roof.eaveY + roof.ridgeRise + 0.08, z],
+        roof.rotationY,
+        [0, 0, 0]
+      ),
+      scale: [roof.eaveWidth * 0.99, 0.24, 0.36],
+      rotation: [0, roof.rotationY, 0],
+      color: roof.roofColor
+    },
+    ...[-1, 1].map((side): ArchitectureInstance => ({
+      id: `${roof.id}-fascia-${side > 0 ? "north" : "south"}`,
+      position: toWorld([x, roof.eaveY - 0.09, z], roof.rotationY, [
+        0,
+        0,
+        side * halfDepth
+      ]),
+      scale: [roof.eaveWidth, 0.22, 0.15],
+      rotation: [0, roof.rotationY, 0],
+      color: roof.trimColor
+    })),
+    ...createEaveCornerFlicks(roof)
+  ];
+}
+
+/**
+ * A hipped roof. The pyramid itself is the shared cone batch scaled to the full
+ * eave footprint; everything returned here is the box work that gives it an
+ * eave — a fascia board on each of the four sides plus the corner flicks.
+ */
+function createHipRoofTrim(roof: RpgTiledRoof): ArchitectureInstance[] {
+  const [x, , z] = roof.position;
+  const halfWidth = roof.eaveWidth / 2;
+  const halfDepth = roof.eaveDepth / 2;
+  return [
+    ...[-1, 1].map((side): ArchitectureInstance => ({
+      id: `${roof.id}-fascia-${side > 0 ? "north" : "south"}`,
+      position: toWorld([x, roof.eaveY - 0.09, z], roof.rotationY, [
+        0,
+        0,
+        side * halfDepth
+      ]),
+      scale: [roof.eaveWidth, 0.22, 0.15],
+      rotation: [0, roof.rotationY, 0],
+      color: roof.trimColor
+    })),
+    ...[-1, 1].map((side): ArchitectureInstance => ({
+      id: `${roof.id}-fascia-${side > 0 ? "east" : "west"}`,
+      position: toWorld([x, roof.eaveY - 0.09, z], roof.rotationY, [
+        side * halfWidth,
+        0,
+        0
+      ]),
+      scale: [0.15, 0.22, roof.eaveDepth],
+      rotation: [0, roof.rotationY, 0],
+      color: roof.trimColor
+    })),
+    {
+      id: `${roof.id}-ridge`,
+      position: toWorld(
+        [x, roof.eaveY + roof.ridgeRise * 0.94, z],
+        roof.rotationY,
+        [0, 0, 0]
+      ),
+      scale: [roof.eaveWidth * 0.42, 0.24, 0.34],
+      rotation: [0, roof.rotationY, 0],
+      color: roof.roofColor
+    },
+    ...createEaveCornerFlicks(roof)
+  ];
+}
+
+function createTiledRoofBoxes(roof: RpgTiledRoof): ArchitectureInstance[] {
+  return roof.style === "gable"
+    ? createGableRoof(roof)
+    : createHipRoofTrim(roof);
+}
+
+/**
+ * The pyramid of a hipped roof. `coneGeometry(1, 1, 4)` puts its base corners
+ * on the unit circle, so the edge-to-edge span of the square base is only
+ * `2 * cos(45deg)` of the scale — hence the 0.707 factor to land the base
+ * exactly on the eave line rather than short of the wall.
+ */
+const CONE4_BASE_SPAN_TO_RADIUS = 0.7071;
+
+function createHipRoofPyramid(roof: RpgTiledRoof): ArchitectureInstance {
+  return {
+    id: `${roof.id}-hip-pyramid`,
+    position: [
+      roof.position[0],
+      roof.eaveY + roof.ridgeRise / 2,
+      roof.position[2]
+    ],
+    scale: [
+      roof.eaveWidth * CONE4_BASE_SPAN_TO_RADIUS,
+      roof.ridgeRise,
+      roof.eaveDepth * CONE4_BASE_SPAN_TO_RADIUS
+    ],
+    rotation: [0, Math.PI / 4 + roof.rotationY, 0],
+    color: roof.roofColor
+  };
+}
+
+/**
+ * The deep tiled pent roof over a shop's ground floor. It wraps all four sides
+ * so the building reads the same from any approach — the chase camera can look
+ * at a block from any bearing, and a one-sided eave gives the trick away.
+ */
+function createShopfrontEave(eave: RpgShopfrontEave): ArchitectureInstance[] {
+  const [x, , z] = eave.position;
+  const [width, , depth] = eave.size;
+  const sides: readonly {
+    readonly key: string;
+    readonly local: readonly [number, number, number];
+    readonly scale: readonly [number, number, number];
+    readonly rotation: readonly [number, number, number];
+  }[] = [
+    {
+      key: "north",
+      local: [0, 0, depth / 2 + eave.reach / 2],
+      scale: [width + eave.reach * 1.4, 0.14, eave.reach],
+      rotation: [0.3, eave.rotationY, 0]
+    },
+    {
+      key: "south",
+      local: [0, 0, -(depth / 2 + eave.reach / 2)],
+      scale: [width + eave.reach * 1.4, 0.14, eave.reach],
+      rotation: [-0.3, eave.rotationY, 0]
+    },
+    {
+      key: "east",
+      local: [width / 2 + eave.reach / 2, 0, 0],
+      scale: [eave.reach, 0.14, depth + eave.reach * 1.4],
+      rotation: [0, eave.rotationY, 0.3]
+    },
+    {
+      key: "west",
+      local: [-(width / 2 + eave.reach / 2), 0, 0],
+      scale: [eave.reach, 0.14, depth + eave.reach * 1.4],
+      rotation: [0, eave.rotationY, -0.3]
+    }
+  ];
+  return sides.flatMap(({ key, local, scale, rotation }) => {
+    const alongDepth = key === "north" || key === "south";
+    // The fascia hangs off the outer lip of the slab, not past it. Deriving it
+    // from the slab's own extent keeps the two joined however `reach` changes.
+    const outerLocal: readonly [number, number, number] = alongDepth
+      ? [0, 0, Math.sign(local[2]) * (depth / 2 + eave.reach)]
+      : [Math.sign(local[0]) * (width / 2 + eave.reach), 0, 0];
+    return [
+      {
+        id: `${eave.id}-${key}`,
+        position: toWorld([x, eave.eaveY, z], eave.rotationY, local),
+        scale,
+        rotation,
+        color: eave.roofColor
+      },
+      {
+        id: `${eave.id}-${key}-fascia`,
+        position: toWorld(
+          [x, eave.eaveY - 0.21, z],
+          eave.rotationY,
+          outerLocal
+        ),
+        scale: alongDepth
+          ? ([width + eave.reach * 1.4, 0.17, 0.12] as const)
+          : ([0.12, 0.17, depth + eave.reach * 1.4] as const),
+        rotation: [0, eave.rotationY, 0] as const,
+        color: eave.trimColor
+      }
+    ];
+  });
 }
 
 function createRoofCaps(
@@ -135,25 +377,47 @@ function createRoofCaps(
       depth + 0.38 - index * 0.34
     ],
     rotation: [0, structure.rotationY, 0],
-    color: index === 0 ? structure.accent : "#e8dfcc"
+    // Even a flat city roof gets the kawara grey, so the skyline still sits in
+    // the same colour family as the tiled roofs in front of it.
+    color: index === 0 ? structure.roofColor : "#e8dfcc"
   }));
 }
 
-const districtSlopedRoofs = districtBuildings.flatMap(createSlopedRoofs);
+const districtRoofIds = new Set(districtBuildings.map(({ id }) => id));
+const districtTiledRoofs = RPG_TILED_ROOF_STRUCTURES.filter(({ structureId }) =>
+  districtRoofIds.has(structureId)
+);
+const perimeterTiledRoofs = RPG_TILED_ROOF_STRUCTURES.filter(
+  ({ structureId }) => !districtRoofIds.has(structureId)
+);
+
+const districtSlopedRoofs: readonly ArchitectureInstance[] = [
+  ...districtTiledRoofs.flatMap(createTiledRoofBoxes),
+  ...RPG_SHOPFRONT_EAVES.flatMap(createShopfrontEave)
+];
 const districtRoofCaps = districtBuildings.flatMap(createRoofCaps);
-const districtCanopies: readonly ArchitectureInstance[] = districtBuildings
-  .filter(({ roofStyle }) => roofStyle === "hip")
-  .map((structure) => ({
-    id: `${structure.id}-canopy`,
-    position: [
-      structure.position[0],
-      structure.position[1] + structure.size[1] * 0.47,
-      structure.position[2]
-    ],
-    scale: [structure.size[0] * 0.83, structure.size[1] * 0.26, structure.size[2] * 0.83],
-    rotation: [0, Math.PI / 4 + structure.rotationY, 0],
-    color: structure.accent
-  }));
+const districtCanopies: readonly ArchitectureInstance[] = [
+  ...districtBuildings
+    .filter(({ roofStyle }) => roofStyle === "hip")
+    .map((structure) => ({
+      id: `${structure.id}-canopy`,
+      position: [
+        structure.position[0],
+        structure.position[1] + structure.size[1] * 0.47,
+        structure.position[2]
+      ] as const,
+      scale: [
+        structure.size[0] * 0.83,
+        structure.size[1] * 0.26,
+        structure.size[2] * 0.83
+      ] as const,
+      rotation: [0, Math.PI / 4 + structure.rotationY, 0] as const,
+      color: structure.roofColor
+    })),
+  ...districtTiledRoofs
+    .filter(({ style }) => style === "hip")
+    .map(createHipRoofPyramid)
+];
 
 const parapetInstances: readonly ArchitectureInstance[] = districtBuildings
   .filter(({ roofStyle }) =>
@@ -535,21 +799,11 @@ const perimeterShellInstances: readonly ArchitectureInstance[] =
     rotation: [0, building.rotationY, 0],
     color: building.color
   }));
-const perimeterSlopedRoofs = RPG_PERIMETER_NEIGHBORHOOD.flatMap(createSlopedRoofs);
+const perimeterSlopedRoofs = perimeterTiledRoofs.flatMap(createTiledRoofBoxes);
 const perimeterRoofCaps = RPG_PERIMETER_NEIGHBORHOOD.flatMap(createRoofCaps);
-const perimeterHipRoofs: readonly ArchitectureInstance[] =
-  RPG_PERIMETER_NEIGHBORHOOD.filter(({ roofStyle }) => roofStyle === "hip")
-    .map((building) => ({
-      id: `${building.id}-hip-roof`,
-      position: [
-        building.position[0],
-        building.position[1] + building.size[1] / 2 + 0.34,
-        building.position[2]
-      ],
-      scale: [building.size[0] * 0.72, 0.72, building.size[2] * 0.72],
-      rotation: [0, Math.PI / 4 + building.rotationY, 0],
-      color: building.accent
-    }));
+const perimeterHipRoofs: readonly ArchitectureInstance[] = perimeterTiledRoofs
+  .filter(({ style }) => style === "hip")
+  .map(createHipRoofPyramid);
 
 const perimeterWindowSource: readonly ArchitectureInstance[] =
   RPG_PERIMETER_NEIGHBORHOOD.flatMap((building) => {
@@ -612,14 +866,28 @@ const streetLevelBoxInstances: readonly ArchitectureInstance[] = [
   ...doorInstances,
   ...shopfrontStoreyInstances,
   ...toArchitectureInstances(RPG_SHOPFRONT_SHADES),
+  ...toArchitectureInstances(RPG_SHOPFRONT_LATTICE),
+  ...toArchitectureInstances(RPG_NOREN_CURTAINS),
+  ...toArchitectureInstances(RPG_STREET_TORII),
+  ...toArchitectureInstances(RPG_BOARD_FENCE_PANELS),
   ...toArchitectureInstances(RPG_UTILITY_CROSSARMS),
   ...toArchitectureInstances(RPG_STALL_GRILL_BODIES),
   ...toArchitectureInstances(RPG_BUS_STOP_STRUCTURES),
   ...toArchitectureInstances(RPG_ROOFTOP_CLUTTER)
 ];
 
+const groundSkirtInstances: readonly ArchitectureInstance[] =
+  RPG_ARCHITECTURE_GROUND_SKIRTS.map((skirt) => ({
+    id: skirt.id,
+    position: skirt.position,
+    scale: skirt.size,
+    rotation: [0, skirt.rotationY, 0] as const,
+    color: skirt.color
+  }));
+
 const groundDressingInstances: readonly ArchitectureInstance[] = [
   ...districtRoofCaps,
+  ...groundSkirtInstances,
   ...floorBandInstances,
   ...toArchitectureInstances(RPG_PLANTER_WALLS),
   ...toArchitectureInstances(RPG_CROSSWALK_PADS),
@@ -630,6 +898,7 @@ const groundDressingInstances: readonly ArchitectureInstance[] = [
 const hedgeInstances = toArchitectureInstances(RPG_HEDGE_BLOCKS);
 const litSignInstances: readonly ArchitectureInstance[] = [
   ...toArchitectureInstances(RPG_SHOPFRONT_SIGNS),
+  ...toArchitectureInstances(RPG_VERTICAL_KANBAN),
   ...toArchitectureInstances(RPG_STALL_GRILL_EMBERS),
   ...toArchitectureInstances(RPG_BUS_STOP_SIGNS)
 ];
@@ -637,13 +906,13 @@ const overheadCableInstances: readonly ArchitectureInstance[] = [
   ...toArchitectureInstances(RPG_UTILITY_POLES),
   ...toArchitectureInstances(RPG_UTILITY_WIRES),
   ...toArchitectureInstances(RPG_LANTERN_STRING_WIRES),
-  ...toArchitectureInstances(RPG_PALM_TRUNKS)
+  ...toArchitectureInstances(RPG_PINE_TRUNKS)
 ];
-const palmFrondInstances = toArchitectureInstances(RPG_PALM_FRONDS);
+const pineTierInstances = toArchitectureInstances(RPG_PINE_TIERS);
 const planterFoliageInstances = toArchitectureInstances(RPG_PLANTER_FOLIAGE);
 const canopyInstances: readonly ArchitectureInstance[] = [
   ...districtCanopies,
-  ...palmFrondInstances
+  ...pineTierInstances
 ];
 
 export type RpgTownBatchGeometry =
@@ -878,7 +1147,7 @@ export const RpgTownArchitecture = memo(function RpgTownArchitecture({
       <InstanceBatch
         instances={canopyInstances}
         geometry={<coneGeometry args={[1, 1, 4]} />}
-        material={<meshStandardMaterial color="#ffffff" roughness={0.88} />}
+        material={<meshStandardMaterial color="#ffffff" roughness={0.88} flatShading />}
         cameraOcclusionFadeBatchId="canopies"
       />
       <InstanceBatch
@@ -957,18 +1226,19 @@ export const RpgTownArchitecture = memo(function RpgTownArchitecture({
       <InstanceBatch
         instances={filterProps(propPostInstances)}
         geometry={<cylinderGeometry args={[1, 1, 1, 8]} />}
-        material={<meshStandardMaterial color="#ffffff" roughness={0.92} />}
+        material={<meshStandardMaterial color="#ffffff" roughness={0.92} flatShading />}
+        cameraOcclusionFadeBatchId="prop-posts"
       />
       <InstanceBatch
         instances={filterProps(festivalBannerPostInstances)}
         geometry={<cylinderGeometry args={[1, 1, 1, 8]} />}
-        material={<meshStandardMaterial color="#ffffff" roughness={0.92} />}
+        material={<meshStandardMaterial color="#ffffff" roughness={0.92} flatShading />}
         cameraOcclusionFadeBatchId="festival-banners"
       />
       <InstanceBatch
         instances={overheadCableInstances}
         geometry={<cylinderGeometry args={[1, 1, 1, 8]} />}
-        material={<meshStandardMaterial color="#ffffff" roughness={0.92} />}
+        material={<meshStandardMaterial color="#ffffff" roughness={0.92} flatShading />}
         cameraOcclusionFadeBatchId="overhead-cables"
       />
       <InstanceBatch
@@ -980,6 +1250,7 @@ export const RpgTownArchitecture = memo(function RpgTownArchitecture({
             emissive="#6d4028"
             emissiveIntensity={0.18}
             roughness={0.76}
+            flatShading
           />
         }
       />
@@ -996,7 +1267,7 @@ export const RpgTownArchitecture = memo(function RpgTownArchitecture({
       <InstanceBatch
         instances={filterProps(fenceRailInstances)}
         geometry={<cylinderGeometry args={[1, 1, 1, 7]} />}
-        material={<meshStandardMaterial color="#ffffff" roughness={0.96} />}
+        material={<meshStandardMaterial color="#ffffff" roughness={0.96} flatShading />}
       />
       <InstanceBatch
         instances={filterProps(bannerInstances)}
@@ -1022,7 +1293,7 @@ export const RpgTownArchitecture = memo(function RpgTownArchitecture({
       <InstanceBatch
         instances={perimeterHipRoofs}
         geometry={<coneGeometry args={[1, 1, 4]} />}
-        material={<meshStandardMaterial color="#ffffff" roughness={0.92} />}
+        material={<meshStandardMaterial color="#ffffff" roughness={0.92} flatShading />}
       />
       <InstanceBatch
         instances={visiblePerimeterWindows}

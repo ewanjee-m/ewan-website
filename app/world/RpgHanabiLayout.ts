@@ -88,7 +88,7 @@ export const RPG_HANABI_BURSTS: readonly RpgHanabiBurst[] = [
   },
   {
     id: "coral-finale",
-    position: [29, 12, -46],
+    position: [48, 10, -20],
     color: "#ff7488",
     delay: 0.48,
     cycle: 4.05,
@@ -104,7 +104,7 @@ export const RPG_HANABI_BURSTS: readonly RpgHanabiBurst[] = [
   },
   {
     id: "sakura-pink",
-    position: [30, 13, -46],
+    position: [46, 10, -28],
     color: "#f4a7dc",
     delay: 1.42,
     cycle: 4.45,
@@ -137,7 +137,7 @@ export const RPG_HANABI_BURSTS: readonly RpgHanabiBurst[] = [
   },
   {
     id: "vermillion-ring",
-    position: [34, 10, -42],
+    position: [46, 10, -12],
     color: "#ff9a66",
     delay: 3.24,
     cycle: 3.68,
@@ -193,6 +193,80 @@ export function getRpgHanabiRenderBudget(
   qualityLevel: SceneQualityLevel
 ): RpgHanabiRenderBudget {
   return RPG_HANABI_RENDER_BUDGETS[qualityLevel];
+}
+
+/**
+ * Opacity the shells hold when the walk is outside Hanabi. The bursts are the
+ * landmark that tells the visitor where the route ends, so they never fade
+ * out; they only step back. Sitting below 1 is what makes them read as far
+ * away rather than as something going off next to the visitor.
+ */
+export const RPG_HANABI_DISTANT_INTENSITY = 0.62;
+
+/**
+ * How much of the shell opacity follows the particle count. A sparser shell
+ * carries less light, but scaling opacity by the raw particle ratio dimmed the
+ * low tier to 36 per cent and left nothing on screen. Most of the brightness
+ * is held flat so every tier reads, and the high tier is unchanged at 1.
+ */
+const RPG_HANABI_DENSITY_FLOOR = 0.65;
+
+/**
+ * KNOWN LIMITATION, measured but deliberately not fixed here.
+ *
+ * The shells blend additively (RpgWorldEffects). Additive cannot darken, so
+ * over a bright sky every channel clips and a gold shell renders as white
+ * speckle: from the airport and Tokyo the bursts read but carry no hue.
+ *
+ * Switching to normal blending over bright skies restores the hue, but the
+ * mode flip is visible — measured at tmp/blend-pop-compare.png — and it lands
+ * inside the 2-unit sakura->hanabi transition, i.e. in the reference zone.
+ *
+ * The continuous fix is to draw each shell twice and cross-fade, which is
+ * exactly equivalent to interpolating the two blend equations: with a normal
+ * layer at `opacity * (1 - k)` and an additive layer at `opacity * k`, the
+ * result is `dst * (1 - opacity + opacity * k) + colour * opacity`, which is
+ * the lerp from normal (k = 0) to additive (k = 1). Drive `k` from sky
+ * luminance and nothing pops. It costs one extra draw call per shell.
+ */
+
+export interface RpgHanabiIntensityInput {
+  /** 1 inside Hanabi, 0 anywhere else, lerped through the transition. */
+  hanabiZoneWeight: number;
+  particlesPerBurst: number;
+  referenceParticlesPerBurst: number;
+}
+
+/**
+ * Shell opacity for the current walk position and quality tier.
+ *
+ * This used to be `zoneWeights.hanabi * effectIntensity`, which multiplied two
+ * gates that both bottom out away from Hanabi: the bursts were invisible from
+ * every zone except the one you could already see them from. Distance now only
+ * steps them back to `RPG_HANABI_DISTANT_INTENSITY`.
+ */
+export function resolveRpgHanabiIntensity({
+  hanabiZoneWeight,
+  particlesPerBurst,
+  referenceParticlesPerBurst
+}: RpgHanabiIntensityInput): number {
+  const arrival = Number.isFinite(hanabiZoneWeight)
+    ? clamp(hanabiZoneWeight, 0, 1)
+    : 0;
+  const reference =
+    Number.isFinite(referenceParticlesPerBurst) && referenceParticlesPerBurst > 0
+      ? referenceParticlesPerBurst
+      : 1;
+  const particles = Number.isFinite(particlesPerBurst)
+    ? Math.max(0, particlesPerBurst)
+    : 0;
+  const density =
+    RPG_HANABI_DENSITY_FLOOR +
+    (1 - RPG_HANABI_DENSITY_FLOOR) * clamp(particles / reference, 0, 1);
+  const reach =
+    RPG_HANABI_DISTANT_INTENSITY +
+    (1 - RPG_HANABI_DISTANT_INTENSITY) * arrival;
+  return clamp(reach * density, 0, 1);
 }
 
 function clamp(value: number, minimum: number, maximum: number) {

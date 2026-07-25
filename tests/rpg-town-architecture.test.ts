@@ -16,6 +16,7 @@ import {
   RPG_DISTRICT_ARCHITECTURE,
   RPG_PERIMETER_NEIGHBORHOOD
 } from "../app/world/RpgTownArchitectureLayout";
+import { RPG_GYUKATSU_OUTDOOR_DETAILS } from "../app/world/RpgTownDetailsLayout";
 import { RPG_TOWN_BOUNDS } from "../app/world/RpgTownSceneLayout";
 
 const architectureSource = readFileSync(
@@ -103,6 +104,23 @@ describe("direct-rendered Japanese town architecture", () => {
     }
   });
 
+  it("keeps the Gyukatsu plaza lamp clear of the outdoor seating camera lane", () => {
+    const lamp = RPG_ARCHITECTURE_STREET_PROPS.find(
+      ({ id }) => id === "gyukatsu-lamp-a"
+    )!;
+
+    expect(lamp.position).toEqual([2.2, 1.65, 5.8]);
+    for (const detail of RPG_GYUKATSU_OUTDOOR_DETAILS) {
+      expect(
+        Math.hypot(
+          lamp.position[0] - detail.position[0],
+          lamp.position[2] - detail.position[2]
+        ),
+        detail.id
+      ).toBeGreaterThan(2);
+    }
+  });
+
   it("surrounds the square map with a direct-rendered neighborhood beyond its edge", () => {
     expect(RPG_PERIMETER_NEIGHBORHOOD.length).toBeGreaterThanOrEqual(28);
     expect(
@@ -130,10 +148,11 @@ describe("direct-rendered Japanese town architecture", () => {
     expect(architectureSource).not.toContain("<planeGeometry");
   });
 
-  it("marks foreground canopy, foliage, cables, and festival banners as fadeable camera occluders", () => {
+  it("marks foreground canopy, foliage, prop posts, cables, and festival banners as fadeable camera occluders", () => {
     expect(RPG_TOWN_CAMERA_FADEABLE_BATCH_IDS).toEqual([
       "canopies",
       "foliage",
+      "prop-posts",
       "overhead-cables",
       "festival-banners"
     ]);

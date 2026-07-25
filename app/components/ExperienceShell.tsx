@@ -1,7 +1,15 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore
+} from "react";
+
+/** Hydration never changes after it happens, so there is nothing to subscribe to. */
+const subscribeToNothing = () => () => {};
 import { getLocaleMetadata } from "../i18n/localeMetadata";
 import { getMessages, locales, type Locale } from "../i18n/messages";
 import {
@@ -36,6 +44,19 @@ function CharacterFigure({ character }: { character: Character }) {
 
 export function ExperienceShell({ locale }: { locale: Locale }) {
   const shell = useRef<HTMLElement>(null);
+  // The start screen paints from server markup, so START is on screen before
+  // React has attached its click handler. An enabled button in that window
+  // takes the click and does nothing, which reads as a broken page. Rendering
+  // it disabled until the first client effect runs makes the wait visible
+  // instead of silent, and a click that lands after hydration still works.
+  // False while the server-rendered markup is on screen, true once the client
+  // has taken over. Reading it this way rather than setting state in an effect
+  // gives the same answer without a second render pass.
+  const ready = useSyncExternalStore(
+    subscribeToNothing,
+    () => true,
+    () => false
+  );
   const [activeLocale, setActiveLocale] = useState(locale);
   const copy = getMessages(activeLocale);
   const [phase, setPhase] = useState<"start" | "select" | "world">("start");
@@ -91,6 +112,7 @@ export function ExperienceShell({ locale }: { locale: Locale }) {
       className="start-screen"
       data-locale={activeLocale}
       data-phase={phase}
+      data-ready={String(ready)}
     >
       {phase !== "world" ? (
         <Image
@@ -130,6 +152,9 @@ export function ExperienceShell({ locale }: { locale: Locale }) {
           <button
             className="primary-action"
             type="button"
+            data-ready={String(ready)}
+            aria-busy={ready ? undefined : true}
+            disabled={!ready}
             onClick={() => setPhase("select")}
           >
             {copy.start}

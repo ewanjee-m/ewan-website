@@ -2,6 +2,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { RPG_DISTRICT_ARCHITECTURE } from "../app/world/RpgTownArchitectureLayout";
+import {
+  RPG_KEY_LIGHT_MAX_ELEVATION_DEGREES,
+  RPG_KEY_LIGHT_MIN_ELEVATION_DEGREES
+} from "../app/world/RpgLightingDesign";
 import { RPG_LANDMARKS } from "../app/world/RpgTownSceneLayout";
 import { getRpgLandmarkRenderTier } from "../app/world/RpgTownRenderTier";
 import {
@@ -20,10 +24,42 @@ describe("RPG town scene static ownership", () => {
     );
   });
 
-  it("uses a high key light so buildings and characters keep compact contact shadows", () => {
-    expect(read("RpgTownAmbience.tsx")).toContain(
-      "position={[-12, 60, 12]}"
+  it("drives the key light from a facade-lit elevation instead of overhead", () => {
+    // The old literal [-12, 60, 12] is a 74 degree sun: a vertical wall
+    // receives at most 19 per cent of it, which is why every facade read as a
+    // black slab. The rig now builds the position from a per-zone elevation
+    // clamped into the design band.
+    const source = read("RpgTownAmbience.tsx");
+
+    expect(source).toContain("resolveRpgKeyLightPlacement(");
+    expect(source).toContain("resolveRpgRimLightPosition(");
+    expect(source).not.toContain("position={[-12, 60, 12]}");
+    expect(RPG_KEY_LIGHT_MAX_ELEVATION_DEGREES).toBeLessThanOrEqual(45);
+    expect(RPG_KEY_LIGHT_MIN_ELEVATION_DEGREES).toBeGreaterThanOrEqual(12);
+    expect(source).toContain("shadow-camera-left={-RPG_KEY_SHADOW_EXTENT}");
+  });
+
+  it("grounds the scene with an ambient floor, a rim light and a gradient sky", () => {
+    const source = read("RpgTownAmbience.tsx");
+
+    expect(source).toContain("<ambientLight");
+    expect(source).toContain("RPG_AMBIENT_LIGHT_INTENSITY");
+    expect(source).toContain("RPG_RIM_LIGHT_INTENSITY");
+    expect(source).toContain('name="rpg-sky-dome"');
+    // Fog fades into the sky, never into a separate grey.
+    expect(source).toContain("fog.current?.color.lerp(target.sky");
+    expect(source).toContain("target.fogNear");
+    expect(source).toContain("target.fogFar");
+  });
+
+  it("renders the world through neutral tone mapping at the design exposure", () => {
+    const source = read("SeamlessWorldCanvas.tsx");
+
+    expect(source).toContain("toneMapping: NeutralToneMapping");
+    expect(source).toContain(
+      "toneMappingExposure: RPG_TONE_MAPPING_EXPOSURE"
     );
+    expect(source).toContain("near: 0.5");
   });
 
   it("owns surfaces and rich landmarks in dedicated modules", () => {

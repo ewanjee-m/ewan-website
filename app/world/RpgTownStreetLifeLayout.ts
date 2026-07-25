@@ -1,6 +1,7 @@
 import type { DestinationId } from "../guide/GuideContract";
 import {
   RPG_DISTRICT_ARCHITECTURE,
+  RPG_KAWARA_ROOF_COLORS,
   type RpgDistrictArchitecture
 } from "./RpgTownArchitectureLayout";
 import {
@@ -257,6 +258,407 @@ export const RPG_SHOPFRONT_SHADES: readonly RpgStreetLifeInstance[] =
 
 export const RPG_SHOPFRONT_SIGNS: readonly RpgStreetLifeInstance[] =
   SHOPFRONT_STRUCTURES.flatMap(createShopfrontSigns);
+
+/**
+ * Noren: the split cloth curtain hung across a shop doorway. Three panels with
+ * gaps between them, indigo dyed, hanging from a rail just above head height.
+ * It is the cheapest possible signal that a doorway is a Japanese shop rather
+ * than a hole in a wall, and it survives at chase-camera distance because the
+ * dark cloth reads as a solid block against the lit shopfront behind it.
+ */
+const NOREN_COLORS = ["#27406b", "#1f3357", "#2f4a78"] as const;
+const NOREN_PANEL_COUNT = 3;
+
+function createNorenCurtain(
+  structure: RpgDistrictArchitecture,
+  index: number
+): RpgStreetLifeInstance[] {
+  const [width, height, depth] = structure.size;
+  const groundY = structure.position[1] - height / 2;
+  const facing = getRpgStreetFacingRotation(structure);
+  const clothColor = NOREN_COLORS[index % NOREN_COLORS.length];
+  // Hang the rail clear of the wall so the curtain never z-fights the facade.
+  const front = depth / 2 + 0.46;
+  const clothWidth = Math.min(0.66, (width * 0.62) / NOREN_PANEL_COUNT);
+  const clothHeight = Math.min(0.78, Math.max(0.5, height * 0.16));
+  const railY = groundY + Math.min(2.15, Math.max(1.5, height * 0.34));
+
+  return [
+    {
+      id: `${structure.id}-noren-rail`,
+      position: rotateLocal(structure.position, facing, [
+        0,
+        railY - structure.position[1] + clothHeight / 2 + 0.05,
+        front
+      ]),
+      size: [clothWidth * NOREN_PANEL_COUNT * 1.22, 0.09, 0.09],
+      rotation: [0, facing, 0],
+      color: "#2c2320"
+    },
+    ...Array.from({ length: NOREN_PANEL_COUNT }, (_, panel) => {
+      const offset =
+        (panel - (NOREN_PANEL_COUNT - 1) / 2) * clothWidth * 1.1;
+      return {
+        id: `${structure.id}-noren-panel-${panel}`,
+        position: rotateLocal(structure.position, facing, [
+          offset,
+          railY - structure.position[1],
+          front
+        ]),
+        size: [clothWidth, clothHeight, 0.05] as RpgStreetLifeVector3,
+        rotation: [0, facing, 0] as RpgStreetLifeVector3,
+        color: clothColor
+      };
+    })
+  ];
+}
+
+export const RPG_NOREN_CURTAINS: readonly RpgStreetLifeInstance[] =
+  SHOPFRONT_STRUCTURES.flatMap(createNorenCurtain);
+
+/**
+ * Koushi: the timber lattice that fronts a machiya. A run of thin vertical
+ * battens standing proud of the ground storey. At distance it collapses into a
+ * dark grained band, which is exactly the read a plain painted panel lacks.
+ */
+const LATTICE_BATTEN_COUNT = 7;
+const LATTICE_COLORS = ["#2c2320", "#31292a", "#3a2f28"] as const;
+
+function createShopfrontLattice(
+  structure: RpgDistrictArchitecture,
+  index: number
+): RpgStreetLifeInstance[] {
+  const [width, height, depth] = structure.size;
+  const groundY = structure.position[1] - height / 2;
+  const facing = getRpgStreetFacingRotation(structure);
+  const front = depth / 2 + 0.13;
+  const battenHeight = Math.min(1.55, Math.max(0.95, height * 0.3));
+  const span = width * 0.72;
+
+  return Array.from({ length: LATTICE_BATTEN_COUNT }, (_, batten) => {
+    const offset =
+      -span / 2 + (span * batten) / (LATTICE_BATTEN_COUNT - 1);
+    return {
+      id: `${structure.id}-lattice-${batten}`,
+      position: rotateLocal(structure.position, facing, [
+        offset,
+        groundY - structure.position[1] + battenHeight / 2 + 0.1,
+        front
+      ]),
+      size: [0.075, battenHeight, 0.06] as RpgStreetLifeVector3,
+      rotation: [0, facing, 0] as RpgStreetLifeVector3,
+      color: LATTICE_COLORS[(index + batten) % LATTICE_COLORS.length]
+    };
+  });
+}
+
+export const RPG_SHOPFRONT_LATTICE: readonly RpgStreetLifeInstance[] =
+  SHOPFRONT_STRUCTURES.flatMap(createShopfrontLattice);
+
+const KANBAN_STRUCTURES = RPG_DISTRICT_ARCHITECTURE.filter(
+  ({ kind }) => kind === "tower" || kind === "terminal"
+);
+
+/**
+ * Tate-kanban: the stacked vertical sign blades bolted up the corner of a
+ * Japanese city building, one per tenant floor. This is the cue that was
+ * missing from the Tokyo zone — the towers there are correctly flat-roofed
+ * mid-rise blocks, so the street has to be read from its signage rather than
+ * its roofline, and a bare wall of windows reads as any city anywhere.
+ */
+const KANBAN_COLORS: Record<string, readonly string[]> = {
+  airport: ["#ffd9a4", "#cfe6ef"],
+  tokyo: ["#ffd782", "#8fe4ea", "#ff9fbb", "#ffb45f"],
+  gyukatsu: ["#ffc76b", "#ff9a63"],
+  sakura: ["#ffd2e0", "#ffe3b5"],
+  hanabi: ["#ffbf6a", "#ff8d7a"]
+};
+
+function createVerticalKanban(
+  structure: RpgDistrictArchitecture,
+  index: number
+): RpgStreetLifeInstance[] {
+  const [width, height, depth] = structure.size;
+  const groundY = structure.position[1] - height / 2;
+  const facing = getRpgStreetFacingRotation(structure);
+  const palette = KANBAN_COLORS[structure.zoneId] ?? KANBAN_COLORS.tokyo;
+  // Blades hang off the leading corner, alternating sides between buildings so
+  // a run of towers does not read as a repeated stamp.
+  const cornerSign = index % 2 === 0 ? 1 : -1;
+  const bladeHeight = Math.min(1.9, Math.max(1.1, height * 0.26));
+  const bladeCount = height > 6 ? 3 : 2;
+  const lowest = groundY + Math.min(3.1, Math.max(2.4, height * 0.4));
+
+  return Array.from({ length: bladeCount }, (_, blade) => ({
+    id: `${structure.id}-kanban-${blade}`,
+    position: rotateLocal(structure.position, facing, [
+      cornerSign * (width / 2 - 0.24),
+      lowest + blade * (bladeHeight + 0.34) - structure.position[1],
+      depth / 2 + 0.3
+    ]),
+    size: [0.42, bladeHeight, 0.1] as RpgStreetLifeVector3,
+    rotation: [0, facing, 0] as RpgStreetLifeVector3,
+    color: palette[(index + blade) % palette.length]
+  }));
+}
+
+export const RPG_VERTICAL_KANBAN: readonly RpgStreetLifeInstance[] =
+  KANBAN_STRUCTURES.flatMap(createVerticalKanban);
+
+export interface RpgToriiGate {
+  readonly id: string;
+  readonly zoneId: DestinationId;
+  readonly position: RpgStreetLifeVector3;
+  readonly rotationY: number;
+  readonly height: number;
+  readonly span: number;
+  readonly color: string;
+}
+
+/**
+ * Vermilion torii. One stands on the airport approach because that zone is the
+ * first thing a visitor sees and had no Japanese cue at all; the other two cap
+ * approaches that already have stone lanterns or a festival street behind them,
+ * so the gate reads as the entrance to something rather than as scenery.
+ */
+export const RPG_TORII_GATES: readonly RpgToriiGate[] = [
+  {
+    id: "airport-approach-torii",
+    zoneId: "airport",
+    position: [-29, 0, 9],
+    rotationY: 0,
+    height: 4.5,
+    span: 3.5,
+    color: "#c1362a"
+  },
+  {
+    id: "tokyo-alley-torii",
+    zoneId: "tokyo",
+    position: [-21.5, 0, 27.5],
+    rotationY: Math.PI / 2,
+    height: 3.8,
+    span: 2.8,
+    color: "#b8332b"
+  },
+  {
+    // Sakura and hanabi already carry landmark torii, so the third gate goes
+    // to gyukatsu — the food street had no shrine cue of its own — straddling
+    // the east-west walking line so the visitor passes under it.
+    id: "gyukatsu-approach-torii",
+    zoneId: "gyukatsu",
+    position: [2, 0, 0],
+    rotationY: Math.PI / 2,
+    height: 4.2,
+    span: 3.2,
+    color: "#c1362a"
+  }
+];
+
+const TORII_TIMBER = "#2f2320";
+
+function createToriiPillars(gate: RpgToriiGate): RpgStreetLifeInstance[] {
+  return [-1, 1].map((side) => ({
+    id: `${gate.id}-pillar-${side > 0 ? "east" : "west"}`,
+    position: rotateLocal(
+      [gate.position[0], 0, gate.position[2]],
+      gate.rotationY,
+      [(side * gate.span) / 2, gate.height / 2, 0]
+    ),
+    size: [0.28, gate.height, 0.28] as RpgStreetLifeVector3,
+    rotation: [0, gate.rotationY, 0.02 * -side] as RpgStreetLifeVector3,
+    color: gate.color
+  }));
+}
+
+/**
+ * Kasagi (the swept top lintel), shimaki under it, nuki tie beam, and the
+ * gakuzuka plaque post between them. The kasagi is deliberately wider than the
+ * pillar span and given a slight upward roll at each end — the upturned lintel
+ * is the part of the silhouette people actually recognise.
+ */
+function createToriiBeams(gate: RpgToriiGate): RpgStreetLifeInstance[] {
+  const kasagiY = gate.height - 0.12;
+  const nukiY = gate.height * 0.72;
+  const nukiHeight = 0.18;
+  const shimakiHeight = 0.22;
+  // The gakuzuka is a strut, not an ornament: it has to span from the top of
+  // the nuki to the underside of the shimaki with no daylight at either end,
+  // or it reads as a dark rectangle floating inside the gate.
+  const plaqueBottom = nukiY + nukiHeight / 2;
+  const plaqueTop = kasagiY - shimakiHeight / 2;
+  const plaqueHeight = Math.max(0.24, plaqueTop - plaqueBottom);
+  return [
+    {
+      id: `${gate.id}-kasagi`,
+      position: rotateLocal(
+        [gate.position[0], 0, gate.position[2]],
+        gate.rotationY,
+        [0, kasagiY + 0.24, 0]
+      ),
+      size: [gate.span + 1.35, 0.2, 0.42] as RpgStreetLifeVector3,
+      rotation: [0, gate.rotationY, 0] as RpgStreetLifeVector3,
+      color: TORII_TIMBER
+    },
+    ...[-1, 1].map((side) => ({
+      id: `${gate.id}-kasagi-flick-${side > 0 ? "east" : "west"}`,
+      position: rotateLocal(
+        [gate.position[0], 0, gate.position[2]],
+        gate.rotationY,
+        [(side * (gate.span + 1.35)) / 2 + side * 0.24, kasagiY + 0.33, 0]
+      ),
+      size: [0.62, 0.17, 0.4] as RpgStreetLifeVector3,
+      rotation: [0, gate.rotationY, side * 0.19] as RpgStreetLifeVector3,
+      color: TORII_TIMBER
+    })),
+    {
+      id: `${gate.id}-shimaki`,
+      position: rotateLocal(
+        [gate.position[0], 0, gate.position[2]],
+        gate.rotationY,
+        [0, kasagiY, 0]
+      ),
+      size: [gate.span + 0.95, shimakiHeight, 0.34] as RpgStreetLifeVector3,
+      rotation: [0, gate.rotationY, 0] as RpgStreetLifeVector3,
+      color: gate.color
+    },
+    {
+      id: `${gate.id}-nuki`,
+      position: rotateLocal(
+        [gate.position[0], 0, gate.position[2]],
+        gate.rotationY,
+        [0, nukiY, 0]
+      ),
+      size: [gate.span + 0.5, nukiHeight, 0.24] as RpgStreetLifeVector3,
+      rotation: [0, gate.rotationY, 0] as RpgStreetLifeVector3,
+      color: gate.color
+    },
+    {
+      id: `${gate.id}-gakuzuka`,
+      position: rotateLocal(
+        [gate.position[0], 0, gate.position[2]],
+        gate.rotationY,
+        [0, plaqueBottom + plaqueHeight / 2, 0]
+      ),
+      size: [0.3, plaqueHeight, 0.2] as RpgStreetLifeVector3,
+      rotation: [0, gate.rotationY, 0] as RpgStreetLifeVector3,
+      color: TORII_TIMBER
+    }
+  ];
+}
+
+export const RPG_TORII_PILLARS: readonly RpgStreetLifeInstance[] =
+  RPG_TORII_GATES.flatMap(createToriiPillars);
+
+export const RPG_STREET_TORII: readonly RpgStreetLifeInstance[] = [
+  ...RPG_TORII_PILLARS,
+  ...RPG_TORII_GATES.flatMap(createToriiBeams)
+];
+
+interface BoardFenceRun {
+  readonly id: string;
+  readonly axis: "x" | "z";
+  readonly fixed: number;
+  readonly from: number;
+  readonly to: number;
+  readonly panelCount: number;
+  readonly height: number;
+  readonly color: string;
+  readonly capColor: string;
+}
+
+/**
+ * Itabei: a board fence of close-set vertical planks under a capping rail.
+ * These run along the edges the hedges used to soften on their own — a clipped
+ * hedge alone reads suburban anywhere, whereas a dark timber fence with a
+ * capping rail behind it reads as the back lane of a Japanese block.
+ */
+const BOARD_FENCE_RUNS: readonly BoardFenceRun[] = [
+  {
+    id: "tokyo-fence-north",
+    axis: "x",
+    fixed: 32.6,
+    from: -16.5,
+    to: -0.5,
+    panelCount: 8,
+    height: 1.32,
+    color: "#4a3a2c",
+    capColor: "#332720"
+  },
+  {
+    id: "airport-fence-east",
+    axis: "z",
+    fixed: -20.8,
+    from: 18,
+    to: 30,
+    panelCount: 7,
+    height: 1.24,
+    color: "#5b4636",
+    capColor: "#3a2d24"
+  },
+  {
+    id: "sakura-fence-west",
+    axis: "z",
+    fixed: 1.3,
+    from: -34,
+    to: -24,
+    panelCount: 6,
+    height: 1.18,
+    color: "#4f3d2f",
+    capColor: "#31261e"
+  },
+  {
+    id: "gyukatsu-fence-south",
+    axis: "x",
+    fixed: -10.9,
+    from: 10.6,
+    to: 15,
+    panelCount: 4,
+    height: 1.26,
+    color: "#54402f",
+    capColor: "#352921"
+  }
+];
+
+export const RPG_BOARD_FENCE_PANELS: readonly RpgStreetLifeInstance[] =
+  BOARD_FENCE_RUNS.flatMap((run) => {
+    const step = (run.to - run.from) / run.panelCount;
+    const panels = Array.from({ length: run.panelCount }, (_, index) => {
+      const along = run.from + step * (index + 0.5);
+      const position: RpgStreetLifeVector3 =
+        run.axis === "x"
+          ? [along, run.height / 2, run.fixed]
+          : [run.fixed, run.height / 2, along];
+      const size: RpgStreetLifeVector3 =
+        run.axis === "x"
+          ? [Math.abs(step) * 0.94, run.height, 0.13]
+          : [0.13, run.height, Math.abs(step) * 0.94];
+      return {
+        id: `${run.id}-panel-${index}`,
+        position,
+        size,
+        rotation: NO_ROTATION,
+        color: run.color
+      };
+    });
+    const span = Math.abs(run.to - run.from);
+    const centre = (run.from + run.to) / 2;
+    const capPosition: RpgStreetLifeVector3 =
+      run.axis === "x"
+        ? [centre, run.height + 0.07, run.fixed]
+        : [run.fixed, run.height + 0.07, centre];
+    const capSize: RpgStreetLifeVector3 =
+      run.axis === "x" ? [span, 0.14, 0.27] : [0.27, 0.14, span];
+    return [
+      ...panels,
+      {
+        id: `${run.id}-cap`,
+        position: capPosition,
+        size: capSize,
+        rotation: NO_ROTATION,
+        color: run.capColor
+      }
+    ];
+  });
 
 interface WireLineDefinition {
   id: string;
@@ -695,61 +1097,67 @@ export const RPG_HEDGE_BLOCKS: readonly RpgStreetLifeInstance[] =
     })
   );
 
-const PALM_TREES = [
-  { id: "airport-palm-a", position: [-35.1, 0, -6.5] as RpgStreetLifeVector3, height: 4.4, lean: 0.08 },
-  { id: "airport-palm-b", position: [-35.3, 0, 1.5] as RpgStreetLifeVector3, height: 5.1, lean: -0.06 },
-  { id: "airport-palm-c", position: [-35, 0, 10.5] as RpgStreetLifeVector3, height: 4.7, lean: -0.1 },
-  { id: "airport-palm-d", position: [-35.4, 0, 21] as RpgStreetLifeVector3, height: 5.3, lean: -0.09 },
-  { id: "airport-palm-e", position: [-35.1, 0, 30.5] as RpgStreetLifeVector3, height: 4.5, lean: 0.07 },
-  { id: "gyukatsu-palm-east", position: [19.6, 0, 9.2] as RpgStreetLifeVector3, height: 4.8, lean: -0.08 },
-  { id: "hanabi-palm-north", position: [18.4, 0, -14.8] as RpgStreetLifeVector3, height: 4.6, lean: 0.09 },
-  { id: "tokyo-palm-plaza", position: [2.6, 0, 13.4] as RpgStreetLifeVector3, height: 5, lean: -0.07 }
+/**
+ * Clipped garden pine (matsu). The airport approach used to be lined with
+ * palms, which read as tropical rather than Japanese; a pine is a short leaning
+ * trunk carrying two or three wide flat cushions of needle, each one much
+ * broader than it is tall. That flat-plate silhouette is the whole cue, so the
+ * tier proportions matter more than the count.
+ */
+const PINE_TREES = [
+  { id: "airport-pine-a", position: [-35.1, 0, -6.5] as RpgStreetLifeVector3, height: 3.5, lean: 0.1 },
+  { id: "airport-pine-b", position: [-35.3, 0, 1.5] as RpgStreetLifeVector3, height: 4.1, lean: -0.08 },
+  { id: "airport-pine-c", position: [-35, 0, 10.5] as RpgStreetLifeVector3, height: 3.7, lean: -0.12 },
+  { id: "airport-pine-d", position: [-35.4, 0, 21] as RpgStreetLifeVector3, height: 4.3, lean: -0.11 },
+  { id: "airport-pine-e", position: [-35.1, 0, 30.5] as RpgStreetLifeVector3, height: 3.6, lean: 0.09 },
+  { id: "gyukatsu-pine-east", position: [19.6, 0, 9.2] as RpgStreetLifeVector3, height: 3.9, lean: -0.1 },
+  { id: "hanabi-pine-north", position: [18.4, 0, -14.8] as RpgStreetLifeVector3, height: 3.7, lean: 0.11 },
+  { id: "tokyo-pine-plaza", position: [2.6, 0, 13.4] as RpgStreetLifeVector3, height: 4, lean: -0.09 }
 ];
 
-export const RPG_PALM_TRUNKS: readonly RpgStreetLifeInstance[] =
-  PALM_TREES.flatMap((palm) =>
-    Array.from({ length: 3 }, (_, index) => {
-      const segmentHeight = palm.height / 3;
-      const lean = palm.lean * (index + 1);
+const PINE_NEEDLE_COLORS = ["#33512f", "#3d5c35", "#476b3c"] as const;
+
+export const RPG_PINE_TRUNKS: readonly RpgStreetLifeInstance[] =
+  PINE_TREES.flatMap((pine) =>
+    Array.from({ length: 2 }, (_, index) => {
+      const segmentHeight = pine.height / 2;
+      const lean = pine.lean * (index + 1);
       return {
-        id: `${palm.id}-trunk-${index}`,
+        id: `${pine.id}-trunk-${index}`,
         position: [
-          palm.position[0] + lean * segmentHeight * 0.9,
+          pine.position[0] + lean * segmentHeight * 1.1,
           segmentHeight * (index + 0.5),
-          palm.position[2] + lean * segmentHeight * 0.4
+          pine.position[2] + lean * segmentHeight * 0.5
         ] as RpgStreetLifeVector3,
         size: [
-          0.23 - index * 0.035,
+          0.28 - index * 0.06,
           segmentHeight + 0.06,
-          0.23 - index * 0.035
+          0.28 - index * 0.06
         ] as RpgStreetLifeVector3,
-        rotation: [0, index * 0.5, lean] as RpgStreetLifeVector3,
-        color: index === 2 ? "#7a5c42" : "#6b5039"
+        rotation: [0, index * 0.4, lean * 1.4] as RpgStreetLifeVector3,
+        color: index === 1 ? "#6c5744" : "#5b4738"
       };
     })
   );
 
-export const RPG_PALM_FRONDS: readonly RpgStreetLifeInstance[] =
-  PALM_TREES.flatMap((palm) =>
-    Array.from({ length: 7 }, (_, index) => {
-      const angle = (Math.PI * 2 * index) / 7 + deterministicUnit(index) * 0.3;
-      const crownX = palm.position[0] + palm.lean * palm.height * 0.85;
-      const crownZ = palm.position[2] + palm.lean * palm.height * 0.4;
-      const reach = 1.55;
+export const RPG_PINE_TIERS: readonly RpgStreetLifeInstance[] =
+  PINE_TREES.flatMap((pine) =>
+    Array.from({ length: 3 }, (_, index) => {
+      // Tiers widen downward and step outward on alternating sides, the way a
+      // trained pine is cut: no tier sits directly above the one below it.
+      const drop = index * 0.62;
+      const spread = 1.62 - index * 0.3;
+      const sway = deterministicUnit(index + pine.height) - 0.5;
       return {
-        id: `${palm.id}-frond-${index}`,
+        id: `${pine.id}-tier-${index}`,
         position: [
-          crownX + Math.cos(angle) * reach * 0.44,
-          palm.height + 0.12 - (index % 3) * 0.16,
-          crownZ + Math.sin(angle) * reach * 0.44
+          pine.position[0] + pine.lean * pine.height * 0.9 + sway * 0.44,
+          pine.height + 0.24 - drop,
+          pine.position[2] + pine.lean * pine.height * 0.45 - sway * 0.3
         ] as RpgStreetLifeVector3,
-        size: [0.42, reach, 0.42] as RpgStreetLifeVector3,
-        rotation: [
-          Math.PI / 2 - 0.42 + (index % 2) * 0.12,
-          -angle,
-          0
-        ] as RpgStreetLifeVector3,
-        color: index % 2 === 0 ? "#4f7a45" : "#5f8b4d"
+        size: [spread, 0.36, spread * 0.92] as RpgStreetLifeVector3,
+        rotation: [0, index * 0.7, 0] as RpgStreetLifeVector3,
+        color: PINE_NEEDLE_COLORS[index % PINE_NEEDLE_COLORS.length]
       };
     })
   );
@@ -1105,23 +1513,32 @@ export const RPG_BUS_STOP_STRUCTURES: readonly RpgStreetLifeInstance[] = [
       1.15,
       BUS_SHELTER_ORIGIN[2] + offsetZ
     ],
-    size: [0.11, 2.3, 0.11],
+    size: [0.13, 2.3, 0.13],
     rotation: NO_ROTATION,
-    color: "#5d6a70"
+    color: "#3a2f28"
   })),
   {
+    // Kawara tile on the shelter too, so the very first structure the visitor
+    // stands beside belongs to the same town as everything behind it.
     id: "airport-bus-shelter-roof",
     position: [BUS_SHELTER_ORIGIN[0], 2.42, BUS_SHELTER_ORIGIN[2]],
-    size: [1.75, 0.14, 3.8],
+    size: [1.95, 0.14, 4.1],
     rotation: [0, 0, -0.08],
-    color: "#e2ded2"
+    color: RPG_KAWARA_ROOF_COLORS[0]
+  },
+  {
+    id: "airport-bus-shelter-ridge",
+    position: [BUS_SHELTER_ORIGIN[0], 2.56, BUS_SHELTER_ORIGIN[2]],
+    size: [0.34, 0.16, 4.1],
+    rotation: NO_ROTATION,
+    color: RPG_KAWARA_ROOF_COLORS[1]
   },
   {
     id: "airport-bus-shelter-fascia",
-    position: [BUS_SHELTER_ORIGIN[0] - 0.82, 2.28, BUS_SHELTER_ORIGIN[2]],
-    size: [0.12, 0.28, 3.8],
+    position: [BUS_SHELTER_ORIGIN[0] - 0.94, 2.26, BUS_SHELTER_ORIGIN[2]],
+    size: [0.12, 0.26, 4.1],
     rotation: NO_ROTATION,
-    color: "#cf6a52"
+    color: "#2c2320"
   },
   {
     id: "airport-bus-shelter-back",
@@ -1235,6 +1652,7 @@ export const RPG_COASTLINE_RING_ROCKS: readonly RpgStreetLifeRock[] = [
 
 export const RPG_TOWN_COLUMN_PROPS: readonly RpgStreetLifeInstance[] = [
   ...RPG_UTILITY_POLES,
-  ...RPG_PALM_TRUNKS,
-  ...RPG_BUS_STOP_STRUCTURES
+  ...RPG_PINE_TRUNKS,
+  ...RPG_BUS_STOP_STRUCTURES,
+  ...RPG_TORII_PILLARS
 ];

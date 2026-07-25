@@ -12,6 +12,60 @@ export type RpgArchitectureRoofStyle =
   | "terrace"
   | "stepped";
 
+/**
+ * Kawara roof tile. Real tile is a low-chroma dark grey with a blue or violet
+ * cast, never a per-building accent hue — a street reads as Japanese partly
+ * because every roof on it is the same handful of greys while the walls vary.
+ * Every entry is kept under 0.36 relative luminance so a roof always reads as
+ * a dark cap against both a bright morning sky and a night one.
+ */
+export const RPG_KAWARA_ROOF_COLORS = [
+  "#39414c",
+  "#2f3439",
+  "#454f58",
+  "#343c42",
+  "#4a4a52"
+] as const;
+
+/**
+ * Machiya townhouse walls: off-white shikkui plaster against dark charred
+ * timber, with a warm ochre plaster between them. Plaster entries sit above
+ * 0.7 luminance and timber entries below 0.3 so the contrast survives the
+ * evening zones' lower key light.
+ */
+export const RPG_MACHIYA_PLASTER_COLORS = [
+  "#efe9dc",
+  "#e3dccb",
+  "#d8cfba"
+] as const;
+
+export const RPG_MACHIYA_TIMBER_COLORS = [
+  "#463a30",
+  "#3b2f28",
+  "#302722"
+] as const;
+
+export const RPG_MACHIYA_WALL_COLORS = [
+  ...RPG_MACHIYA_PLASTER_COLORS,
+  ...RPG_MACHIYA_TIMBER_COLORS
+] as const;
+
+/**
+ * Above this wall height a building is plastered rather than boarded. Charred
+ * timber is right for a single-storey shopfront and wrong for a whole tall
+ * elevation — at chase distance a tall timber wall loses all its detail and
+ * reads as one black slab, which is the opposite of the intended contrast.
+ */
+export const RPG_TIMBER_WALL_MAX_HEIGHT = 6;
+
+/** Dark timber for eave fascia, verge boards and window frames. */
+export const RPG_MACHIYA_TRIM_COLORS = [
+  "#3a2f28",
+  "#2c2320",
+  "#443a31",
+  "#31292a"
+] as const;
+
 export interface RpgDistrictArchitecture {
   id: string;
   zoneId: DestinationId;
@@ -20,6 +74,7 @@ export interface RpgDistrictArchitecture {
   size: readonly [number, number, number];
   color: string;
   accent: string;
+  roofColor: string;
   rotationY: number;
   variant: number;
   roofStyle: RpgArchitectureRoofStyle;
@@ -70,6 +125,7 @@ export interface RpgPerimeterBuilding {
   rotationY: number;
   color: string;
   accent: string;
+  roofColor: string;
   roofStyle: RpgArchitectureRoofStyle;
   windowRows: number;
   windowColumns: number;
@@ -82,10 +138,35 @@ function getRoofStyle(kind: RpgLandmarkKind): RpgArchitectureRoofStyle {
   return "terrace";
 }
 
+/** Deterministic index into a palette, so a rebuild never reshuffles the town. */
+function pickKawara(seed: number): string {
+  return RPG_KAWARA_ROOF_COLORS[
+    Math.abs(seed) % RPG_KAWARA_ROOF_COLORS.length
+  ];
+}
+
+/**
+ * Picks a wall from the machiya palette, forcing plaster once the elevation is
+ * tall enough that a boarded wall would flatten into a silhouette.
+ */
+function pickMachiyaWall(seed: number, height: number): string {
+  const index = Math.abs(seed) % PERIMETER_WALL_PAIRS.length;
+  const [wall] = PERIMETER_WALL_PAIRS[index];
+  if (
+    height > RPG_TIMBER_WALL_MAX_HEIGHT &&
+    (RPG_MACHIYA_TIMBER_COLORS as readonly string[]).includes(wall)
+  ) {
+    return RPG_MACHIYA_PLASTER_COLORS[
+      index % RPG_MACHIYA_PLASTER_COLORS.length
+    ];
+  }
+  return wall;
+}
+
 export const RPG_DISTRICT_ARCHITECTURE: readonly RpgDistrictArchitecture[] =
   RPG_LANDMARKS.filter(
     (landmark) => getRpgLandmarkRenderTier(landmark) === "batched"
-  ).map((landmark) => ({
+  ).map((landmark, index) => ({
     id: landmark.id,
     zoneId: landmark.zoneId,
     kind: landmark.kind,
@@ -93,12 +174,54 @@ export const RPG_DISTRICT_ARCHITECTURE: readonly RpgDistrictArchitecture[] =
     size: landmark.size,
     color: landmark.color,
     accent: landmark.accent,
+    roofColor: pickKawara(index * 3 + landmark.id.length),
     rotationY: landmark.rotationY ?? 0,
     variant: landmark.variant ?? 0,
     roofStyle: getRoofStyle(landmark.kind),
     detailLevel:
       landmark.kind === "tower" || landmark.kind === "machiya" ? 3 : 2,
     blocksMovement: true
+  }));
+
+export interface RpgArchitectureGroundSkirt {
+  readonly id: string;
+  readonly structureId: string;
+  readonly position: readonly [number, number, number];
+  readonly size: readonly [number, number, number];
+  readonly rotationY: number;
+  readonly color: string;
+}
+
+/**
+ * A thin darker slab under each building footprint. Shadow maps are switched
+ * off on the low quality tier, so without this nothing grounds a building
+ * there — it reads as intersecting the plaza rather than standing on it. The
+ * top sits clear of every surface layer so it never z-fights the paving.
+ */
+export const RPG_ARCHITECTURE_GROUND_SKIRT_TOP = 0.028;
+export const RPG_ARCHITECTURE_GROUND_SKIRT_THICKNESS = 0.026;
+export const RPG_ARCHITECTURE_GROUND_SKIRT_SPREAD = 1.18;
+export const RPG_ARCHITECTURE_GROUND_SKIRT_COLOR = "#5f584f";
+
+export const RPG_ARCHITECTURE_GROUND_SKIRTS:
+  readonly RpgArchitectureGroundSkirt[] = RPG_DISTRICT_ARCHITECTURE.filter(
+    ({ kind }) => kind !== "sakuraTree"
+  ).map((structure) => ({
+    id: `${structure.id}-ground-skirt`,
+    structureId: structure.id,
+    position: [
+      structure.position[0],
+      RPG_ARCHITECTURE_GROUND_SKIRT_TOP -
+        RPG_ARCHITECTURE_GROUND_SKIRT_THICKNESS / 2,
+      structure.position[2]
+    ] as const,
+    size: [
+      structure.size[0] * RPG_ARCHITECTURE_GROUND_SKIRT_SPREAD,
+      RPG_ARCHITECTURE_GROUND_SKIRT_THICKNESS,
+      structure.size[2] * RPG_ARCHITECTURE_GROUND_SKIRT_SPREAD
+    ] as const,
+    rotationY: structure.rotationY,
+    color: RPG_ARCHITECTURE_GROUND_SKIRT_COLOR
   }));
 
 const ARCHITECTURE_SIDES: readonly RpgArchitectureSide[] = [
@@ -234,7 +357,7 @@ const GYUKATSU_PROPS = [
       index < 2 ? Math.PI / 2 : -Math.PI / 2
     )
   ),
-  createStreetProp("gyukatsu-lamp-a", "gyukatsu", "streetLamp", [5, 1.65, 5.8], "#3e4c4c", "#ffd48b"),
+  createStreetProp("gyukatsu-lamp-a", "gyukatsu", "streetLamp", [2.2, 1.65, 5.8], "#3e4c4c", "#ffd48b"),
   createStreetProp("gyukatsu-lamp-b", "gyukatsu", "streetLamp", [15, 1.65, -3.8], "#3e4c4c", "#ffd48b"),
   createStreetProp("gyukatsu-bench", "gyukatsu", "bench", [4, 0.45, -8.2], "#704b3b", "#d4af72"),
   createStreetProp("gyukatsu-vending-plaza", "gyukatsu", "vendingMachine", [12.9, 1, 2.4], "#efe8dc", "#da6459", Math.PI / 2)
@@ -284,24 +407,34 @@ export const RPG_ARCHITECTURE_STREET_PROPS: readonly RpgArchitectureStreetProp[]
   ...HANABI_PROPS
 ];
 
-const PERIMETER_COLORS = [
-  ["#8f9099", "#3c4a56"],
-  ["#7f8f92", "#2f515c"],
-  ["#94818a", "#5c414c"],
-  ["#8b8d79", "#4a4c3c"],
-  ["#7d8b9a", "#36506a"]
+/**
+ * Wall / trim pairs for the two tiled-roof rings. Plaster and timber
+ * alternate along a run the way a machiya street does, rather than each
+ * building being its own city grey.
+ */
+const PERIMETER_WALL_PAIRS = [
+  [RPG_MACHIYA_WALL_COLORS[0], RPG_MACHIYA_TRIM_COLORS[0]],
+  [RPG_MACHIYA_WALL_COLORS[3], RPG_MACHIYA_TRIM_COLORS[1]],
+  [RPG_MACHIYA_WALL_COLORS[1], RPG_MACHIYA_TRIM_COLORS[2]],
+  [RPG_MACHIYA_WALL_COLORS[4], RPG_MACHIYA_TRIM_COLORS[0]],
+  [RPG_MACHIYA_WALL_COLORS[2], RPG_MACHIYA_TRIM_COLORS[3]],
+  [RPG_MACHIYA_WALL_COLORS[5], RPG_MACHIYA_TRIM_COLORS[1]]
 ] as const;
+/** The far ring stays a modern city — Japanese towns do sit under one. */
 const SKYLINE_COLORS = [
   ["#67707f", "#2c3a4b"],
   ["#5d6b76", "#27414f"],
   ["#6f6873", "#3d3243"],
   ["#616f74", "#2b4148"]
 ] as const;
-const PERIMETER_ROOFS: readonly RpgArchitectureRoofStyle[] = [
+/**
+ * The two near rings carry pitched tile only. Alternating gable and hip gives
+ * the horizon a ridge-and-hip rhythm instead of a row of flat caps, which was
+ * the single largest generic surface in every zone capture.
+ */
+const TILED_PERIMETER_ROOFS: readonly RpgArchitectureRoofStyle[] = [
   "gable",
-  "hip",
-  "terrace",
-  "stepped"
+  "hip"
 ];
 
 const PERIMETER_NEIGHBORHOOD_RING: readonly RpgPerimeterBuilding[] =
@@ -314,7 +447,9 @@ const PERIMETER_NEIGHBORHOOD_RING: readonly RpgPerimeterBuilding[] =
     const depth = 4.2 + ((index + 1) % 3) * 0.58;
     const x = side === 1 ? 41.5 : side === 3 ? -41.5 : along;
     const z = side === 0 ? -41.5 : side === 2 ? 41.5 : along;
-    const [color, accent] = PERIMETER_COLORS[index % PERIMETER_COLORS.length];
+    const [, accent] =
+      PERIMETER_WALL_PAIRS[index % PERIMETER_WALL_PAIRS.length];
+    const color = pickMachiyaWall(index, height);
 
     return {
       id: `perimeter-neighborhood-${index}`,
@@ -324,7 +459,8 @@ const PERIMETER_NEIGHBORHOOD_RING: readonly RpgPerimeterBuilding[] =
         side === 0 ? 0 : side === 1 ? -Math.PI / 2 : side === 2 ? Math.PI : Math.PI / 2,
       color,
       accent,
-      roofStyle: PERIMETER_ROOFS[index % PERIMETER_ROOFS.length],
+      roofColor: pickKawara(index * 2 + 1),
+      roofStyle: TILED_PERIMETER_ROOFS[index % TILED_PERIMETER_ROOFS.length],
       windowRows: Math.max(2, Math.floor(height / 1.6)),
       windowColumns: Math.max(2, Math.floor(width / 1.4))
     } satisfies RpgPerimeterBuilding;
@@ -352,6 +488,7 @@ const PERIMETER_SKYLINE_RING: readonly RpgPerimeterBuilding[] = Array.from(
         side === 0 ? 0 : side === 1 ? -Math.PI / 2 : side === 2 ? Math.PI : Math.PI / 2,
       color,
       accent,
+      roofColor: pickKawara(index + 4),
       roofStyle: index % 3 === 0 ? "stepped" : "terrace",
       windowRows: Math.max(3, Math.floor(height / 2.4)),
       windowColumns: Math.max(2, Math.floor(width / 2.2))
@@ -371,7 +508,9 @@ const PERIMETER_MID_RING: readonly RpgPerimeterBuilding[] = Array.from(
     const depth = 4.8 + ((index + 1) % 3) * 0.9;
     const x = side === 1 ? outward : side === 3 ? -outward : along;
     const z = side === 0 ? -outward : side === 2 ? outward : along;
-    const [color, accent] = SKYLINE_COLORS[(index + 2) % SKYLINE_COLORS.length];
+    const [, accent] =
+      PERIMETER_WALL_PAIRS[(index + 2) % PERIMETER_WALL_PAIRS.length];
+    const color = pickMachiyaWall(index + 2, height);
 
     return {
       id: `perimeter-mid-${index}`,
@@ -381,7 +520,8 @@ const PERIMETER_MID_RING: readonly RpgPerimeterBuilding[] = Array.from(
         side === 0 ? 0 : side === 1 ? -Math.PI / 2 : side === 2 ? Math.PI : Math.PI / 2,
       color,
       accent,
-      roofStyle: index % 2 === 0 ? "terrace" : "stepped",
+      roofColor: pickKawara(index * 3 + 2),
+      roofStyle: TILED_PERIMETER_ROOFS[(index + 1) % TILED_PERIMETER_ROOFS.length],
       windowRows: Math.max(3, Math.floor(height / 2)),
       windowColumns: Math.max(2, Math.floor(width / 1.8))
     } satisfies RpgPerimeterBuilding;
@@ -393,3 +533,130 @@ export const RPG_PERIMETER_NEIGHBORHOOD: readonly RpgPerimeterBuilding[] = [
   ...PERIMETER_MID_RING,
   ...PERIMETER_SKYLINE_RING
 ];
+
+export const RPG_PERIMETER_NEAR_RING_IDS: readonly string[] =
+  PERIMETER_NEIGHBORHOOD_RING.map(({ id }) => id);
+export const RPG_PERIMETER_MID_RING_IDS: readonly string[] =
+  PERIMETER_MID_RING.map(({ id }) => id);
+export const RPG_PERIMETER_SKYLINE_RING_IDS: readonly string[] =
+  PERIMETER_SKYLINE_RING.map(({ id }) => id);
+
+/**
+ * How far a tiled roof projects past the wall below it, per side. Deep eaves
+ * are the single strongest silhouette cue for a Japanese roof: the shadow
+ * line they throw is what separates a machiya from a box with a coloured cap.
+ * 0.62 world units is roughly a third of a storey at this town's scale.
+ */
+export const RPG_TILED_ROOF_EAVE_OVERHANG = 0.62;
+/** Height of the ridge above the eave line, as a share of the footprint. */
+export const RPG_TILED_ROOF_PITCH = 0.3;
+/** Thickness of one tiled roof slab. */
+export const RPG_TILED_ROOF_THICKNESS = 0.17;
+
+export interface RpgTiledRoof {
+  readonly id: string;
+  readonly structureId: string;
+  readonly position: readonly [number, number, number];
+  readonly size: readonly [number, number, number];
+  readonly rotationY: number;
+  readonly style: "gable" | "hip";
+  readonly roofColor: string;
+  readonly trimColor: string;
+  readonly eaveWidth: number;
+  readonly eaveDepth: number;
+  readonly eaveY: number;
+  readonly ridgeRise: number;
+  readonly cornerFlickCount: 4;
+  readonly hasRidge: true;
+}
+
+function createTiledRoof(
+  structure: RpgDistrictArchitecture | RpgPerimeterBuilding,
+  index: number
+): RpgTiledRoof {
+  const [width, height, depth] = structure.size;
+  const eaveWidth = width + RPG_TILED_ROOF_EAVE_OVERHANG * 2;
+  const eaveDepth = depth + RPG_TILED_ROOF_EAVE_OVERHANG * 2;
+  return {
+    id: `${structure.id}-tiled-roof`,
+    structureId: structure.id,
+    position: structure.position,
+    size: structure.size,
+    rotationY: structure.rotationY,
+    style: structure.roofStyle === "hip" ? "hip" : "gable",
+    roofColor: structure.roofColor,
+    trimColor:
+      RPG_MACHIYA_TRIM_COLORS[index % RPG_MACHIYA_TRIM_COLORS.length],
+    eaveWidth,
+    eaveDepth,
+    eaveY: structure.position[1] + height / 2 + 0.06,
+    ridgeRise: Math.min(1.35, Math.max(0.62, eaveDepth * RPG_TILED_ROOF_PITCH)),
+    cornerFlickCount: 4,
+    hasRidge: true
+  };
+}
+
+/**
+ * Every structure that gets a full pitched tile roof: both near perimeter
+ * rings plus the machiya. Towers keep their flat tops — mid-rise Japanese
+ * city blocks really are flat-roofed — and pick up a tiled shop eave instead.
+ */
+export const RPG_TILED_ROOF_STRUCTURES: readonly RpgTiledRoof[] = [
+  ...PERIMETER_NEIGHBORHOOD_RING,
+  ...PERIMETER_MID_RING,
+  ...RPG_DISTRICT_ARCHITECTURE.filter(({ kind }) => kind === "machiya")
+].map(createTiledRoof);
+
+export interface RpgShopfrontEave {
+  readonly id: string;
+  readonly structureId: string;
+  readonly zoneId: DestinationId;
+  readonly position: readonly [number, number, number];
+  readonly size: readonly [number, number, number];
+  readonly rotationY: number;
+  readonly roofColor: string;
+  readonly trimColor: string;
+  readonly eaveY: number;
+  readonly reach: number;
+}
+
+/**
+ * The deep tiled pent roof that runs over the ground-floor shop on a Japanese
+ * street. It is what makes a flat-topped mid-rise block read as Tokyo rather
+ * than as anywhere: the eave line sits at first-floor height and throws a
+ * hard shadow across the shopfront on all four sides.
+ */
+export const RPG_SHOPFRONT_EAVE_REACH = 0.86;
+
+/**
+ * The chase camera's eye sits roughly 2.3 to 3.6 units up depending on boom and
+ * pitch. Holding the shop eave below that band means the camera looks down onto
+ * the tiles instead of having a beam swipe across the frame at eye level.
+ */
+export const RPG_SHOPFRONT_EAVE_MAX_HEIGHT = 2.15;
+
+export const RPG_SHOPFRONT_EAVES: readonly RpgShopfrontEave[] =
+  RPG_DISTRICT_ARCHITECTURE.filter(
+    ({ kind }) => kind === "tower" || kind === "terminal"
+  ).map((structure, index) => {
+    const [, height] = structure.size;
+    const groundY = structure.position[1] - height / 2;
+    return {
+      id: `${structure.id}-shop-eave`,
+      structureId: structure.id,
+      zoneId: structure.zoneId,
+      position: structure.position,
+      size: structure.size,
+      rotationY: structure.rotationY,
+      roofColor: structure.roofColor,
+      trimColor:
+        RPG_MACHIYA_TRIM_COLORS[index % RPG_MACHIYA_TRIM_COLORS.length],
+      eaveY:
+        groundY +
+        Math.min(
+          RPG_SHOPFRONT_EAVE_MAX_HEIGHT,
+          Math.max(1.55, height * 0.31)
+        ),
+      reach: RPG_SHOPFRONT_EAVE_REACH
+    };
+  });

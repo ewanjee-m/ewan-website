@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   BoxGeometry,
+  Group,
   InstancedMesh,
   MeshStandardMaterial,
   Object3D
@@ -18,7 +19,9 @@ import {
 } from "../app/world/RpgTownDetailsLayout";
 import {
   isDecorationClusterVisible,
+  markRpgTownGyukatsuOutdoorBatch,
   markRpgTownShorelineRockBatch,
+  RPG_TOWN_GYUKATSU_OUTDOOR_CAMERA_OCCLUSION_BATCH_ID,
   RPG_TOWN_SHORELINE_CAMERA_OCCLUSION_BATCH_ID
 } from "../app/world/RpgTownDetails";
 import {
@@ -135,15 +138,45 @@ describe("approved town concept 3D details", () => {
         RPG_TOWN_SHORELINE_CAMERA_OCCLUSION_BATCH_ID
     });
     expect(batch.userData.instances).toBe(internalInstances);
-    expect(
-      getRpgCameraOcclusionHitDisposition(instanceProxy, batch)
-    ).toBe("fade");
+    expect(getRpgCameraOcclusionHitDisposition(batch)).toBe("fade");
+    expect(instanceProxy.parent).toBe(batch);
 
     const source = readFileSync(
       resolve(process.cwd(), "app/world/RpgTownDetails.tsx"),
       "utf8"
     );
     expect(source).toContain("ref={markRpgTownShorelineRockBatch}");
+  });
+
+  it("fades the complete outdoor seating cluster when a parasol blocks the camera", () => {
+    const group = new Group();
+    const instanceProxies = [new Object3D(), new Object3D()];
+    instanceProxies.forEach((instanceProxy) => {
+      const material = new MeshStandardMaterial();
+      const batch = new InstancedMesh(new BoxGeometry(), material, 1);
+      batch.userData = { instances: [instanceProxy], limit: 1, frames: 1 };
+      batch.add(instanceProxy);
+      group.add(batch);
+    });
+
+    markRpgTownGyukatsuOutdoorBatch(group);
+
+    expect(group.userData).toMatchObject({
+      cameraOccluder: true,
+      cameraOcclusionFadeBatch: true,
+      cameraOcclusionBatchId:
+        RPG_TOWN_GYUKATSU_OUTDOOR_CAMERA_OCCLUSION_BATCH_ID
+    });
+    expect(getRpgCameraOcclusionHitDisposition(group)).toBe("fade");
+    instanceProxies.forEach((instanceProxy) => {
+      expect(group.children).toContain(instanceProxy.parent);
+    });
+
+    const source = readFileSync(
+      resolve(process.cwd(), "app/world/RpgTownDetails.tsx"),
+      "utf8"
+    );
+    expect(source).toContain("markRpgTownGyukatsuOutdoorBatch(group)");
   });
 
   it("hides far non-core details when the runtime distance drops from 48 to 18", () => {
