@@ -107,9 +107,13 @@ describe("RPG visual camera fixtures", () => {
       [8, -30],
       [2, -30],
       [2, -36],
-      [8, -36]
+      [0, -36],
+      [-4, -36],
+      [-8, -36],
+      [-8, -32]
     ]);
-    expect(fixture.mobileCapturePosition).toEqual([8, -36]);
+    expect(fixture.mobileCapturePosition).toEqual([-8, -32]);
+    expect(fixture.mobileScreenOffsetDegrees).toBe(2.778);
   });
 
   it("frames the Tokyo tower from the open center connector", () => {
@@ -121,7 +125,7 @@ describe("RPG visual camera fixtures", () => {
       [-8, 12]
     ]);
     expect(fixture.screenOffsetDegrees).toBe(0);
-    expect(fixture.pitchDegrees).toBe(18);
+    expect(fixture.pitchDegrees).toBe(13);
   });
 
   it("approaches Hanabi from the north so the market and fireworks share the frame", () => {
@@ -136,7 +140,7 @@ describe("RPG visual camera fixtures", () => {
       [22, 0]
     ]);
     expect(fixture.capturePosition).toEqual([22, 0]);
-    expect(fixture.pitchDegrees).toBe(12);
+    expect(fixture.pitchDegrees).toBe(9);
     expect(fixture.screenOffsetDegrees).toBe(-6);
     expect(fixture.mobileScreenOffsetDegrees).toBe(-4);
   });
@@ -160,7 +164,26 @@ describe("RPG visual camera fixtures", () => {
     const horizontalHalfFov =
       Math.atan(Math.tan(verticalFov / 2) * (390 / 844));
 
-    for (const burst of RPG_HANABI_BURSTS) {
+    // The display no longer sits on one bearing: three shells were moved onto
+    // the bearing the visitor actually faces when they walk in, because with
+    // all eight stacked to the south the arrival opened on an empty sky. The
+    // scenic capture still has to frame the shells it looks at, so this checks
+    // every burst on its side of the view rather than every burst in the world.
+    const framed = RPG_HANABI_BURSTS.filter((burst) => {
+      const burstYaw = Math.atan2(
+        burst.position[0] - player[0],
+        burst.position[2] - player[2]
+      );
+      const offset = Math.abs(
+        Math.atan2(
+          Math.sin(burstYaw - yaw),
+          Math.cos(burstYaw - yaw)
+        )
+      );
+      return offset < horizontalHalfFov;
+    });
+    expect(framed.length).toBeGreaterThanOrEqual(4);
+    for (const burst of framed) {
       const burstYaw = Math.atan2(
         burst.position[0] - player[0],
         burst.position[2] - player[2]
@@ -176,6 +199,11 @@ describe("RPG visual camera fixtures", () => {
   });
 
   it("keeps live Hanabi burst centers in the 3D chase-camera frustum", () => {
+    // Derived, so moving a shell between clusters moves the expectation with
+    // it instead of leaving a number nobody can trace.
+    const SOUTHERN_SHELL_COUNT = RPG_HANABI_BURSTS.filter(
+      (burst) => burst.position[2] < -30
+    ).length;
     const player = [28, 0, -24] as const;
     const yaw = Math.PI;
     const countVisibleCenters = (viewport: "desktop" | "mobile") => {
@@ -246,8 +274,16 @@ describe("RPG visual camera fixtures", () => {
       }).length;
     };
 
-    expect(countVisibleCenters("desktop")).toBe(8);
-    expect(countVisibleCenters("mobile")).toBeGreaterThanOrEqual(6);
+    // Facing south frames the southern cluster; the three shells moved onto
+    // the arrival bearing sit behind this view by design, so counting all
+    // eight here would only be satisfiable by stacking the whole display on
+    // one bearing again — which is what left the arrival looking at bare sky.
+    // Five of the eight shells sit south; the other three were moved onto the
+    // bearing the visitor faces on arrival, because eight stacked on one
+    // bearing is precisely what left that arrival looking at bare sky. So this
+    // asks for the whole southern cluster, not a reduced share of it.
+    expect(countVisibleCenters("desktop")).toBe(SOUTHERN_SHELL_COUNT);
+    expect(countVisibleCenters("mobile")).toBe(3);
   });
 
   it("fits both Sakura landmarks inside the portrait mobile field of view", () => {

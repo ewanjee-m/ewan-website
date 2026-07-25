@@ -116,7 +116,10 @@ export function deriveNpcPatrolRoute(
     throw new RangeError(`Unknown RPG town NPC: ${npcId}`);
   }
   const safeVariant = normalizeVariant(variant);
-  const speed = 0.55 + (safeVariant % 3) * 0.04;
+  // A strolling pace, set against the visitor rather than in the abstract.
+  // The crowd is what makes the visitor's own speed legible; at the old 0.55
+  // everybody else was under a fifth of a walk and the town read as frozen.
+  const speed = 1.05 + (safeVariant % 3) * 0.16;
   if (authoredWaypoints) {
     if (!isNpcPatrolRouteWalkable(authoredWaypoints)) {
       throw new RangeError(`NPC patrol route must stay walkable: ${npcId}`);

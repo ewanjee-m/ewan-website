@@ -2,12 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   createRpgCharacterMotion3dPose,
   createRpgCharacterMotion3dState,
-  evaluateRpgCharacterMotion3dInto
+  evaluateRpgCharacterMotion3dInto,
+  resolveRpgCharacterStride,
+  RPG_FIGURE_ANKLE_FRACTION,
+  RPG_FOOT_LIFT_UNITS,
+  RPG_FIGURE_HIP_JOINT_FRACTION,
+  RPG_GEOMETRIC_LEG_LENGTH_UNITS,
+  RPG_STRIDE_REACH_FACTOR
 } from "../app/world/RpgCharacterMotion3d";
+import { RPG_PLAYER_CHARACTER_DESIGNS } from "../app/world/RpgPlayerCharacterDesign";
 import {
   WORLD_RUN_SPEED,
   WORLD_WALK_SPEED
 } from "../app/world/WorldRuntime";
+import { GLB_FILES, readGlbSkeleton } from "./support/glb-skeleton";
 
 describe("RPG 3D character locomotion", () => {
   it("advances a run gait faster than a walk gait", () => {
@@ -27,20 +35,75 @@ describe("RPG 3D character locomotion", () => {
 
     evaluateRpgCharacterMotion3dInto(
       walkState,
-      { ...base, movementSpeedRatio: 1 },
+      { ...base, movementSpeed: WORLD_WALK_SPEED },
       walkPose
     );
     evaluateRpgCharacterMotion3dInto(
       runState,
-      { ...base, movementSpeedRatio: WORLD_RUN_SPEED / WORLD_WALK_SPEED },
+      { ...base, movementSpeed: WORLD_RUN_SPEED },
       runPose
     );
 
     expect(runPose.stridePhase).toBeGreaterThan(walkPose.stridePhase);
   });
 
-  it("sanitizes invalid gait speed ratios while preserving the default gait", () => {
-    const evaluate = (movementSpeedRatio?: number) => {
+  it("reaches further per step at a run instead of only turning over faster", () => {
+    const walking = resolveRpgCharacterStride(WORLD_WALK_SPEED);
+    const running = resolveRpgCharacterStride(WORLD_RUN_SPEED);
+
+    expect(running.stepLength).toBeGreaterThan(walking.stepLength);
+    // Cadence in steps per second, which is speed over step length.
+    const walkCadence = WORLD_WALK_SPEED / walking.stepLength;
+    const runCadence = WORLD_RUN_SPEED / running.stepLength;
+    expect(runCadence).toBeGreaterThan(walkCadence);
+    expect(runCadence).toBeLessThan(4.5);
+  });
+
+  it("derives the stride leg from the hip and ankle bones of the exported GLB", () => {
+    // The failure this guards against is silent: a hard-coded leg length stays
+    // put when the character is reproportioned, and the feet skate without
+    // anything going red. The previous version of this test re-derived the leg
+    // from the same two constants it was checking, times a literal 2.58, so it
+    // could not observe the generator at all and would have passed against any
+    // model whatsoever. This one reads the skeleton out of every shipped GLB.
+    for (const fileName of GLB_FILES) {
+      const skeleton = readGlbSkeleton(fileName);
+      const hipJointY = skeleton.boneWorldY("leftUpperLeg");
+      const ankleY = skeleton.boneWorldY("leftFoot");
+      const modelHeight = skeleton.meshHeight;
+
+      // The two fractions the stride is built from are what the rig actually
+      // places, not a hand-copy of the generator's table.
+      expect(hipJointY / modelHeight, `${fileName} hip`).toBeCloseTo(
+        RPG_FIGURE_HIP_JOINT_FRACTION,
+        3
+      );
+      expect(ankleY / modelHeight, `${fileName} ankle`).toBeCloseTo(
+        RPG_FIGURE_ANKLE_FRACTION,
+        3
+      );
+    }
+
+    // And the leg the gait swings is that same span, measured on the player the
+    // camera is actually behind and taken up to the height that player is
+    // rendered at.
+    const player = readGlbSkeleton("player-male.glb");
+    const measuredLegFraction =
+      (player.boneWorldY("leftUpperLeg") - player.boneWorldY("leftFoot")) /
+      player.meshHeight;
+    expect(RPG_GEOMETRIC_LEG_LENGTH_UNITS).toBeCloseTo(
+      measuredLegFraction * RPG_PLAYER_CHARACTER_DESIGNS.male.height,
+      3
+    );
+
+    // The stride is allowed to reach past the leg, but the overreach is the
+    // amount of foot slide the viewer sees, so it stays bounded and visible.
+    expect(RPG_STRIDE_REACH_FACTOR).toBeGreaterThanOrEqual(1);
+    expect(RPG_STRIDE_REACH_FACTOR).toBeLessThan(1.5);
+  });
+
+  it("sanitizes invalid speeds while preserving the default gait", () => {
+    const evaluate = (movementSpeed?: number) => {
       const pose = createRpgCharacterMotion3dPose();
       evaluateRpgCharacterMotion3dInto(
         createRpgCharacterMotion3dState(),
@@ -52,7 +115,7 @@ describe("RPG 3D character locomotion", () => {
           grounded: true,
           jumpHeight: 0,
           reducedMotion: false,
-          movementSpeedRatio
+          movementSpeed
         },
         pose
       );
@@ -60,8 +123,9 @@ describe("RPG 3D character locomotion", () => {
     };
 
     expect(evaluate()).toBe(evaluate(Number.NaN));
-    expect(evaluate(0)).toBe(evaluate(0.5));
-    expect(evaluate(2)).toBe(evaluate(1.5));
+    expect(evaluate()).toBe(evaluate(0));
+    expect(evaluate()).toBe(evaluate(-5));
+    expect(evaluate(1000)).toBe(evaluate(24));
   });
 
   it("turns a +Z-forward model toward its world heading while reusing caller buffers", () => {
@@ -218,16 +282,24 @@ describe("RPG 3D character locomotion", () => {
       }
     }
 
-    expect(samples.some((sample) => sample.leftFootLift > 0.08)).toBe(true);
-    expect(samples.some((sample) => sample.rightFootLift > 0.08)).toBe(true);
+    // Foot lift is a world-unit hip raise, so its magnitude has to shrink with
+    // the leg or the walk bounces. What this test is actually about is the
+    // SHAPE of the cycle - each foot lifts clearly, and the two are clearly out
+    // of phase - so the bar is stated as the same two-thirds of peak lift it
+    // always was rather than as a number that silently pins the leg length.
+    const clearLift = RPG_FOOT_LIFT_UNITS * (2 / 3);
+    expect(samples.some((sample) => sample.leftFootLift > clearLift)).toBe(true);
+    expect(samples.some((sample) => sample.rightFootLift > clearLift)).toBe(
+      true
+    );
     expect(
       samples.some(
-        (sample) => sample.leftFootLift > sample.rightFootLift + 0.08
+        (sample) => sample.leftFootLift > sample.rightFootLift + clearLift
       )
     ).toBe(true);
     expect(
       samples.some(
-        (sample) => sample.rightFootLift > sample.leftFootLift + 0.08
+        (sample) => sample.rightFootLift > sample.leftFootLift + clearLift
       )
     ).toBe(true);
 
@@ -291,8 +363,22 @@ describe("RPG 3D character locomotion", () => {
       jumpHeight: 0,
       reducedMotion: false
     };
+    // Sleeve pitch swings with the gait, so reading it at one arbitrary frame
+    // asserts the phase rather than the swing: the chibi walk turns over at
+    // 3.3 steps per second where the adult one managed 2.3, which lands that
+    // single frame on a zero crossing. The peak across the cycle is the thing
+    // the test is actually about, and the 0.05 bar is unchanged.
+    const sleeveSwing = { left: 0, right: 0 };
     for (let frame = 0; frame < 45; frame += 1) {
       evaluateRpgCharacterMotion3dInto(state, input, pose);
+      sleeveSwing.left = Math.max(
+        sleeveSwing.left,
+        Math.abs(pose.leftSleevePitch)
+      );
+      sleeveSwing.right = Math.max(
+        sleeveSwing.right,
+        Math.abs(pose.rightSleevePitch)
+      );
     }
 
     input.headingX = 1;
@@ -309,8 +395,8 @@ describe("RPG 3D character locomotion", () => {
     expect(Math.abs(pose.hairYaw)).toBeGreaterThan(0.02);
     expect(Math.sign(pose.hairYaw)).toBe(-Math.sign(pose.rootTurnError));
     expect(Math.abs(pose.hemYaw)).toBeGreaterThan(0.01);
-    expect(Math.abs(pose.leftSleevePitch)).toBeGreaterThan(0.05);
-    expect(Math.abs(pose.rightSleevePitch)).toBeGreaterThan(0.05);
+    expect(sleeveSwing.left).toBeGreaterThan(0.05);
+    expect(sleeveSwing.right).toBeGreaterThan(0.05);
     expect(Math.abs(pose.leftAnklePitch)).toBeGreaterThan(0.01);
     expect(Math.abs(pose.rightAnklePitch)).toBeGreaterThan(0.01);
     expect(pose.stridePhase).toBeGreaterThanOrEqual(-Math.PI);

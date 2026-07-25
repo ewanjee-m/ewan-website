@@ -1,3 +1,4 @@
+import { getChaseOrbitCameraBasis } from "../app/world/ChaseOrbitCamera";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useFrame } from "@react-three/fiber";
@@ -22,6 +23,24 @@ import { createWorldRuntime } from "../app/world/WorldRuntime";
 vi.mock("@react-three/fiber", () => ({
   useFrame: vi.fn()
 }));
+
+const CAMERA_YAW = 0;
+const CAMERA_BASIS = getChaseOrbitCameraBasis(CAMERA_YAW);
+
+/**
+ * Keys are read in the camera's frame, so a world-space bearing has to be
+ * expressed against the camera basis before it can be pressed.
+ */
+function pressTowardWorld(dx: number, dz: number) {
+  const length = Math.max(Math.hypot(dx, dz), 1e-8);
+  return {
+    x: (dx / length) * CAMERA_BASIS.rightX + (dz / length) * CAMERA_BASIS.rightZ,
+    y:
+      (dx / length) * CAMERA_BASIS.forwardX +
+      (dz / length) * CAMERA_BASIS.forwardZ,
+    runRequested: false
+  };
+}
 
 describe("world interaction", () => {
   it("requires proximity and a 60-degree facing cone", () => {
@@ -130,15 +149,13 @@ describe("world interaction", () => {
         const dz = approach[1] - z;
         const distance = Math.hypot(dx, dz);
         if (distance < 1e-4) break;
-        runtime.setMovement({
-          x: dx / distance,
-          y: dz / distance,
-          runRequested: false
-        });
-        runtime.advance(Math.min(1 / 60, distance / 1.61), 0);
+        runtime.setMovement(pressTowardWorld(dx, dz));
+        runtime.advance(Math.min(1 / 60, distance / 1.61), CAMERA_YAW);
       }
-      runtime.setMovement({ x: 1, y: 0, runRequested: false });
-      runtime.advance(0.1 / 1.61, 0);
+      // Face the terminal before reading the prompt: interaction needs both
+      // nearness and a look direction.
+      runtime.setMovement(pressTowardWorld(1, 0));
+      runtime.advance(0.1 / 1.61, CAMERA_YAW);
       runtime.setMovement({ x: 0, y: 0, runRequested: false });
     };
 
@@ -164,15 +181,13 @@ describe("world interaction", () => {
         const dz = approach[1] - z;
         const distance = Math.hypot(dx, dz);
         if (distance < 1e-4) break;
-        runtime.setMovement({
-          x: dx / distance,
-          y: dz / distance,
-          runRequested: false
-        });
-        runtime.advance(Math.min(1 / 60, distance / 1.61), 0);
+        runtime.setMovement(pressTowardWorld(dx, dz));
+        runtime.advance(Math.min(1 / 60, distance / 1.61), CAMERA_YAW);
       }
-      runtime.setMovement({ x: 1, y: 0, runRequested: false });
-      runtime.advance(0.1 / 1.61, 0);
+      // Face the terminal before reading the prompt: interaction needs both
+      // nearness and a look direction.
+      runtime.setMovement(pressTowardWorld(1, 0));
+      runtime.advance(0.1 / 1.61, CAMERA_YAW);
       runtime.setMovement({ x: 0, y: 0, runRequested: false });
     };
     const runtime = createWorldRuntime();

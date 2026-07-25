@@ -1,5 +1,8 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { InputController } from "../app/world/InputController";
 import {
@@ -56,6 +59,38 @@ describe("start experience", () => {
       )
     ).not.toBeInTheDocument();
     expect(container.innerHTML).not.toMatch(/docs\/.*concept/i);
+  });
+
+  it("shows START as not-yet-ready in the server markup so no click is swallowed", () => {
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(<ExperienceShell locale="en" />);
+    const start = container.querySelector<HTMLButtonElement>(
+      "button.primary-action"
+    );
+
+    expect(start?.textContent).toBe("START");
+    // Before hydration React has attached no click handler, so an enabled
+    // button would take the click and do nothing at all. Disabled is the one
+    // state that is both visibly not-ready and impossible to click silently.
+    expect(start?.disabled).toBe(true);
+    expect(start?.getAttribute("aria-busy")).toBe("true");
+    expect(start?.getAttribute("data-ready")).toBe("false");
+    expect(
+      container.querySelector(".start-screen")?.getAttribute("data-ready")
+    ).toBe("false");
+  });
+
+  it("enables START as soon as the client has hydrated", () => {
+    const { container } = render(<ExperienceShell locale="en" />);
+    const start = screen.getByRole("button", { name: "START" });
+
+    expect(start).toBeEnabled();
+    expect(start).toHaveAttribute("data-ready", "true");
+    expect(start).not.toHaveAttribute("aria-busy", "true");
+    expect(container.querySelector(".start-screen")).toHaveAttribute(
+      "data-ready",
+      "true"
+    );
   });
 
   it("opens character selection without entering the world", async () => {
@@ -414,7 +449,7 @@ describe("start experience", () => {
     expect(worldDesignLandmark).toHaveFocus();
   });
 
-  it("keeps Space available for focused world buttons instead of turning it into jump", async () => {
+  it("jumps on Space even when a world button holds the focus, and presses it on Enter", async () => {
     const user = userEvent.setup();
     render(<ExperienceShell locale="en" />);
 
@@ -430,8 +465,62 @@ describe("start experience", () => {
     landmark.focus();
     await user.keyboard(" ");
 
+    // Space jumps. A focused button answering it is what made walking along
+    // and jumping re-open the map the visitor had just closed.
+    expect(
+      screen.queryByRole("dialog", { name: "Festival World Design" })
+    ).toBeNull();
+
+    await user.keyboard("{Enter}");
     expect(
       screen.getByRole("dialog", { name: "Festival World Design" })
     ).toBeVisible();
+  });
+});
+
+describe("Korean line breaking", () => {
+  const styles = () =>
+    readFileSync(resolve(process.cwd(), "app/globals.css"), "utf8");
+
+  it("carries the locale on the element that wraps every screen", () => {
+    const { container } = render(<ExperienceShell locale="ko" />);
+
+    // Every headline and label, start screen and world alike, lives inside
+    // this one element, so one locale-scoped wrapping rule reaches all of them.
+    const shell = container.querySelector(".start-screen");
+    expect(shell).toHaveAttribute("data-locale", "ko");
+    expect(shell?.querySelector(".start-card h1")).toBeInTheDocument();
+  });
+
+  it("keeps Korean words whole and never lets one overflow its box", () => {
+    // 제 세계에 오 / 신 것을 환 / 영합니다 was the observed wrap: Korean has
+    // spaces between words, but the default rule breaks between any two
+    // syllables. keep-all wraps on the spaces instead; break-word stays as the
+    // escape hatch for a word wider than its own line, so keeping words whole
+    // can never push text outside the card.
+    expect(styles()).toMatch(
+      /\.start-screen\[data-locale="ko"\]\s*\{[^}]*word-break:\s*keep-all/
+    );
+    expect(styles()).toMatch(
+      /\.start-screen\[data-locale="ko"\]\s*\{[^}]*overflow-wrap:\s*break-word/
+    );
+  });
+
+  it("leaves Japanese alone, where keep-all would make a sentence unbreakable", () => {
+    expect(styles()).not.toMatch(
+      /\[data-locale="ja"\][^{]*\{[^}]*word-break:\s*keep-all/
+    );
+  });
+
+  it("keeps the shared 12ch headline measure, which already fits the longest Korean word", () => {
+    // Measured in Chromium against the display font: the widest word,
+    // 환영합니다!, is 506px at the 1440px headline size while 12ch resolves to
+    // 835px, and 212px against 350px at the smallest headline size. The shared
+    // measure already clears the longest whole word at every width, so it
+    // needs no locale override and has none.
+    expect(styles()).toMatch(/\.start-card h1\s*\{[^}]*max-width:\s*12ch/);
+    expect(styles()).not.toMatch(
+      /\[data-locale="ko"\][^{]*\.start-card h1\s*\{[^}]*max-width/
+    );
   });
 });

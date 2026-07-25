@@ -23,7 +23,7 @@ export const RPG_VISUAL_CAMERA_FIXTURES: Readonly<
     // capture overrides this fallback with telemetry from the rendered bus.
     focusWorldXZ: [-31, 8],
     screenOffsetDegrees: 0,
-    pitchDegrees: 22,
+    pitchDegrees: 14,
     desktopDistance: 8.4,
     mobileDistance: 7.56
   },
@@ -31,7 +31,7 @@ export const RPG_VISUAL_CAMERA_FIXTURES: Readonly<
     focusLandmarkIds: ["tokyo-blue-tower"],
     focusWorldXZ: [-17, 29],
     screenOffsetDegrees: 0,
-    pitchDegrees: 18,
+    pitchDegrees: 13,
     desktopDistance: 7.8,
     mobileDistance: 7.02,
     capturePosition: [-8, 12],
@@ -45,7 +45,7 @@ export const RPG_VISUAL_CAMERA_FIXTURES: Readonly<
     focusLandmarkIds: ["gyukatsu-main-machiya"],
     focusWorldXZ: [-1, 8],
     screenOffsetDegrees: 0,
-    pitchDegrees: 26,
+    pitchDegrees: 15,
     desktopDistance: 7,
     mobileDistance: 6.3,
     capturePosition: [4, 2]
@@ -54,7 +54,7 @@ export const RPG_VISUAL_CAMERA_FIXTURES: Readonly<
     focusLandmarkIds: ["sakura-tree-01", "sakura-bridge"],
     focusWorldXZ: [14.65, -24.8],
     screenOffsetDegrees: 3.877,
-    pitchDegrees: 20,
+    pitchDegrees: 13,
     desktopDistance: 8,
     mobileDistance: 7.2,
     capturePosition: [-4, -30],
@@ -66,22 +66,25 @@ export const RPG_VISUAL_CAMERA_FIXTURES: Readonly<
       [-4, -24],
       [-4, -30]
     ],
-    mobileCapturePosition: [8, -36],
+    mobileCapturePosition: [-8, -32],
     mobileCaptureRoute: [
       [10, -18],
       [8, -20],
       [8, -30],
       [2, -30],
       [2, -36],
-      [8, -36]
+      [0, -36],
+      [-4, -36],
+      [-8, -36],
+      [-8, -32]
     ],
-    mobileScreenOffsetDegrees: 8.536
+    mobileScreenOffsetDegrees: 2.778
   },
   hanabi: {
     focusLandmarkIds: ["hanabi-apple-stall", "hanabi-street-torii"],
     focusWorldXZ: [22, -14.3],
     screenOffsetDegrees: -6,
-    pitchDegrees: 12,
+    pitchDegrees: 9,
     desktopDistance: 9.2,
     mobileDistance: 8.28,
     capturePosition: [22, 0],

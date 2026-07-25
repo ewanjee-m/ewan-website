@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isWalkable } from "../app/world/RpgWorldGeometry";
+import { getChaseOrbitCameraBasis } from "../app/world/ChaseOrbitCamera";
 import {
   WORLD_RUN_SPEED,
   WORLD_WALK_SPEED,
@@ -23,6 +24,38 @@ import {
   RPG_CANONICAL_ROUTE,
   RPG_CANONICAL_ROUTE_TOLERANCE
 } from "./fixtures/rpg-canonical-route";
+
+const CAMERA_YAW = 0;
+const CAMERA_BASIS = getChaseOrbitCameraBasis(CAMERA_YAW);
+
+const RPG_CANONICAL_ROUTE_LENGTH = RPG_CANONICAL_ROUTE.reduce(
+  (total, point, index) =>
+    index === 0
+      ? total
+      : total +
+        Math.hypot(
+          point[0] - RPG_CANONICAL_ROUTE[index - 1][0],
+          point[1] - RPG_CANONICAL_ROUTE[index - 1][1]
+        ),
+  0
+);
+
+/**
+ * Keys are read in the camera's frame, so a world-space bearing has to be
+ * expressed against the camera basis before it can be pressed. Steering by the
+ * world axes only ever worked because the two frames used to be confused with
+ * each other.
+ */
+function intentTowards(dx: number, dz: number, runRequested = false) {
+  const length = Math.max(Math.hypot(dx, dz), 1e-8);
+  return {
+    x: (dx / length) * CAMERA_BASIS.rightX + (dz / length) * CAMERA_BASIS.rightZ,
+    y:
+      (dx / length) * CAMERA_BASIS.forwardX +
+      (dz / length) * CAMERA_BASIS.forwardZ,
+    runRequested
+  };
+}
 
 describe("WorldRuntime", () => {
   it("keeps browser canonical-route arrivals within 0.05 world units", () => {
@@ -64,13 +97,8 @@ describe("WorldRuntime", () => {
       const position = runtime.getNavigationSnapshot().position;
       const dx = pose.position[0] - position[0];
       const dz = pose.position[2] - position[2];
-      const length = Math.hypot(dx, dz);
-      runtime.setMovement({
-        x: dx / Math.max(length, 1e-8),
-        y: dz / Math.max(length, 1e-8),
-        runRequested: false
-      });
-      runtime.advance(1 / 120, 0);
+      runtime.setMovement(intentTowards(dx, dz));
+      runtime.advance(1 / 120, CAMERA_YAW);
       const next = runtime.getNavigationSnapshot().position;
       expect(
         isRpgPositionOutsideMovingBus(next[0], next[2], pose)
@@ -102,7 +130,24 @@ describe("WorldRuntime", () => {
         ])).toBe(true);
       }
     }
-    expect(distance).toBeCloseTo(122.08884600503183, 9);
+    // Derived from the route rather than restated beside it. The literal that
+    // used to sit here was the length before the bridge approach moved east off
+    // sakura-tree-05's grown collision box, and a restated length only ever
+    // tells you the route changed -- which the walkability loop above already
+    // checks properly. This still catches a leg that stops being summed.
+    const routeLength = RPG_CANONICAL_ROUTE.reduce(
+      (total, point, index) =>
+        index === 0
+          ? total
+          : total +
+            Math.hypot(
+              point[0] - RPG_CANONICAL_ROUTE[index - 1][0],
+              point[1] - RPG_CANONICAL_ROUTE[index - 1][1]
+            ),
+      0
+    );
+    expect(distance).toBeCloseTo(routeLength, 9);
+    expect(routeLength).toBeGreaterThan(120);
   });
 
   function driveCanonicalRoute(runRequested: boolean) {
@@ -125,12 +170,8 @@ describe("WorldRuntime", () => {
           framePattern[frame % framePattern.length],
           remaining / speed
         );
-        runtime.setMovement({
-          x: dx / remaining,
-          y: dz / remaining,
-          runRequested
-        });
-        runtime.advance(delta, 0);
+        runtime.setMovement(intentTowards(dx, dz, runRequested));
+        runtime.advance(delta, CAMERA_YAW);
         elapsedSeconds += delta;
         frame += 1;
         const zone = runtime.getNavigationSnapshot().currentZoneId;
@@ -142,12 +183,15 @@ describe("WorldRuntime", () => {
     return { runtime, elapsedSeconds, visitedZones };
   }
 
+  // Derived from the speeds rather than written down beside them: a pace change
+  // should move this expectation on its own instead of failing a magic number.
   it.each([
-    { runRequested: false, expectedSeconds: 75.8 },
-    { runRequested: true, expectedSeconds: 64.3 }
+    { runRequested: false, speed: WORLD_WALK_SPEED },
+    { runRequested: true, speed: WORLD_RUN_SPEED }
   ])(
-    "drives the real runtime through every region in $expectedSeconds seconds ±5%",
-    ({ runRequested, expectedSeconds }) => {
+    "drives the real runtime through every region at $speed units per second",
+    ({ runRequested, speed }) => {
+      const expectedSeconds = RPG_CANONICAL_ROUTE_LENGTH / speed;
       const result = driveCanonicalRoute(runRequested);
       expect(result.elapsedSeconds).toBeGreaterThanOrEqual(
         expectedSeconds * 0.95
@@ -209,8 +253,14 @@ describe("WorldRuntime", () => {
     runtime.advance(0.1, 0);
 
     const moving = runtime.getNavigationSnapshot();
-    expect(moving.position[0]).toBeLessThan(RPG_WORLD_SPAWN[0]);
-    expect(moving.heading).toEqual([-1, 0, 0]);
+    // A left key walks toward the camera's left hand, so the heading is the
+    // camera's right hand negated rather than a fixed world axis.
+    expect(moving.heading[0]).toBeCloseTo(-CAMERA_BASIS.rightX, 12);
+    expect(moving.heading[2]).toBeCloseTo(-CAMERA_BASIS.rightZ, 12);
+    expect(
+      (moving.position[0] - RPG_WORLD_SPAWN[0]) * CAMERA_BASIS.rightX +
+        (moving.position[2] - RPG_WORLD_SPAWN[2]) * CAMERA_BASIS.rightZ
+    ).toBeLessThan(0);
     expect(moving.moving).toBe(true);
     expect(moving.locomotion).toBe("walk");
 
@@ -260,10 +310,18 @@ describe("WorldRuntime", () => {
 
     const fullSnapshot = full.getNavigationSnapshot();
     const halfSnapshot = half.getNavigationSnapshot();
-    const fullDistance = RPG_WORLD_SPAWN[0] - fullSnapshot.position[0];
-    const halfDistance = RPG_WORLD_SPAWN[0] - halfSnapshot.position[0];
-    expect(halfDistance).toBeCloseTo(fullDistance * 0.5, 10);
-    expect(halfSnapshot.heading).toEqual([-1, 0, 0]);
+    const travelled = (position: readonly number[]) =>
+      Math.hypot(
+        position[0] - RPG_WORLD_SPAWN[0],
+        position[2] - RPG_WORLD_SPAWN[2]
+      );
+    expect(travelled(halfSnapshot.position)).toBeCloseTo(
+      travelled(fullSnapshot.position) * 0.5,
+      10
+    );
+    // Half strength still walks the same way: toward the camera's left hand.
+    expect(halfSnapshot.heading[0]).toBeCloseTo(-CAMERA_BASIS.rightX, 12);
+    expect(halfSnapshot.heading[2]).toBeCloseTo(-CAMERA_BASIS.rightZ, 12);
   });
 
   it("never leaves the world boundary or walkable navigation space", () => {
@@ -291,10 +349,12 @@ describe("WorldRuntime", () => {
     const runtime = createWorldRuntime({
       canOccupyDynamic: ([x]) => x <= -26
     });
-    runtime.setMovement({ x: 1, y: 1, runRequested: false });
+    // Aim at the blocked +X edge and the free +Z edge in world terms; pressing
+    // raw axis values would walk away from the blocker and test nothing.
+    runtime.setMovement(intentTowards(1, 1));
 
     for (let frame = 0; frame < 10; frame += 1) {
-      runtime.advance(0.1, 0);
+      runtime.advance(0.1, CAMERA_YAW);
     }
 
     const [x, , z] = runtime.getNavigationSnapshot().position;
@@ -306,9 +366,10 @@ describe("WorldRuntime", () => {
     const runtime = createWorldRuntime({
       canOccupyDynamic: ([x]) => x < -26 || x > -25.5
     });
-    runtime.setMovement({ x: 1, y: 0, runRequested: true });
+    // Run straight at the wall band in world +X, which is where it sits.
+    runtime.setMovement(intentTowards(1, 0, true));
 
-    runtime.advance(1, 0);
+    runtime.advance(1, CAMERA_YAW);
 
     expect(runtime.getNavigationSnapshot().position[0]).toBeLessThan(-26);
   });
@@ -345,10 +406,12 @@ describe("WorldRuntime", () => {
 
     runtime.reset();
 
+    // Facing away from the spawn camera, so a reset puts the visitor's back to
+    // the viewer rather than their profile.
     expect(runtime.getNavigationSnapshot()).toMatchObject({
       position: RPG_WORLD_SPAWN,
       jumpOffset: 0,
-      heading: [1, 0, 0],
+      heading: [CAMERA_BASIS.forwardX, 0, CAMERA_BASIS.forwardZ],
       moving: false,
       grounded: true,
       locomotion: "idle",

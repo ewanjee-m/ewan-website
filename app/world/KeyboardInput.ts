@@ -34,6 +34,11 @@ const WORLD_KEYS = new Set([
 // after it is pressed, though, and blocking everything for it left a visitor
 // who had touched any control unable to walk again without reaching for the
 // mouse. A focused button only needs the key that presses it.
+//
+// Space is the exception. It is the jump key, and closing the map hands focus
+// back to the button that opened it, so a visitor walking along and jumping
+// re-opened the map instead of leaving the ground. While the world is being
+// played the space belongs to the world; Enter still presses the button.
 function blocksWorldInput(target: EventTarget | null, key: string) {
   if (!(target instanceof Element)) {
     return false;
@@ -41,8 +46,14 @@ function blocksWorldInput(target: EventTarget | null, key: string) {
   if (target.closest(TEXT_ENTRY_SELECTOR)) {
     return true;
   }
+  return key === "Enter" && Boolean(target.closest(ACTIVATION_SELECTOR));
+}
+
+/** A focused button would otherwise answer the jump key by activating. */
+function stealsJumpFromTheWorld(target: EventTarget | null, key: string) {
   return (
-    (key === " " || key === "Enter") &&
+    key === " " &&
+    target instanceof Element &&
     Boolean(target.closest(ACTIVATION_SELECTOR))
   );
 }
@@ -53,7 +64,15 @@ export function attachWorldKeyboardInput(input: KeyboardInputController) {
       return;
     }
     if (WORLD_KEYS.has(event.key)) {
-      if (event.key !== "Shift") event.preventDefault();
+      // Shift keeps its default so held modifiers still reach the browser;
+      // everything else is the world's, including a space that a focused
+      // button would otherwise turn into a second press of itself.
+      if (
+        event.key !== "Shift" ||
+        stealsJumpFromTheWorld(event.target, event.key)
+      ) {
+        event.preventDefault();
+      }
       input.pressKey(event.key);
     }
   };

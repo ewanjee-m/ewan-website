@@ -33,7 +33,9 @@ describe("chase orbit camera", () => {
       navigationRegion: airportRegion
     });
     expect(mouse.yaw).toBeCloseTo(-0.4);
-    expect(mouse.pitch).toBeCloseTo((55 * Math.PI) / 180);
+    // High enough to look down over the town, short of straight overhead where
+    // the up vector would flip.
+    expect(mouse.pitch).toBeCloseTo((74 * Math.PI) / 180);
 
     const touch = createChaseOrbitCameraState();
     advanceChaseOrbitCamera(touch, {
@@ -48,48 +50,79 @@ describe("chase orbit camera", () => {
     expect(touch.pitch).toBeCloseTo(0);
   });
 
-  it("waits 0.8s then returns within 5 degrees in 1.2s", () => {
+  it("returns within 5 degrees once the visitor walks on", () => {
     const state = createChaseOrbitCameraState();
     state.yaw = Math.PI / 2;
     state.lastManualInputSeconds = 0;
+    // Walking straight ahead ends the grace a drag bought, so the view is
+    // already on its way back before the 3.5 seconds are up.
     advanceChaseOrbitCamera(state, {
-      deltaSeconds: 0.799,
-      elapsedSeconds: 0.799,
+      deltaSeconds: 3.499,
+      elapsedSeconds: 3.499,
       drag: { deltaX: 0, deltaY: 0, pointerKind: "mouse" },
-      moving: true,
+      moving: false,
+      movementIntent: { x: 0, y: 0 },
       headingYaw: 0,
       navigationRegion: gyukatsuRegion
     });
     expect(state.yaw).toBeCloseTo(Math.PI / 2, 10);
 
-    for (let frame = 0; frame < 72; frame += 1) {
+    for (let frame = 0; frame < 420; frame += 1) {
       advanceChaseOrbitCamera(state, {
         deltaSeconds: 1 / 60,
-        elapsedSeconds: 0.8 + (frame + 1) / 60,
+        elapsedSeconds: 3.5 + (frame + 1) / 60,
         drag: { deltaX: 0, deltaY: 0, pointerKind: "mouse" },
         moving: true,
+        movementIntent: { x: 0, y: 1 },
         headingYaw: 0,
         navigationRegion: gyukatsuRegion
       });
     }
 
-    expect(0.8 + 72 / 60).toBe(2);
+    expect(3.5 + 420 / 60).toBe(10.5);
     expect(Math.abs(state.yaw)).toBeLessThanOrEqual((5 * Math.PI) / 180);
+  });
+
+  it("holds the view still while the visitor walks sideways", () => {
+    // Modelled the way the runtime actually couples the two: the heading is
+    // the camera's yaw plus the angle of the key held, never a fixed bearing.
+    // Feeding a constant heading here would assert a convergence the runtime
+    // cannot produce, and did — it green-lit a camera that walked the visitor
+    // in a closed circle.
+    const state = createChaseOrbitCameraState();
+    state.lastManualInputSeconds = 0;
+    const intent = { x: -1, y: 0 };
+    const intentAngle = Math.atan2(intent.x, intent.y);
+    const startYaw = state.yaw;
+
+    for (let frame = 0; frame < 480; frame += 1) {
+      advanceChaseOrbitCamera(state, {
+        deltaSeconds: 1 / 60,
+        elapsedSeconds: 3.5 + (frame + 1) / 60,
+        drag: { deltaX: 0, deltaY: 0, pointerKind: "mouse" },
+        moving: true,
+        movementIntent: intent,
+        headingYaw: state.yaw + intentAngle,
+        navigationRegion: gyukatsuRegion
+      });
+    }
+
+    expect(state.yaw).toBeCloseTo(startYaw, 10);
   });
 
   it("uses exact region camera profiles", () => {
     expect(getRegionCameraProfile("airport", "desktop")).toMatchObject({
       distance: 8.4,
-      pitchDegrees: 22,
-      fovDegrees: 45
+      pitchDegrees: 14,
+      fovDegrees: 55
     });
     expect(getRegionCameraProfile("gyukatsu", "mobile").distance).toBeCloseTo(
       6.3
     );
     expect(getRegionCameraProfile("sakura", "mobile").fovDegrees).toBe(70);
-    expect(getRegionCameraProfile("hanabi", "desktop").pitchDegrees).toBe(12);
+    expect(getRegionCameraProfile("hanabi", "desktop").pitchDegrees).toBe(9);
     expect(getRegionCameraProfile("hanabi", "desktop").fovDegrees).toBe(60);
-    expect(getRegionCameraProfile("hanabi", "mobile").fovDegrees).toBe(75);
+    expect(getRegionCameraProfile("hanabi", "mobile").fovDegrees).toBe(72);
   });
 
   it("smoothsteps camera values through a transition", () => {
@@ -107,7 +140,7 @@ describe("chase orbit camera", () => {
       "desktop"
     );
     expect(profile.distance).toBeCloseTo(7.5);
-    expect(profile.pitchDegrees).toBeCloseTo(23);
+    expect(profile.pitchDegrees).toBeCloseTo(14);
   });
 
   it("returns the signed shortest yaw error across the wrap boundary", () => {

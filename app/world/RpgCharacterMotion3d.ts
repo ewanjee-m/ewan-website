@@ -1,3 +1,6 @@
+import { RPG_CHARACTER_FIGURE } from "./RpgCharacterFigure";
+import { RPG_PLAYER_CHARACTER_DESIGNS } from "./RpgPlayerCharacterDesign";
+
 export interface RpgCharacterMotion3dState {
   yawRadians: number;
   targetYawRadians: number;
@@ -20,7 +23,8 @@ export interface RpgCharacterMotion3dInput {
   moving: boolean;
   grounded: boolean;
   jumpHeight: number;
-  movementSpeedRatio?: number;
+  /** Ground speed in world units per second. Drives cadence and stride. */
+  movementSpeed?: number;
   reducedMotion: boolean;
 }
 
@@ -72,7 +76,6 @@ export interface RpgCharacterMotion3dPose {
 
 const TURN_RESPONSE = 9;
 const JUMP_RESPONSE = 10;
-const GAIT_RADIANS_PER_SECOND = 6.4;
 const FOLLOW_RESPONSE = 9;
 const FULL_TURN_RADIANS = Math.PI * 2;
 
@@ -163,11 +166,98 @@ const SHOULDER_SWING = 0.38;
 const ELBOW_REST = 0.14;
 const ELBOW_CARRY = 0.4;
 const ELBOW_DRIVE = 0.2;
-const HIP_SWING = 0.42;
+// Short chibi legs have to swing through a bigger angle to cover the same
+// ground: the leg is now 0.235 of body height where the adult layout gave it
+// 0.435, so the 0.42 radians this was before the reproportion would turn the
+// walk into a vibration. Every other angle here is scale-free and is
+// deliberately left alone.
+const HIP_SWING = 0.85;
 const KNEE_BASE = 0.12;
 const KNEE_SWING = 0.7;
 const KNEE_ABSORB = 0.16;
-const FOOT_LIFT = 0.12;
+// Not an angle: RpgCharacterRigAdapter consumes this as a world-unit hip raise
+// (footLift * 0.28). Held at 0.12 against the shorter leg it would lift the hip
+// by 5.5% of leg length instead of the 3.0% it was tuned to, and the walk would
+// bounce. The jump terms further down are scaled by the same ratio.
+export const RPG_FOOT_LIFT_UNITS = 0.065;
+const FOOT_LIFT = RPG_FOOT_LIFT_UNITS;
+
+/**
+ * Cadence comes from ground covered, not from the clock. A turnover fixed in
+ * time stretches the step to whatever the speed happens to be, so the feet
+ * slide as soon as the character moves faster. Here the step length is what
+ * the legs can actually reach, and the turnover is whatever that requires.
+ */
+/**
+ * The leg, read off the figure the generator actually builds rather than
+ * written down as a number. The previous 1.13 was silently the old adult
+ * layout's (0.500 - 0.065) x 2.58; nothing said so, so when the proportions
+ * moved it stayed put and the feet would have skated.
+ *
+ * Both fractions come from RpgCharacterFigure, which the generator writes from
+ * the same FIGURE table it places the bones with. They used to be hand-copied
+ * here, which is the same drift risk one level down: the copy could disagree
+ * with the rig and nothing would say so.
+ */
+export const RPG_FIGURE_HIP_JOINT_FRACTION = RPG_CHARACTER_FIGURE.hipJointY;
+export const RPG_FIGURE_ANKLE_FRACTION = RPG_CHARACTER_FIGURE.ankleY;
+/**
+ * Which figure's height the shared stride is measured at, stated rather than
+ * left as a bare literal.
+ *
+ * Only the player runs through this module - the NPCs walk on NpcMotion - so
+ * the height that has to be exact is a player's. The two players are rendered
+ * at 2.58 and 2.62 world units, and one stride serves both. The shorter is
+ * taken, because under-reaching by 1.5% on the taller one slides the feet
+ * backwards by a fraction of a step, where over-reaching would ask the leg to
+ * span further than it geometrically can.
+ */
+const REFERENCE_FIGURE_HEIGHT = Math.min(
+  RPG_PLAYER_CHARACTER_DESIGNS.male.height,
+  RPG_PLAYER_CHARACTER_DESIGNS.female.height
+);
+export const RPG_GEOMETRIC_LEG_LENGTH_UNITS =
+  (RPG_FIGURE_HIP_JOINT_FRACTION - RPG_FIGURE_ANKLE_FRACTION) *
+  REFERENCE_FIGURE_HEIGHT;
+
+/**
+ * How far the stride reaches beyond what the leg can geometrically span, at
+ * full run. At a walk the reach is exactly the leg, so the feet do not slide.
+ *
+ * The overreach is honest and it is confined to where it is forced. A
+ * 0.606-unit leg can step at most 2L = 1.21 units even at a full 90-degree
+ * split, so at WORLD_RUN_SPEED = 7 the cadence could not fall below 5.8 steps
+ * per second - past the 4.5 ceiling the motion tests hold, and a blur rather
+ * than a run. That constraint binds only at a run, so applying it at every
+ * speed would have slid the feet by 42% during the walking the player does
+ * almost all the time. WORLD_RUN_SPEED lives in WorldRuntime and is not this
+ * module's to change; dropping it to about 5.3 would let this go to 1.0.
+ */
+export const RPG_STRIDE_REACH_FACTOR = 1.42;
+/** How much further a stride reaches at a run before cadence takes over. */
+const MAX_STRIDE_GAIN = 1.6;
+const REFERENCE_WALK_SPEED = 3;
+
+export function resolveRpgCharacterStride(movementSpeed: number | undefined) {
+  const speed =
+    typeof movementSpeed === "number" &&
+    Number.isFinite(movementSpeed) &&
+    movementSpeed > 0
+      ? Math.min(24, movementSpeed)
+      : REFERENCE_WALK_SPEED;
+  const gain = Math.min(
+    MAX_STRIDE_GAIN,
+    Math.max(1, speed / REFERENCE_WALK_SPEED)
+  );
+  // The reach factor is blended in with the stride gain, so a walk covers
+  // exactly the ground the leg swings through and only a run borrows.
+  const reach =
+    1 +
+    ((RPG_STRIDE_REACH_FACTOR - 1) * (gain - 1)) / (MAX_STRIDE_GAIN - 1);
+  const legLengthUnits = RPG_GEOMETRIC_LEG_LENGTH_UNITS * reach;
+  const stepLength = 2 * legLengthUnits * Math.sin(HIP_SWING * gain);
+  return { speed, gain, stepLength };
+}
 // The swing peaks after the leg passes under the body, and the knee takes a
 // second, smaller bend as the foot lands.
 const SWING_LEAD_RADIANS = 0.5;
@@ -182,19 +272,23 @@ interface LegCycle {
   absorb: number;
 }
 
-function evaluateLegCycle(phaseRadians: number): LegCycle {
+function evaluateLegCycle(
+  phaseRadians: number,
+  strideGain = 1
+): LegCycle {
   const swing = Math.max(0, -Math.sin(phaseRadians + SWING_LEAD_RADIANS));
   const absorb = Math.max(0, Math.sin(phaseRadians + ABSORB_LEAD_RADIANS));
   return {
     hip:
       Math.sign(Math.sin(phaseRadians)) *
       Math.pow(Math.abs(Math.sin(phaseRadians)), HIP_SHAPING_EXPONENT) *
-      HIP_SWING,
+      HIP_SWING *
+      strideGain,
     knee:
       KNEE_BASE +
-      Math.pow(swing, 1.4) * KNEE_SWING +
+      Math.pow(swing, 1.4) * KNEE_SWING * strideGain +
       Math.pow(absorb, 3) * KNEE_ABSORB,
-    lift: Math.pow(swing, 1.6) * FOOT_LIFT,
+    lift: Math.pow(swing, 1.6) * FOOT_LIFT * strideGain,
     absorb
   };
 }
@@ -313,11 +407,7 @@ export function evaluateRpgCharacterMotion3dInto(
   const deltaSeconds = Number.isFinite(input.deltaSeconds)
     ? Math.min(0.1, Math.max(0, input.deltaSeconds))
     : 0;
-  const movementSpeedRatio =
-    typeof input.movementSpeedRatio === "number" &&
-    Number.isFinite(input.movementSpeedRatio)
-      ? Math.min(1.5, Math.max(0.5, input.movementSpeedRatio))
-      : 1;
+  const gait = resolveRpgCharacterStride(input.movementSpeed);
   if (Number.isFinite(input.headingX) && Number.isFinite(input.headingZ)) {
     if (Math.abs(input.headingX) + Math.abs(input.headingZ) > 1e-6) {
       state.targetYawRadians = Math.atan2(input.headingX, input.headingZ);
@@ -369,12 +459,11 @@ export function evaluateRpgCharacterMotion3dInto(
   state.motionTimeSeconds =
     (state.motionTimeSeconds + deltaSeconds) % 120;
   if (!input.reducedMotion && (input.moving || state.movementBlend > 0.001)) {
+    // One gait cycle is two steps, so a cycle covers two step lengths.
     state.gaitPhaseRadians = normalizeRadians(
       state.gaitPhaseRadians +
-        deltaSeconds *
-          GAIT_RADIANS_PER_SECOND *
-          (0.28 + state.movementBlend * 0.72) *
-          movementSpeedRatio
+        ((deltaSeconds * gait.speed * Math.PI) / gait.stepLength) *
+          (0.28 + state.movementBlend * 0.72)
     );
   }
 
@@ -415,8 +504,11 @@ export function evaluateRpgCharacterMotion3dInto(
   const idleShift =
     Math.sin((state.motionTimeSeconds / IDLE_SHIFT_SECONDS) * FULL_TURN_RADIANS) *
     target.idleWeight;
-  const leftLeg = evaluateLegCycle(state.gaitPhaseRadians);
-  const rightLeg = evaluateLegCycle(state.gaitPhaseRadians + Math.PI);
+  const leftLeg = evaluateLegCycle(state.gaitPhaseRadians, gait.gain);
+  const rightLeg = evaluateLegCycle(
+    state.gaitPhaseRadians + Math.PI,
+    gait.gain
+  );
   target.leftHipPitch = leftLeg.hip * run + 0.38 * jump;
   target.rightHipPitch = rightLeg.hip * run - 0.18 * jump;
   // Takeoff crunch: the legs stay compressed through the first slice of the
@@ -435,14 +527,16 @@ export function evaluateRpgCharacterMotion3dInto(
     0.58 * jump +
     state.landRecoil * 0.42 +
     takeoffCrunch * TAKEOFF_CRUNCH_KNEE * 0.85;
-  target.leftFootLift = leftLeg.lift * run + 0.14 * jump;
-  target.rightFootLift = rightLeg.lift * run + 0.11 * jump;
+  // Scaled by the same 0.54 the walk's FOOT_LIFT was, because these are the
+  // same world-unit hip raise applied during a jump.
+  target.leftFootLift = leftLeg.lift * run + 0.076 * jump;
+  target.rightFootLift = rightLeg.lift * run + 0.06 * jump;
   target.leftShoulderPitch =
-    -shapedStride * SHOULDER_SWING * run -
+    -shapedStride * SHOULDER_SWING * gait.gain * run -
     0.18 * jump -
     idleBreath * IDLE_BREATH_SHOULDER;
   target.rightShoulderPitch =
-    shapedStride * SHOULDER_SWING * run +
+    shapedStride * SHOULDER_SWING * gait.gain * run +
     0.12 * jump -
     idleBreath * IDLE_BREATH_SHOULDER;
   target.leftElbowPitch =
@@ -493,7 +587,7 @@ export function evaluateRpgCharacterMotion3dInto(
   // The dips are carved out of the ride height rather than out of the floor:
   // a body that sinks below the ground puts its feet through the paving.
   target.rootY = Math.max(0, safeJumpHeight + target.pelvisOffsetY);
-  target.rootLean = ROOT_LEAN * run + 0.055 * jump + accelerationLean;
+  target.rootLean = ROOT_LEAN * gait.gain * run + 0.055 * jump + accelerationLean;
   target.rootRoll =
     -state.turnFollow * 0.09 * run + idleShift * IDLE_SHIFT_ROLL;
   // Hair, sleeves and hem read the gait a fixed phase behind the limbs that

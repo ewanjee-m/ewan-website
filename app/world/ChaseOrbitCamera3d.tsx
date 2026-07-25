@@ -39,9 +39,12 @@ import {
   getRpgCameraSafeArea
 } from "./RpgCameraSafety";
 import type { WorldNavigationSnapshot } from "./WorldNavigationState";
-import type { WorldCameraDragIntent } from "./WorldInput";
+import type {
+  WorldCameraDragIntent,
+  WorldMovementIntent
+} from "./WorldInput";
 import type { WorldRuntime } from "./WorldRuntime";
-import { projectRpgReferenceMapPoint } from "./RpgMiniMapProjection";
+import { projectRpgMapWorldPoint } from "./RpgMiniMapProjection";
 
 interface MaterialAppearance {
   transparent: boolean;
@@ -133,7 +136,8 @@ export function collectRpgCameraOcclusionRoots(
   return target;
 }
 
-function findCameraOccluder(object: Object3D) {
+/** The tagged occluder a ray hit belongs to, or null when it belongs to none. */
+export function findRpgCameraOccluderRoot(object: Object3D) {
   let current: Object3D | null = object;
   while (current) {
     if (current.userData.cameraOccluder === true) {
@@ -156,31 +160,27 @@ function isInstancedMeshObject(object: Object3D) {
   );
 }
 
-function isRpgCameraInstancedOcclusionHit(
-  hitObject: Object3D,
-  candidate: Object3D
-) {
-  let current: Object3D | null = hitObject;
-  while (current) {
-    if (isInstancedMeshObject(current)) return true;
-    if (current === candidate) break;
-    current = current.parent;
-  }
-  return isInstancedMeshObject(candidate);
-}
-
+/**
+ * What the fade can do about one blocked boom, decided by the tagged occluder
+ * the ray landed under rather than by the mesh it happened to hit.
+ *
+ * Fading works on materials, so it always fades the whole tagged occluder. That
+ * is right for a landmark — a stall owns the instanced props nested inside it,
+ * and fading the group fades exactly that stall. It is wrong for a batch shared
+ * across the town, where one canopy in the way would fade every canopy, so a
+ * batch has to opt in with `cameraOcclusionFadeBatch` before it may fade.
+ *
+ * Deciding on the hit mesh instead was the defect behind the hanabi report: an
+ * apple inside `hanabi-apple-stall` is an instanced hit, so the stall — a plain
+ * group — was refused a fade and sat opaque in front of the visitor.
+ */
 export function getRpgCameraOcclusionHitDisposition(
-  hitObject: Object3D,
   candidate: Object3D | null
 ): RpgCameraOcclusionHitDisposition {
   if (!candidate || candidate.userData.landmarkId === "airport-bus") {
     return "ignore";
   }
-  const instancedHit = isRpgCameraInstancedOcclusionHit(
-    hitObject,
-    candidate
-  );
-  return instancedHit &&
+  return isInstancedMeshObject(candidate) &&
     candidate.userData.cameraOcclusionFadeBatch !== true
     ? "batched-occlusion"
     : "fade";
@@ -214,6 +214,14 @@ export function ChaseOrbitCamera3d({
     deltaX: 0,
     deltaY: 0,
     pointerKind: "mouse"
+  });
+  // Read, never consumed: the scene runtime owns the movement intent. The
+  // camera only needs to know whether the walk is straight enough to follow,
+  // because following a sideways walk turns it into a circle.
+  const cameraMovement = useRef<WorldMovementIntent>({
+    x: 0,
+    y: 0,
+    runRequested: false
   });
   const focus = useRef(new Vector3());
   const desired = useRef(new Vector3());
@@ -271,6 +279,7 @@ export function ChaseOrbitCamera3d({
       elapsedSeconds: clock.elapsedTime,
       drag: input.consumeCameraDrag(drag.current),
       moving: snapshot.moving,
+      movementIntent: input.readMovement(cameraMovement.current),
       headingYaw,
       navigationRegion: snapshot.navigationRegion,
       viewport: mobile.current ? "mobile" : "desktop"
@@ -578,11 +587,8 @@ export function ChaseOrbitCamera3d({
     let nextOccluder: Object3D | null = null;
     let batchedOcclusion = false;
     for (const hit of rayHits.current) {
-      const candidate = findCameraOccluder(hit.object);
-      const disposition = getRpgCameraOcclusionHitDisposition(
-        hit.object,
-        candidate
-      );
+      const candidate = findRpgCameraOccluderRoot(hit.object);
+      const disposition = getRpgCameraOcclusionHitDisposition(candidate);
       if (disposition === "ignore") continue;
       if (disposition === "batched-occlusion") {
         batchedOcclusion = true;
@@ -654,7 +660,11 @@ export function ChaseOrbitCamera3d({
         usedFinalCollisionFallback.current
       );
       telemetryNode.dataset.playerHeading = snapshot.heading.join(",");
-      const mapAnchor = projectRpgReferenceMapPoint(snapshot.position);
+      // Published through the very function the marker is drawn with, rounding
+      // included. Reaching for a different projection that happens to share the
+      // coordinate system left the two disagreeing in the sixth decimal, and
+      // every watcher comparing them called it a mismatch.
+      const mapAnchor = projectRpgMapWorldPoint(snapshot.position);
       telemetryNode.dataset.mapAnchorReference = `${mapAnchor.x},${mapAnchor.y}`;
       telemetryNode.dataset.cameraSafeViolationMs = String(
         Math.round(safetyViolationSeconds.current * 1000)

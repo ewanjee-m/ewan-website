@@ -103,11 +103,19 @@ describe("keyboard after a control has been pressed", () => {
       runRequested: false
     });
 
-    // Space still belongs to the focused button so it can be activated.
+    // Space is the jump key and belongs to the world even here: closing the
+    // map hands focus back to the button that opened it, so leaving space to
+    // the button meant walking along and jumping re-opened the map. Enter is
+    // what presses a focused button.
     button.dispatchEvent(
       new KeyboardEvent("keydown", { key: " ", bubbles: true })
     );
-    expect(input.consumeJump()).toBe(false);
+    expect(input.consumeJump()).toBe(true);
+
+    button.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true })
+    );
+    expect(input.consumeInteraction()).toBe(false);
 
     button.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Enter", bubbles: true })
@@ -135,5 +143,62 @@ describe("keyboard after a control has been pressed", () => {
 
     field.remove();
     detach();
+  });
+});
+
+describe("jump against a focused world control", () => {
+  /**
+   * Closing the map returns focus to the button that opened it, which is the
+   * right thing for a dialog to do. But the jump key is a space, and a focused
+   * button answers a space by activating. So walking along and jumping
+   * re-opened the map. Space belongs to the world while the world is being
+   * played; Enter still presses the button.
+   */
+  function pressSpaceOn(target: HTMLElement) {
+    const input = {
+      pressed: [] as string[],
+      released: [] as string[],
+      pressKey(key: string) {
+        this.pressed.push(key);
+      },
+      releaseKey(key: string) {
+        this.released.push(key);
+      },
+      reset() {}
+    };
+    const detach = attachWorldKeyboardInput(input);
+    const event = new KeyboardEvent("keydown", {
+      key: " ",
+      bubbles: true,
+      cancelable: true
+    });
+    target.dispatchEvent(event);
+    detach();
+    return { input, defaultPrevented: event.defaultPrevented };
+  }
+
+  it("jumps instead of re-pressing the world control that has focus", () => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("aria-label", "월드 지도 열기 (M 키)");
+    document.body.append(button);
+    button.focus();
+
+    const { input, defaultPrevented } = pressSpaceOn(button);
+
+    expect(input.pressed).toContain(" ");
+    expect(defaultPrevented).toBe(true);
+    button.remove();
+  });
+
+  it("still leaves typing alone", () => {
+    const field = document.createElement("input");
+    document.body.append(field);
+    field.focus();
+
+    const { input } = pressSpaceOn(field);
+
+    expect(input.pressed).not.toContain(" ");
+    field.remove();
   });
 });

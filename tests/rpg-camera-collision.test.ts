@@ -30,6 +30,7 @@ import { createRpgBusMotionPose } from "../app/world/RpgBusMotion";
 import {
   collectRpgCameraDynamicObstacles,
   collectRpgCameraOcclusionRoots,
+  findRpgCameraOccluderRoot,
   forEachRpgCameraOccluderMaterial,
   getRpgCameraOcclusionHitDisposition,
   getRpgCameraLookSlerpAlpha,
@@ -198,9 +199,36 @@ describe("RPG chase camera obstacle clearance", () => {
     };
     batch.add(instanceProxy);
 
-    expect(
-      getRpgCameraOcclusionHitDisposition(instanceProxy, batch)
-    ).toBe("fade");
+    expect(getRpgCameraOcclusionHitDisposition(batch)).toBe("fade");
+    expect(getRpgCameraOcclusionHitDisposition(instanceProxy.parent)).toBe(
+      "fade"
+    );
+  });
+
+  it("fades a landmark that keeps its own instanced props", () => {
+    // Observed at hanabi: the boom hit an apple inside `hanabi-apple-stall`,
+    // the stall stayed fully opaque in front of the visitor and the drive
+    // failed with `diagnostic=batched-occlusion`. A rich landmark owns the
+    // batches nested inside it, so fading the landmark fades exactly that one
+    // stall — the shared-batch objection does not apply to it.
+    const stall = new Object3D();
+    stall.userData = {
+      cameraOccluder: true,
+      landmarkId: "hanabi-apple-stall"
+    };
+    const apples = new InstancedMesh(
+      new BoxGeometry(),
+      new MeshStandardMaterial(),
+      3
+    );
+    // Drei renders every `<Instance>` as a proxy child of its batch, so the
+    // ray reports the proxy rather than the batch.
+    const appleProxy = new Object3D();
+    apples.add(appleProxy);
+    stall.add(apples);
+
+    expect(findRpgCameraOccluderRoot(appleProxy)).toBe(stall);
+    expect(getRpgCameraOcclusionHitDisposition(stall)).toBe("fade");
   });
 
   it("keeps the batched-occlusion diagnostic for unmarked instanced occluders", () => {
@@ -213,23 +241,12 @@ describe("RPG chase camera obstacle clearance", () => {
     batch.userData = { cameraOccluder: true };
     batch.add(instanceProxy);
 
-    expect(
-      getRpgCameraOcclusionHitDisposition(instanceProxy, batch)
-    ).toBe("batched-occlusion");
-    expect(
-      getRpgCameraOcclusionHitDisposition(batch, batch)
-    ).toBe("batched-occlusion");
-
-    const parentOccluder = new Object3D();
-    parentOccluder.userData = { cameraOccluder: true };
-    batch.userData = {};
-    parentOccluder.add(batch);
-    expect(
-      getRpgCameraOcclusionHitDisposition(
-        instanceProxy,
-        parentOccluder
-      )
-    ).toBe("batched-occlusion");
+    // The batch itself is the tagged occluder, so fading it would fade every
+    // copy of that prop across the town, not the one in the way.
+    expect(findRpgCameraOccluderRoot(instanceProxy)).toBe(batch);
+    expect(getRpgCameraOcclusionHitDisposition(batch)).toBe(
+      "batched-occlusion"
+    );
   });
 
   it("visits the shared material of a fadeable instanced occluder", () => {

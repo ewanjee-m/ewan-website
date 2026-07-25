@@ -14,15 +14,27 @@ import {
   freezeWorldNavigationRegion,
   type WorldNavigationSnapshot
 } from "./WorldNavigationState";
-import { createChaseOrbitCameraState } from "./ChaseOrbitCamera";
+import {
+  createChaseOrbitCameraState,
+  getChaseOrbitCameraBasis
+} from "./ChaseOrbitCamera";
 import { findWorldInteractionTarget } from "./WorldInteraction";
 
-export const WORLD_WALK_SPEED = 1.61;
-export const WORLD_RUN_SPEED = 1.9;
+// Paced against the character rather than against a stopwatch. At 2.6 units
+// tall these are 1.15 and 2.69 body heights a second, so a walk is brisk and
+// the run key is actually felt. The previous 1.61 and 1.9 put the run below a
+// normal person's walking pace and took 76 seconds to cross the world.
+export const WORLD_WALK_SPEED = 3;
+export const WORLD_RUN_SPEED = 7;
 const MAX_STEP = 0.25;
 const JUMP_VELOCITY = 6;
 const GRAVITY = 15;
 
+/**
+ * Turns a screen-frame intent into a world heading using the camera's own
+ * basis. Screen up walks away from the camera and screen right walks toward
+ * the camera's right hand, so what the visitor presses is what they see.
+ */
 export function resolveCameraRelativeDirection(
   intent: Readonly<WorldMovementIntent>,
   yaw: number
@@ -31,9 +43,10 @@ export function resolveCameraRelativeDirection(
   if (length <= 1e-8) return { x: 0, z: 0, strength: 0 };
   const x = intent.x / length;
   const y = intent.y / length;
+  const basis = getChaseOrbitCameraBasis(yaw);
   return {
-    x: x * Math.cos(yaw) + y * Math.sin(yaw),
-    z: -x * Math.sin(yaw) + y * Math.cos(yaw),
+    x: x * basis.rightX + y * basis.forwardX,
+    z: x * basis.rightZ + y * basis.forwardZ,
     strength: Math.min(1, length)
   };
 }
@@ -54,7 +67,11 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
   const cameraState = createChaseOrbitCameraState();
   let x = RPG_WORLD_SPAWN[0];
   let z = RPG_WORLD_SPAWN[2];
-  let heading: WorldPoint3 = [1, 0, 0];
+  // Standing still never recentres the view, so the visitor has to start
+  // already facing away from the camera or the world opens on their profile.
+  const spawnBasis = getChaseOrbitCameraBasis(cameraState.yaw);
+  const spawnHeading: WorldPoint3 = [spawnBasis.forwardX, 0, spawnBasis.forwardZ];
+  let heading: WorldPoint3 = spawnHeading;
   let jumpOffset = 0;
   let jumpVelocity = 0;
   let revision = 0;
@@ -115,7 +132,7 @@ export function createWorldRuntime(options: WorldRuntimeOptions = {}) {
     reset() {
       x = RPG_WORLD_SPAWN[0];
       z = RPG_WORLD_SPAWN[2];
-      heading = [1, 0, 0];
+      heading = spawnHeading;
       jumpOffset = 0;
       jumpVelocity = 0;
       Object.assign(movement, { x: 0, y: 0, runRequested: false });
