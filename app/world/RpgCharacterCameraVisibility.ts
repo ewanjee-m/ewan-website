@@ -28,6 +28,12 @@ export function calculateRpgCharacterCameraDistance(
 // with distance, so the angle one covers stays proportional to this sideways
 // gap however far down the line it stands, which is why a single figure works
 // at every depth instead of a cone.
+//
+// The chibi rebuild made the skull the widest part of a townsperson, so this is
+// now the skull rather than the shoulders: measured on the shipped NPC meshes
+// and scaled to the 2.525 units they are drawn at, it is 0.4989, which 0.5 was
+// already covering. rpg-character-model-contract pins it to that measurement
+// from both sides so it cannot silently fall behind a future head.
 export const NPC_SIGHT_LINE_RADIUS = 0.5;
 // Fractions along the camera-to-player line. Bodies right at the lens are
 // already handled by the hide distance, and anything past the player is behind

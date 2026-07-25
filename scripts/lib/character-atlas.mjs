@@ -2,103 +2,31 @@ import { encodePng } from "./png.mjs";
 
 export const ATLAS_SIZE = 1280;
 export const HEAD_BAND_ROWS = ATLAS_SIZE / 2;
-// Anything the pictures do not cover reads this texel, which stays white so the
-// sculpted vertex colour comes through unchanged. It sits in the gap between the
-// two body sheets, which the sheet width limit below keeps clear.
+// Every part of the figure except the skull reads this one texel, which is
+// white so the flat vertex colour it was painted with comes through unchanged.
+// It sits in the lower half of the atlas, which the head band never touches.
 export const BODY_UV = Object.freeze({ u: 0.5, v: 0.75 });
 
 // The lower half of the atlas holds the figure twice: the front picture on the
 // left, the back picture on the right. A margin round each keeps the edge of a
 // sheet from bleeding into its neighbour under bilinear sampling, and leaves the
 // white column that BODY_UV points at.
-export const BODY_GUTTER = 20;
-export const BODY_CELL_HEIGHT = ATLAS_SIZE / 2 - BODY_GUTTER * 2;
-const BODY_CELL_MAX_WIDTH = ATLAS_SIZE / 2 - BODY_GUTTER * 4;
-// Painted past the edge of each sheet with the edge pixel repeated, so the
-// texels a sampler reaches for at the boundary carry the picture rather than the
-// white behind it.
-const BODY_BLEED = 3;
-
-// A sheet is the figure squared up to its own bounding box, so it keeps the
-// figure's proportions and the cell it lands in is shaped the same way. Spending
-// the full half width on a figure three times taller than it is wide would cost
-// three times the pixels for no more detail across the character.
-export function bodyCellRect(sheet, side) {
-  const width = Math.min(
-    BODY_CELL_MAX_WIDTH,
-    Math.max(1, Math.round((BODY_CELL_HEIGHT * sheet.width) / sheet.height))
-  );
-  return {
-    x: (side === "back" ? ATLAS_SIZE / 2 : 0) + BODY_GUTTER,
-    y: ATLAS_SIZE / 2 + BODY_GUTTER,
-    width,
-    height: BODY_CELL_HEIGHT
-  };
-}
-
-// Where a point on the figure lands in the atlas. Both arguments run 0 to 1
-// across the sheet, with 0 at its left edge and 0 at its top.
-export function bodyCellUv(sheet, side, alongWidth, downHeight) {
-  const rect = bodyCellRect(sheet, side);
-  return [
-    (rect.x + alongWidth * rect.width) / ATLAS_SIZE,
-    (rect.y + downHeight * rect.height) / ATLAS_SIZE
-  ];
-}
-
-function sampleSheet(sheet, alongWidth, downHeight) {
-  const px = Math.min(
-    sheet.width - 1,
-    Math.max(0, alongWidth * sheet.width - 0.5)
-  );
-  const py = Math.min(
-    sheet.height - 1,
-    Math.max(0, downHeight * sheet.height - 0.5)
-  );
-  const x0 = Math.floor(px);
-  const y0 = Math.floor(py);
-  const x1 = Math.min(sheet.width - 1, x0 + 1);
-  const y1 = Math.min(sheet.height - 1, y0 + 1);
-  const tx = px - x0;
-  const ty = py - y0;
-  const read = (cx, cy, channel) =>
-    sheet.data[(cy * sheet.width + cx) * 3 + channel];
-  return [0, 1, 2].map((channel) => {
-    const top = read(x0, y0, channel) * (1 - tx) + read(x1, y0, channel) * tx;
-    const bottom = read(x0, y1, channel) * (1 - tx) + read(x1, y1, channel) * tx;
-    return top * (1 - ty) + bottom * ty;
-  });
-}
-
-function paintBodyCell(rgba, sheet, side) {
-  const rect = bodyCellRect(sheet, side);
-  const left = rect.x - BODY_BLEED;
-  const top = rect.y - BODY_BLEED;
-  const right = rect.x + rect.width + BODY_BLEED;
-  const bottom = rect.y + rect.height + BODY_BLEED;
-  for (let row = top; row < bottom; row += 1) {
-    if (row < 0 || row >= ATLAS_SIZE) continue;
-    const downHeight = Math.min(
-      1,
-      Math.max(0, (row + 0.5 - rect.y) / rect.height)
-    );
-    for (let column = left; column < right; column += 1) {
-      if (column < 0 || column >= ATLAS_SIZE) continue;
-      const alongWidth = Math.min(
-        1,
-        Math.max(0, (column + 0.5 - rect.x) / rect.width)
-      );
-      const color = sampleSheet(sheet, alongWidth, downHeight);
-      const index = (row * ATLAS_SIZE + column) * 4;
-      rgba[index] = Math.round(color[0]);
-      rgba[index + 1] = Math.round(color[1]);
-      rgba[index + 2] = Math.round(color[2]);
-    }
-  }
-}
-
 const FEATHER = 0.012;
-const HEAD_ASPECT = 0.205 / 0.195;
+
+// The skull's full extents as fractions of total figure height. This is the one
+// place the head size is written down: the generator builds the skull mesh to
+// exactly these numbers and the face band below is painted in the same aspect.
+// Held apart, the painted face is stretched off the geometry it is wrapped on —
+// which is what the old pair of hard-coded 0.205/0.195 literals in two files
+// quietly did.
+// The depth is a little under the width on purpose. On an ellipsoid the surface
+// normal runs along (x / halfWidth, y / halfHeight, z / halfDepth), so making
+// the head shallower than it is wide swings every normal on the face towards
+// the camera: at the outer corner of the eye, 0.355 instead of 0.365 is worth
+// 1.4 degrees of azimuth for nothing visible in the profile. It is a tenth of
+// the grazing-angle fix and the only part of it that costs no drawing.
+export const HEAD_EXTENTS = Object.freeze({ x: 0.39, y: 0.4, z: 0.355 });
+const HEAD_ASPECT = HEAD_EXTENTS.y / HEAD_EXTENTS.x;
 const FRONT_EXPANSION = 0.55;
 
 function wrapSigned(value) {
@@ -115,6 +43,34 @@ function unprojectHeadBandAzimuth(bandU) {
   const offset = bandU - 0.5;
   const magnitude = 0.5 * Math.pow(Math.abs(offset) / 0.5, 1 / FRONT_EXPANSION);
   return Math.sign(offset) * magnitude;
+}
+
+// The head is a ball 0.39h wide and 0.40h tall, so face space is measured in
+// units of its HALF-WIDTH: fx and fy are the offsets of a texel from the head
+// centre in those units, and z is how far round the front it faces. The head is
+// very slightly taller than it is wide, so fy runs to +/-HEAD_ASPECT at crown
+// and chin while fx runs to +/-1 at the ears — one aspect, not two, which is
+// what keeps a circle drawn in this space a circle on the model.
+export const HEAD_BAND_ASPECT = HEAD_ASPECT;
+
+/**
+ * Where a texel of the head band lands on the skull.
+ *
+ * Exported so a test can ask where a painted pixel actually ended up instead of
+ * re-deriving the projection and then grading its own homework against it. The
+ * painter below walks the band through this same function, so the two cannot
+ * describe different skulls.
+ */
+export function headBandDirection(column, row) {
+  const theta = (Math.PI * (row + 0.5)) / HEAD_BAND_ROWS;
+  const sinTheta = Math.sin(theta);
+  const azimuth = unprojectHeadBandAzimuth((column + 0.5) / ATLAS_SIZE);
+  const phi = 2 * Math.PI * (0.25 + azimuth);
+  return {
+    fx: -Math.cos(phi) * sinTheta,
+    fy: Math.cos(theta) * HEAD_ASPECT,
+    z: Math.sin(phi) * sinTheta
+  };
 }
 
 function parseColor(value) {
@@ -146,69 +102,20 @@ function arcDistance(x, y, centerX, centerY, radius, thickness) {
   return Math.abs(Math.hypot(x - centerX, y - centerY) - radius) - thickness;
 }
 
-// Both hemispheres fade out over the same window, so the front crop and the
-// back crop hand over to the sculpted colour across the ears instead of meeting
-// at a hard line.
-const HEMISPHERE_FADE_START = 0.12;
-const HEMISPHERE_FADE_END = 0.42;
-
-const FACE_IMAGE_LEFT = -1.02;
-const FACE_IMAGE_RIGHT = 1.02;
-const FACE_IMAGE_TOP = 1.04;
-const FACE_IMAGE_BOTTOM = -1.08;
-const FACE_IMAGE_FADE = 0.1;
-
-// The generator needs the same rectangle to decide which vertices the face crop
-// actually covers, so it does not whiten geometry the crop never reaches.
-export const FACE_IMAGE_BOUNDS = Object.freeze({
-  left: FACE_IMAGE_LEFT,
-  right: FACE_IMAGE_RIGHT,
-  top: FACE_IMAGE_TOP,
-  bottom: FACE_IMAGE_BOTTOM,
-  fade: FACE_IMAGE_FADE,
-  aspect: HEAD_ASPECT,
-  span: FACE_IMAGE_TOP - FACE_IMAGE_BOTTOM,
-  // How far round the head a point has to face before the crop is painted onto
-  // it at full strength. The generator uses the same number to decide which
-  // vertices get the picture, so no vertex is left reading a half-painted texel.
-  facing: HEMISPHERE_FADE_END
-});
-
-function sampleFaceImage(image, fx, fy) {
-  const u = (fx - FACE_IMAGE_LEFT) / (FACE_IMAGE_RIGHT - FACE_IMAGE_LEFT);
-  const v = (FACE_IMAGE_TOP - fy) / (FACE_IMAGE_TOP - FACE_IMAGE_BOTTOM);
-  if (u < 0 || u > 1 || v < 0 || v > 1) return null;
-
-  const edge =
-    Math.min(
-      smoothstep(0, FACE_IMAGE_FADE, u),
-      smoothstep(0, FACE_IMAGE_FADE, 1 - u),
-      smoothstep(0, FACE_IMAGE_FADE, v),
-      smoothstep(0, FACE_IMAGE_FADE, 1 - v)
-    );
-  if (edge <= 0) return null;
-
-  const size = image.size;
-  const px = Math.min(size - 1, Math.max(0, u * size - 0.5));
-  const py = Math.min(size - 1, Math.max(0, v * size - 0.5));
-  const x0 = Math.floor(px);
-  const y0 = Math.floor(py);
-  const x1 = Math.min(size - 1, x0 + 1);
-  const y1 = Math.min(size - 1, y0 + 1);
-  const tx = px - x0;
-  const ty = py - y0;
-
-  const read = (cx, cy, channel) => image.data[(cy * size + cx) * 3 + channel];
-  const channels = [0, 1, 2].map((channel) => {
-    const top =
-      read(x0, y0, channel) * (1 - tx) + read(x1, y0, channel) * tx;
-    const bottom =
-      read(x0, y1, channel) * (1 - tx) + read(x1, y1, channel) * tx;
-    return top * (1 - ty) + bottom * ty;
-  });
-
-  return { color: channels, coverage: edge };
-}
+// How far round the front a feature is painted at full strength, and where it
+// has faded to nothing.
+//
+// The window used to close at 0.58 because the face was a photographic crop:
+// an orthographic picture pinned to a sphere smears once it is carried much
+// past sixty degrees round, so it had to hand over to bare skin early. A face
+// drawn in face space has no such limit — every feature is placed at the point
+// whose fx it names, which is the correct orthographic position — so the window
+// can open up and let the eyes sit as wide as the style wants without their
+// outer edge dissolving. It still has to close before the ears, because the
+// features are mirrored about the nose and would otherwise appear again round
+// the back of the skull.
+const HEMISPHERE_FADE_START = 0.22;
+const HEMISPHERE_FADE_END = 0.48;
 
 function createLayerPainter(rgba) {
   return function paint(index, color, alpha) {
@@ -251,56 +158,25 @@ export function createCharacterAtlas(face) {
     }
   }
 
-  if (face.body) paintBodyCell(rgba, face.body, "front");
-  if (face.bodyBack) paintBodyCell(rgba, face.bodyBack, "back");
-
   for (let row = 0; row < HEAD_BAND_ROWS; row += 1) {
-    const theta = (Math.PI * (row + 0.5)) / HEAD_BAND_ROWS;
-    const sinTheta = Math.sin(theta);
-    const y = Math.cos(theta);
-
     for (let column = 0; column < ATLAS_SIZE; column += 1) {
       const index = (row * ATLAS_SIZE + column) * 4;
-      // A sculpted head carries its own colour per vertex, so anything the face
-      // crop does not cover stays white and lets that colour through unchanged.
-      const base = face.image ? [255, 255, 255] : skin;
+      // The head sphere carries no colour of its own, so everywhere no feature
+      // reaches — the sides of the skull, the crown under the hair, the
+      // underside of the jaw — reads this texel. Skin is the only answer that
+      // does not show as a pale patch through the gaps in the hair.
+      const base = skin;
       rgba[index] = base[0];
       rgba[index + 1] = base[1];
       rgba[index + 2] = base[2];
 
-      const azimuth = unprojectHeadBandAzimuth((column + 0.5) / ATLAS_SIZE);
-      const phi = 2 * Math.PI * (0.25 + azimuth);
-      const z = Math.sin(phi) * sinTheta;
-      const x = -Math.cos(phi) * sinTheta;
-      const fy = y * HEAD_ASPECT;
+      const { fx, fy, z } = headBandDirection(column, row);
 
-      if (z <= HEMISPHERE_FADE_START) {
-        // Seen from behind the figure turns left for right, so the back crop is
-        // read mirrored. Without a back view this half stays white and the
-        // sculpted hair colour shows through as before.
-        if (!face.backImage || z >= -HEMISPHERE_FADE_START) continue;
-        const sampled = sampleFaceImage(face.backImage, -x, fy);
-        if (sampled) {
-          paint(
-            index,
-            sampled.color,
-            sampled.coverage *
-              smoothstep(HEMISPHERE_FADE_START, HEMISPHERE_FADE_END, -z)
-          );
-        }
-        continue;
-      }
-
+      // Features are drawn from the front and mirrored about the nose, so the
+      // same |fx| on the far side of the skull would grow a second pair of eyes
+      // round the back. The face stops where the head turns away.
+      if (z <= HEMISPHERE_FADE_START) continue;
       const depth = smoothstep(HEMISPHERE_FADE_START, HEMISPHERE_FADE_END, z);
-      const fx = x;
-
-      if (face.image) {
-        const sampled = sampleFaceImage(face.image, fx, fy);
-        if (sampled) {
-          paint(index, sampled.color, sampled.coverage * depth);
-        }
-        continue;
-      }
 
       const cheekShade =
         coverage(
@@ -352,6 +228,33 @@ export function createCharacterAtlas(face) {
       paint(index, lip, mouthMask * depth);
 
       const eyeX = Math.abs(fx);
+      // The eye is built up in layers, dark to light, rather than cut out of
+      // the skin. The outermost layer is a solid ink ellipse; the sclera is
+      // painted back over the inside of it, which leaves an unbroken dark rim
+      // of exactly `rimWidth` all the way round.
+      //
+      // That rim is what makes the eye survive being shrunk. At the chase
+      // camera the head is about ninety pixels tall and the eye a dozen across;
+      // a pale sclera against pale skin greys out into a smudge at that size,
+      // where an inked outline holds its shape down to a handful of pixels.
+      // This is why the reference art outlines every eye.
+      //
+      // `rimWidth` is a WIDTH, in the same face-space units as everything else,
+      // not a fraction of the eye's radii. It used to be a fraction, which tied
+      // the outline's thickness to the eye's size: narrowing the eye to keep it
+      // off the silhouette also thinned its outline below a pixel at chase
+      // distance, so the two could not be tuned apart. One unit of face space
+      // is about 44 px on a ninety-pixel head, so 0.04 draws a 1.8 px line at
+      // any eye size.
+      const rimX = face.eyeRadiusX + face.rimWidth;
+      const rimY = face.eyeRadiusY + face.rimWidth;
+      paint(
+        index,
+        lash,
+        coverage(
+          ellipseDistance(eyeX, fy, face.eyeX, face.eyeY, rimX, rimY)
+        ) * depth
+      );
       const eyeDistance = ellipseDistance(
         eyeX,
         fy,
@@ -401,30 +304,36 @@ export function createCharacterAtlas(face) {
               fy,
               face.eyeX,
               face.eyeY - face.irisDrop,
-              face.irisRadiusX * 0.42,
-              face.irisRadiusY * 0.5
+              face.irisRadiusX * 0.54,
+              face.irisRadiusY * 0.62
             )
           )
         )
       );
+      // The upper lid, painted back over the sclera. A lid heavier than the rim
+      // is most of what separates one character's expression from another's:
+      // dropped low it reads as a calm or sleepy eye, lifted clear of the iris
+      // as a wide-open one.
       const lashBand =
-        coverage(
-          ellipseDistance(
-            eyeX,
-            fy,
-            face.eyeX,
-            face.eyeY,
-            face.eyeRadiusX * 1.06,
-            face.eyeRadiusY * 1.1
-          )
-        ) *
+        coverage(ellipseDistance(eyeX, fy, face.eyeX, face.eyeY, rimX, rimY)) *
         smoothstep(
           face.eyeY + face.eyeRadiusY * face.lashStart,
-          face.eyeY + face.eyeRadiusY * (face.lashStart + 0.35),
+          face.eyeY + face.eyeRadiusY * (face.lashStart + 0.32),
           fy
         );
       paint(index, lash, lashBand * depth);
 
+      // One highlight per eye, up and inward, and pure white. Two highlights
+      // read as a glassy doll rather than a cartoon, and none reads as a dead
+      // eye at any size.
+      //
+      // It sits INWARD because that is the half of the eye that survives being
+      // turned away from: the inner corner is ten degrees round the skull where
+      // the outer corner is thirty-five, so at three-quarter view the highlight
+      // is still there to say "eye" after the outer half has foreshortened
+      // away. It sits low enough to stay clear of the heaviest upper lid any of
+      // the six wears, or the character it belongs to loses it under the lash
+      // and the face reads as asleep.
       paint(
         index,
         highlight,
@@ -435,26 +344,46 @@ export function createCharacterAtlas(face) {
               eyeX,
               fy,
               face.eyeX - face.eyeRadiusX * 0.34,
-              face.eyeY + face.eyeRadiusY * 0.02,
-              face.eyeRadiusX * 0.24,
-              face.eyeRadiusY * 0.24
+              face.eyeY + face.eyeRadiusY * 0.22,
+              face.eyeRadiusX * 0.34,
+              face.eyeRadiusY * 0.26
             )
           )
         )
       );
 
+      // The brow is an arc, sheared about the eye's own centre line. Shear is
+      // the whole of the expression: raised at the outer end reads as open and
+      // friendly, dropped at the outer end as focused or stern. Nothing else in
+      // this face carries mood as cheaply, which is why it is the third handle —
+      // after eye shape and mouth — for telling the six apart.
+      //
+      // The arc is struck about a centre a whole brow-curve BELOW the brow, so
+      // the circle it lies on passes back down across the cheek and out to the
+      // corner of the mouth. Only a window on |fx| used to hold the drawing to
+      // the brow, and a window on |fx| does not exclude the bottom of a circle:
+      // every face was painted with a second dark arc down each cheek, which
+      // reads as a deep nasolabial fold on a character who has no nose. It was
+      // also the ink that reached furthest round the skull on the three
+      // feminine faces — 58.6 degrees, past the point where the head turns away
+      // at three-quarter view. Keeping to the upper half of the circle is the
+      // whole of the fix; the brow itself never leaves it.
+      const browCenterFy = face.browY - face.browCurve;
+      const browFy = fy - face.browTilt * (eyeX - face.eyeX);
       const browMask =
         coverage(
           arcDistance(
             eyeX,
-            fy,
+            browFy,
             face.eyeX,
-            face.browY - face.browCurve,
+            browCenterFy,
             face.browCurve,
             face.browThickness
           )
         ) *
-        (eyeX > face.eyeX - face.browSpan && eyeX < face.eyeX + face.browSpan
+        (browFy > browCenterFy &&
+        eyeX > face.eyeX - face.browSpan &&
+        eyeX < face.eyeX + face.browSpan
           ? 1
           : 0);
       paint(index, brow, browMask * depth);

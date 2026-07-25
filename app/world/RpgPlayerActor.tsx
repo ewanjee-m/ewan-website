@@ -77,10 +77,8 @@ export function RpgPlayerActor({
         moving: snapshot.moving,
         grounded: snapshot.grounded,
         jumpHeight: snapshot.jumpOffset,
-        movementSpeedRatio:
-          snapshot.locomotion === "run"
-            ? WORLD_RUN_SPEED / WORLD_WALK_SPEED
-            : 1,
+        movementSpeed:
+          snapshot.locomotion === "run" ? WORLD_RUN_SPEED : WORLD_WALK_SPEED,
         reducedMotion
       },
       pose.current
