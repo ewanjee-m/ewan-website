@@ -151,29 +151,33 @@ describe("RPG route closed-loop steering", () => {
     const cameraYaw = Math.PI - 0.02;
     const desiredYaw = -Math.PI + Math.PI / 4 - 0.02;
     const pulse = selectRpgRouteKeyboardPulse(cameraYaw, desiredYaw);
-    expect(pulse.keys).toEqual(["d", "w"]);
+    expect(pulse.keys).toEqual(["a", "w"]);
     expect(Math.hypot(pulse.inputX, pulse.inputY)).toBeCloseTo(1, 12);
     expect(pulse.alignment).toBeCloseTo(1, 12);
     expect(pulse).not.toHaveProperty("cameraYaw");
   });
 
   it("chooses the maximum-dot octant for a direction between cardinal inputs", () => {
+    // A camera at yaw 0 looks along +Z, which puts world +X on its left, so a
+    // bearing between +Z and +X is pressed as forward plus left.
     const pulse = selectRpgRouteKeyboardPulse(0, 0.7);
-    expect(pulse.keys).toEqual(["d", "w"]);
+    expect(pulse.keys).toEqual(["a", "w"]);
     expect(pulse.alignment).toBeGreaterThan(Math.cos(0.7));
     expect(pulse.alignment).toBeGreaterThan(Math.sin(0.7));
+    expect(pulse.worldX).toBeGreaterThan(0);
+    expect(pulse.worldZ).toBeGreaterThan(0);
   });
 
   it("offers adjacent diagonal pulses after a blocked cardinal without duplicates", () => {
     const ranked = rankRpgRouteKeyboardPulses(0, 0.321);
     expect(ranked.map(({ keys }) => keys.join("+"))).toEqual([
       "w",
-      "d+w",
       "a+w",
-      "d",
+      "d+w",
       "a",
-      "d+s",
+      "d",
       "a+s",
+      "d+s",
       "s"
     ]);
     expect(new Set(ranked.map(({ keys }) => keys.join("+"))).size).toBe(8);

@@ -53,6 +53,32 @@ describe("RPG visual capture execution contract", () => {
     ).toHaveLength(1);
   });
 
+  it("waits for foreground occluders to finish fading before proof screenshots", () => {
+    expect(source).toContain(
+      'const CAMERA_OCCLUSION_SETTLE_IDS = new Set(["narrow-camera", "obstacle-camera", "sakura"]);'
+    );
+    expect(source).toContain("const CAMERA_OCCLUSION_SETTLE_MS = 450;");
+    expect(source).toContain("CAMERA_OCCLUSION_SETTLE_IDS.has(id)");
+    expect(source).toContain(
+      "await page.waitForTimeout(CAMERA_OCCLUSION_SETTLE_MS);"
+    );
+  });
+
+  it("uses the clearest collision-valid Gyukatsu obstacle angle", () => {
+    expect(source).toContain(
+      "const GYUKATSU_OBSTACLE_POSITION = [4.5, 4.5];"
+    );
+    expect(source).toContain(
+      "const GYUKATSU_OBSTACLE_YAW_OFFSET_DEGREES = 55;"
+    );
+    expect(source).toContain(
+      "await driveTo(page, GYUKATSU_OBSTACLE_POSITION, { run: false })"
+    );
+    expect(source).toContain(
+      "obstacleYaw - GYUKATSU_OBSTACLE_YAW_OFFSET_DEGREES * Math.PI / 180"
+    );
+  });
+
   it("waits for the rendered camera to face the player after fixture turns", () => {
     expect(source).toContain("const facingResolved");
     expect(source).toContain("cameraFacingDot >= 0.98");

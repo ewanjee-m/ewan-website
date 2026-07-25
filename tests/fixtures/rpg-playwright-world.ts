@@ -9,6 +9,10 @@ import {
   RPG_CANONICAL_ROUTE_TOLERANCE
 } from "./rpg-canonical-route.ts";
 import {
+  WORLD_RUN_SPEED,
+  WORLD_WALK_SPEED
+} from "../../app/world/WorldRuntime.ts";
+import {
   getRpgRouteBrakeRadius,
   medianRpgRoutePulse,
   mergeRpgRoutePulseFeedback,
@@ -747,6 +751,39 @@ export function assertSafeCameraTelemetry(
   }
   if (telemetry.cameraDiagnostic !== "ok") {
     throw new Error(`camera diagnostic failed: ${telemetry.cameraDiagnostic}`);
+  }
+}
+
+/**
+ * Waits until the navigation revision stops moving on its own, then returns the
+ * settled telemetry.
+ *
+ * The world keeps bumping the revision for a moment after it reports ready: as
+ * each character GLB resolves, its interaction target flips availability and
+ * the runtime counts that as a change. Measured on the live build the revision
+ * climbs from 7 to 14 in the first few hundred milliseconds and then holds. A
+ * baseline captured inside that window makes any later comparison read as if
+ * something moved the player, which is exactly the accusation the map tests are
+ * supposed to be able to make truthfully. This waits for quiet rather than
+ * relaxing what the comparison demands.
+ */
+export async function readSettledWorldTelemetry(
+  page: Page,
+  { quietMs = 250, timeoutMs = 10_000 } = {}
+) {
+  const deadline = Date.now() + timeoutMs;
+  let previous = await readWorldTelemetry(page);
+  for (;;) {
+    await page.waitForTimeout(quietMs);
+    const current = await readWorldTelemetry(page);
+    if (current.revision === previous.revision) return current;
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `navigation revision never settled: ${previous.revision} -> ` +
+          `${current.revision}`
+      );
+    }
+    previous = current;
   }
 }
 
@@ -1503,7 +1540,9 @@ export async function driveContinuousTrustedRoute(
       steeringRoute,
       runRequested,
       tolerance,
-      maximumStroke
+      maximumStroke,
+      nominalSpeed,
+      brakedSpeed
     }) => {
       type TrustedRouteKeyAction = {
         kind: "keys";
@@ -1652,6 +1691,18 @@ export async function driveContinuousTrustedRoute(
         }[]
       };
       let previousFrameAt = performance.now();
+      // How far the visitor travels between two of this loop's samples, from
+      // the frame time this run is actually getting rather than from a number
+      // written when the pace was different. The runtime moves speed x delta
+      // with no acceleration, so a step is exactly that product; a median over
+      // the last few frames keeps one stalled frame from inflating it.
+      const recentFrameSeconds: number[] = [];
+      const medianFrameSeconds = () => {
+        if (recentFrameSeconds.length === 0) return 0;
+        const sorted = [...recentFrameSeconds].sort((a, b) => a - b);
+        return sorted[Math.floor(sorted.length / 2)];
+      };
+      const predictedStep = (speed: number) => speed * medianFrameSeconds();
       const nextFrame = () =>
         new Promise<number>((resolve, reject) => {
           const requestedAt = performance.now();
@@ -1664,6 +1715,8 @@ export async function driveContinuousTrustedRoute(
               diagnostics.maximumRafIntervalMs,
               diagnostics.lastRafIntervalMs
             );
+            recentFrameSeconds.push(diagnostics.lastRafIntervalMs / 1_000);
+            if (recentFrameSeconds.length > 5) recentFrameSeconds.shift();
             previousFrameAt = frameAt;
             resolve(timestamp);
           });
@@ -1855,7 +1908,6 @@ export async function driveContinuousTrustedRoute(
           ),
         0
       );
-      const nominalSpeed = runRequested ? 1.9 : 1.61;
       const deadline =
         startedAt +
         Math.max(120_000, (routeDistance / nominalSpeed) * 2_000);
@@ -1930,7 +1982,21 @@ export async function driveContinuousTrustedRoute(
           continue;
         }
 
-        if (runActive && targetDistance <= 0.75 && !passed) {
+        // Drop out of the run before the arrival window, not a fixed 0.75 units
+        // before it. A run step is wider than the arrival tolerance, so a vertex
+        // sampled at running pace can be jumped clean over; walking the last bit
+        // puts a sample inside it. The lead is three run steps -- the release
+        // goes out over a binding round trip, so it can miss a frame or two
+        // before it takes effect -- plus one walked step, all measured from the
+        // frame time this run is getting. The constant it replaced was sized
+        // when a walk was 1.61 units a second and a run 1.9, where the two paces
+        // cost nearly the same; at 3 and 7 it spent two seconds of a
+        // seventeen-second run crawling, which is 11% of the route on its own.
+        const brakeRadius = Math.max(
+          tolerance * 2,
+          predictedStep(nominalSpeed) * 3 + predictedStep(brakedSpeed)
+        );
+        if (runActive && targetDistance <= brakeRadius && !passed) {
           await keyTransition({ up: ["Shift"] });
           runActive = false;
         }
@@ -2132,7 +2198,13 @@ export async function driveContinuousTrustedRoute(
       steeringRoute,
       runRequested,
       tolerance,
-      maximumStroke: 500
+      maximumStroke: 500,
+      // Computed here, not in the page: an evaluate callback is stringified
+      // and sent across, so a module import is not in scope inside it. Read
+      // from the runtime so a pace change carries into the driver's deadline
+      // and into how early it stops running at a vertex.
+      nominalSpeed: runRequested ? WORLD_RUN_SPEED : WORLD_WALK_SPEED,
+      brakedSpeed: WORLD_WALK_SPEED
     }
     );
   } finally {
@@ -2163,6 +2235,14 @@ export async function driveWithKeyboardToPoint(
 ) {
   await ensureTrustedRouteStopBinding(page);
   const deadline = Date.now() + timeoutMs;
+  // What one frame of travel is worth at the pace being driven, used only until
+  // a real step has been measured. Written as speed x frame time so a pace
+  // change carries into it; the literal it replaced was sized for a 1.61 unit a
+  // second walk and predicted a step four times too long at the current pace,
+  // which made the approach brake far earlier than it needed to.
+  const nominalFrameSeconds = 1 / 60;
+  const nominalStep =
+    (runRequested ? WORLD_RUN_SPEED : WORLD_WALK_SPEED) * nominalFrameSeconds;
   const recentSteps: number[] = [];
   let mirrorSign: -1 | 1 = 1;
   let pendingFirstKeydown = onFirstKeydown;
@@ -2267,7 +2347,7 @@ export async function driveWithKeyboardToPoint(
     const directYaw = Math.atan2(directionX, directionZ);
     const brakeRadius = getRpgRouteBrakeRadius(recentSteps);
     if (recentSteps.length > 0 && distance <= brakeRadius) {
-      const predictedStep = medianRpgRoutePulse(recentSteps, 0.1);
+      const predictedStep = medianRpgRoutePulse(recentSteps, nominalStep);
       const plan = planRpgRoutePulse({
         distance,
         predictedStep,
@@ -2471,7 +2551,7 @@ export async function driveWithKeyboardToPoint(
         return arrived;
       }
     } else if (recentSteps.length === 0) {
-      recentSteps.push(0.1);
+      recentSteps.push(nominalStep);
     }
     if (Date.now() >= deadline) break;
   }

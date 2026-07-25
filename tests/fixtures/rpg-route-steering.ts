@@ -1,3 +1,5 @@
+import { resolveCameraRelativeDirection } from "../../app/world/WorldRuntime";
+
 export interface RpgRoutePulsePlan {
   readonly desiredNextDistance: number;
   readonly candidates: readonly number[];
@@ -87,12 +89,13 @@ export function rankRpgRouteKeyboardPulses(
   const desiredX = Math.sin(desiredWorldYaw);
   const desiredZ = Math.cos(desiredWorldYaw);
   return RPG_ROUTE_KEYBOARD_INPUTS.map((candidate) => {
-    const worldX =
-      candidate.inputX * Math.cos(cameraYaw) +
-      candidate.inputY * Math.sin(cameraYaw);
-    const worldZ =
-      -candidate.inputX * Math.sin(cameraYaw) +
-      candidate.inputY * Math.cos(cameraYaw);
+    // Ask the runtime where a key press actually goes rather than restating
+    // the mapping here. A private copy of this maths is what let the lateral
+    // axis stay mirrored for so long.
+    const { x: worldX, z: worldZ } = resolveCameraRelativeDirection(
+      { x: candidate.inputX, y: candidate.inputY, runRequested: false },
+      cameraYaw
+    );
     const alignment = worldX * desiredX + worldZ * desiredZ;
     return {
       keys: candidate.keys,

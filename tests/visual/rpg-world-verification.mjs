@@ -39,6 +39,10 @@ const REVIEW_PROTOCOL = "rpg-visual-review";
 const CAPTURE_PROTOCOL = "rpg-world-capture";
 const MAX_RENDER_BLACK_PIXEL_RATIO = 0.35;
 const RENDER_SAMPLE_STEP = 4;
+const CAMERA_OCCLUSION_SETTLE_IDS = new Set(["narrow-camera", "obstacle-camera", "sakura"]);
+const CAMERA_OCCLUSION_SETTLE_MS = 450;
+const GYUKATSU_OBSTACLE_POSITION = [4.5, 4.5];
+const GYUKATSU_OBSTACLE_YAW_OFFSET_DEGREES = 55;
 const CAPTURE_IDS = [
   "airport",
   "tokyo",
@@ -782,6 +786,9 @@ async function captureRow({
       requestedDistance
     );
   }
+  if (CAMERA_OCCLUSION_SETTLE_IDS.has(id)) {
+    await page.waitForTimeout(CAMERA_OCCLUSION_SETTLE_MS);
+  }
   const stable = await telemetry(page);
   const relativePath = `${viewportName}/${id}.png`;
   const absolutePath = path.join(evidenceDirectory, relativePath);
@@ -1063,9 +1070,27 @@ async function captureViewport(browser, evidenceDirectory, viewportName, rows, p
           page, evidenceDirectory, viewportName, id: "narrow-camera", selectedCharacter: "male", rows
         });
 
+        assertUninterruptedRoute(
+          await driveTo(page, GYUKATSU_OBSTACLE_POSITION, { run: false }),
+          "gyukatsu obstacle-camera route"
+        );
+        const obstacleStart = await telemetry(page);
+        if (
+          Math.hypot(
+            obstacleStart.position[0] - GYUKATSU_OBSTACLE_POSITION[0],
+            obstacleStart.position[2] - GYUKATSU_OBSTACLE_POSITION[1]
+          ) > 0.05 ||
+          obstacleStart.zone !== "gyukatsu"
+        ) {
+          fail("E_OBSTACLE_CAMERA", "obstacle-camera start predicate failed");
+        }
+        const obstacleYaw = resolveRpgVisualCameraYaw(
+          CAMERA_FIXTURES.gyukatsu,
+          obstacleStart.position
+        );
         await setCamera(
           page,
-          narrowYaw - 45 * Math.PI / 180,
+          obstacleYaw - GYUKATSU_OBSTACLE_YAW_OFFSET_DEGREES * Math.PI / 180,
           CAMERA_FIXTURES.gyukatsu.pitchDegrees
         );
         await waitForCameraFixture(

@@ -12,8 +12,12 @@ import {
   useState,
   type RefObject
 } from "react";
-import { Vector3 } from "three";
+import { NeutralToneMapping, Vector3 } from "three";
 import type { DestinationId } from "../guide/GuideContract";
+import {
+  RPG_TONE_MAPPING_EXPOSURE,
+  RPG_WORLD_CAMERA_FAR
+} from "./RpgLightingDesign";
 import { AdaptiveQualityMonitor } from "./AdaptiveQualityMonitor";
 import type { PlayerCharacterId } from "./CharacterAssets";
 import { ChaseOrbitCamera3d } from "./ChaseOrbitCamera3d";
@@ -312,13 +316,25 @@ function SupportedSeamlessWorldCanvas({
       ) : null}
       <Canvas
         className="world-canvas"
-        camera={{ position: [0, 6, 8], fov: 45, near: 0.1, far: 140 }}
+        // near 0.5 is a fifth of RPG_CAMERA_MINIMUM_BOOM_DISTANCE (2.6) and
+        // buys roughly five times the depth precision, which is what keeps the
+        // stacked ground layers from z-fighting.
+        camera={{
+          position: [0, 6, 8],
+          fov: 45,
+          near: 0.5,
+          far: RPG_WORLD_CAMERA_FAR
+        }}
         dpr={[qualitySettings.minDpr, qualitySettings.maxDpr]}
         shadows={qualitySettings.shadowMapSize > 0}
         gl={{
           antialias: true,
           alpha: false,
-          powerPreference: "high-performance"
+          powerPreference: "high-performance",
+          // ACES rolls the midtones off and desaturates an already low-chroma
+          // palette into grey. Khronos PBR Neutral holds the authored hues.
+          toneMapping: NeutralToneMapping,
+          toneMappingExposure: RPG_TONE_MAPPING_EXPOSURE
         }}
       >
         <Suspense fallback={null}>

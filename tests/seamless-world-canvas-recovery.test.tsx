@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   fireEvent,
   render,
@@ -280,6 +282,26 @@ describe("seamless world recovery", () => {
     });
     expect(container.querySelector(".seamless-world-renderer"))
       .toHaveAttribute("data-optional-decoration", "pending");
+  });
+
+  it("gives the festival sign a whole-pixel intrinsic size", () => {
+    // Without width and height an SVG has no intrinsic size, so the browser
+    // rasterises it at the 300px replaced-element default and the viewBox
+    // ratio decides the rest. 512:192 lands on 112.5px, which the image
+    // reports as 113 while the decoded bitmap is not that tall. Three sizes
+    // immutable texture storage from the reported height and then uploads the
+    // real bitmap, which the desktop console showed as
+    // "texSubImage2D: bad image data" followed by "Texture is immutable".
+    const markup = readFileSync(
+      resolve(process.cwd(), "public/assets/world/hanabi-festival-sign.svg"),
+      "utf8"
+    );
+    const viewBox = markup.match(/viewBox="0 0 (\d+) (\d+)"/);
+    expect(viewBox).not.toBeNull();
+    const width = markup.match(/<svg[^>]*\swidth="(\d+)"/);
+    const height = markup.match(/<svg[^>]*\sheight="(\d+)"/);
+    expect(width?.[1]).toBe(viewBox![1]);
+    expect(height?.[1]).toBe(viewBox![2]);
   });
 
   it("keeps frozen performance telemetry and DOM quality stage synchronized", async () => {

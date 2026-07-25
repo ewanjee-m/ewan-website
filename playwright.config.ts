@@ -28,6 +28,11 @@ export default defineConfig({
       "PUBLIC_GUIDE_MODE=disabled npm run build && PUBLIC_GUIDE_MODE=disabled npm run start -- --port 4173 --hostname 127.0.0.1",
     url: "http://127.0.0.1:4173/en",
     reuseExistingServer: false,
+    // Piped rather than swallowed. When the server dies mid-run every test
+    // after it fails with ERR_CONNECTION_REFUSED and the reason is invisible;
+    // with these the crash reaches the same log as the failures it causes.
+    stdout: "pipe",
+    stderr: "pipe",
     timeout: 180_000
   }
 });
