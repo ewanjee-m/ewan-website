@@ -1,3 +1,22 @@
+/**
+ * The bridge approach sits at x 14.9 rather than the bridge's own south-west
+ * corner at 14.3 because the visitor got wider, not because the assertion got
+ * easier. RPG_PLAYER_COLLISION_RADIUS is the silhouette the world holds off
+ * solid things, and the chibi rebuild raised it from 0.3 to 0.53 to cover the
+ * skull rather than the torso. That grows every blocker by 0.23 units a side,
+ * and sakura-tree-05 at (12.8, -16.53) with a 1.075 half-size then reaches
+ * x 14.405 — so (14.3, -18) sits inside a tree. Not "hard to stand on": there
+ * is no walkable point anywhere inside the arrival tolerance of it, which is
+ * why the route driver deadlocked against it instead of merely missing it.
+ *
+ * 14.9 is the nearest point east whose whole tolerance disc is standing room
+ * and whose legs in and out are clear end to end, and it is clear at the
+ * narrower 0.3 radius too, so the route no longer depends on which way that
+ * number lands. z stays on the deck edge, so BRIDGE_STEERING_Z still aims 0.02
+ * onto the bridge. rpg-canonical-route-walkable checks all of it, so the next
+ * silhouette change fails on the cause rather than on a route test 40 seconds
+ * in. The tolerance below is unchanged.
+ */
 export const RPG_CANONICAL_ROUTE = [
   [-26.304534009865293, -2.973191261452298],
   [-27, -2.973191261452298],
@@ -11,7 +30,7 @@ export const RPG_CANONICAL_ROUTE = [
   [8, 0],
   [8, -11],
   [9, -20],
-  [14.3, -18],
+  [14.9, -18],
   [18.9, -18],
   [26, -18]
 ] as const;

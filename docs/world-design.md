@@ -15,7 +15,15 @@ ExperienceShell
 
 월드 경계는 `x=-36..36`, `z=-36..36`이다. 장소는 `airport`, `tokyo`, `gyukatsu`, `sakura`, `hanabi`다.
 
-공항에서 하나비까지의 기준 경로는 `tests/fixtures/rpg-canonical-route.ts`에 있다. 총 길이 `122.08884600503183`을 걷기 `1.61`, 달리기 `1.9` 속도로 이동한다.
+공항에서 하나비까지의 기준 경로는 `tests/fixtures/rpg-canonical-route.ts`에 있다. 총 길이 `122.08884600503183`을 걷기 `3`, 달리기 `7` 속도로 이동한다.
+
+## 이동 방향
+
+키 입력은 화면 기준으로 읽고 카메라 기준으로 월드 방향이 된다. 화면 위는 카메라에서 멀어지는 쪽, 화면 오른쪽은 카메라의 오른손 쪽이다. 위에서 내려다본 지면 평면은 좌우 손잡이가 뒤집히므로, 화면 기준을 월드로 옮기는 변환은 회전이 아니라 반사여야 한다. 회전을 쓰면 앞뒤는 맞고 좌우만 모든 각도에서 반대가 된다.
+
+기준축은 `ChaseOrbitCamera.getChaseOrbitCameraBasis`가 유일한 출처다. 카메라 배치(`getChaseOrbitCameraOffset`), 런타임 이동(`resolveCameraRelativeDirection`), 테스트 조향(`tests/fixtures/rpg-route-steering.ts`)이 모두 이 함수를 읽는다. 어느 하나가 같은 계산을 따로 적어 두면 조용히 어긋난다.
+
+카메라 자동 복귀는 앞으로 걷는 입력에서만 걸린다. 옆으로 걷는 동안에도 진행 방향을 쫓으면, 이동 방향이 카메라 기준이므로 카메라와 진행 방향이 서로를 밀며 제자리에서 돈다.
 
 ## 충돌과 통행
 

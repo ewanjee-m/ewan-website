@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   enterRpgWorld,
+  readSettledWorldTelemetry,
   readWorldTelemetry
 } from "../fixtures/rpg-playwright-world";
 
@@ -144,7 +145,9 @@ test("full map is keyboard-accessible and inspection never moves the player", as
   page
 }) => {
   await enterRpgWorld(page);
-  const before = await readWorldTelemetry(page);
+  // Settled first: the revision is still climbing as the character models
+  // resolve, and a baseline caught mid-climb would blame the map for it.
+  const before = await readSettledWorldTelemetry(page);
   await page.keyboard.press("m");
   const dialog = page.getByRole("dialog", { name: "World map" });
   await expect(dialog).toBeVisible();

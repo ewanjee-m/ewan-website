@@ -1,7 +1,17 @@
 import {
   RPG_REFERENCE_CALIBRATION_INPUT,
   RPG_REFERENCE_ROUTE_CONTROL_IDS,
+  RPG_WORLD_ARRIVALS,
+  RPG_WORLD_BOUNDS,
+  RPG_WORLD_BRIDGE,
+  RPG_WORLD_CANAL,
+  RPG_WORLD_COASTLINE,
   RPG_WORLD_MODEL,
+  RPG_WORLD_ROUTES,
+  RPG_WORLD_TRANSITIONS,
+  RPG_WORLD_ZONES,
+  RPG_WORLD_ZONE_IDS,
+  type WorldPoint2,
   type WorldPoint3,
   type WorldPolygon
 } from "./RpgWorldModel";
@@ -65,43 +75,19 @@ export interface RpgMapProjection {
   ): number;
 }
 
+/**
+ * The pixel size of the approved reference illustration. It is the coordinate
+ * system the world registration mesh is measured in, and nothing else: the map
+ * the visitor reads is drawn from the world model in plain top-down world
+ * coordinates, see RPG_MAP_VIEW_BOX below.
+ */
 export const RPG_REFERENCE_MAP_VIEW_BOX = {
   width: 1817,
   height: 866,
   padding: 0
 } as const;
 
-export const RPG_MINI_MAP_VIEW_BOX = RPG_REFERENCE_MAP_VIEW_BOX;
-export const RPG_WORLD_MAP_VIEW_BOX = RPG_REFERENCE_MAP_VIEW_BOX;
-
 export type RpgReferencePoint = readonly [x: number, y: number];
-
-export const RPG_REFERENCE_MAP_COASTLINE = Object.freeze([
-  [0, 430],
-  [110, 380],
-  [300, 330],
-  [520, 290],
-  [760, 275],
-  [1020, 295],
-  [1240, 340],
-  [1410, 390],
-  [1600, 370],
-  [1816, 360],
-  [1816, 650],
-  [1760, 720],
-  [1670, 780],
-  [1585, 790],
-  [1530, 745],
-  [1490, 675],
-  [1425, 620],
-  [1340, 655],
-  [1280, 745],
-  [1160, 820],
-  [960, 855],
-  [650, 865],
-  [340, 825],
-  [100, 690]
-] as const satisfies readonly RpgReferencePoint[]);
 
 const referenceRouteControlById = new Map(
   RPG_REFERENCE_CALIBRATION_INPUT.controlPoints.map((control) => [
@@ -246,38 +232,345 @@ export function projectRpgReferenceMapHeadingRotation(
   if (!current) {
     throw new RangeError("Map point is outside the registered reference terrain.");
   }
-  const headingStep = [
-    (heading[0] / headingLength) * epsilon,
-    (heading[2] / headingLength) * epsilon
-  ] as const;
-  const next = projectWorldToReference([
-    position[0] + headingStep[0],
-    position[1],
-    position[2] + headingStep[1]
-  ]);
-  const previous = next
-    ? null
-    : projectWorldToReference([
-        position[0] - headingStep[0],
-        position[1],
-        position[2] - headingStep[1]
-      ]);
-  let deltaX: number;
-  let deltaY: number;
-  if (next) {
-    deltaX = next.pixel[0] - current.pixel[0];
-    deltaY = next.pixel[1] - current.pixel[1];
-  } else if (previous) {
-    deltaX = current.pixel[0] - previous.pixel[0];
-    deltaY = current.pixel[1] - previous.pixel[1];
-  } else {
-    throw new RangeError(
-      "Map heading cannot be projected inside the registered reference terrain."
-    );
+  const unitX = heading[0] / headingLength;
+  const unitZ = heading[2] / headingLength;
+
+  /**
+   * Reads the direction by comparing a sample a short step along the heading
+   * with one the same distance back. In a corner both leave the terrain, and
+   * so does a shorter step in some places, so this keeps halving before giving
+   * up. A visitor walking into the edge of the world is ordinary; the map
+   * arrow is decoration, and it used to throw from here and take the whole
+   * renderer down with it.
+   */
+  const sampleDelta = (step: number) => {
+    const offsetX = unitX * step;
+    const offsetZ = unitZ * step;
+    const ahead = projectWorldToReference([
+      position[0] + offsetX,
+      position[1],
+      position[2] + offsetZ
+    ]);
+    if (ahead) {
+      return [
+        ahead.pixel[0] - current.pixel[0],
+        ahead.pixel[1] - current.pixel[1]
+      ] as const;
+    }
+    const behind = projectWorldToReference([
+      position[0] - offsetX,
+      position[1],
+      position[2] - offsetZ
+    ]);
+    if (behind) {
+      return [
+        current.pixel[0] - behind.pixel[0],
+        current.pixel[1] - behind.pixel[1]
+      ] as const;
+    }
+    return null;
+  };
+
+  let delta: readonly [number, number] | null = null;
+  for (let step = epsilon; step > epsilon / 64 && !delta; step /= 2) {
+    delta = sampleDelta(step);
   }
+
+  if (!delta) {
+    // Nothing along the heading is on the terrain, which only happens in a
+    // corner. The projection is locally smooth, so a sideways pair gives the
+    // same rotation once it is turned back a quarter turn.
+    for (let step = epsilon; step > epsilon / 64 && !delta; step /= 2) {
+      const sideways = projectWorldToReference([
+        position[0] - unitZ * step,
+        position[1],
+        position[2] + unitX * step
+      ]);
+      if (!sideways) continue;
+      const sideDeltaX = sideways.pixel[0] - current.pixel[0];
+      const sideDeltaY = sideways.pixel[1] - current.pixel[1];
+      delta = [sideDeltaY, -sideDeltaX] as const;
+    }
+  }
+
+  if (!delta) {
+    // The visitor is standing on a point the reference terrain does not cover
+    // in any direction. Report the heading unprojected rather than failing:
+    // a slightly wrong arrow beats a dead world.
+    const fallback = (Math.atan2(unitZ, unitX) * 180) / Math.PI;
+    return fallback === -180 ? 180 : fallback;
+  }
+
+  const [deltaX, deltaY] = delta;
   const rotation =
     (Math.atan2(deltaY, deltaX) * 180) / Math.PI;
   return rotation === -180 ? 180 : rotation;
+}
+
+/* ------------------------------------------------------------------------ *
+ * The map the visitor reads.
+ *
+ * Plain top-down world coordinates: +X is east and draws right, +Z is north
+ * and draws up, exactly as RPG_WORLD_ORIENTATION declares. The world is a
+ * square, so the drawing is a square, and the shape on screen is the shape of
+ * the world. Nothing here comes from the reference illustration.
+ * ------------------------------------------------------------------------ */
+
+export const RPG_MAP_PIXELS_PER_WORLD_UNIT = 10;
+export const RPG_MAP_EDGE_PADDING = 36;
+
+const MAP_WORLD_WIDTH = RPG_WORLD_BOUNDS.maximumX - RPG_WORLD_BOUNDS.minimumX;
+const MAP_WORLD_DEPTH = RPG_WORLD_BOUNDS.maximumZ - RPG_WORLD_BOUNDS.minimumZ;
+
+export const RPG_MAP_VIEW_BOX = {
+  width:
+    MAP_WORLD_WIDTH * RPG_MAP_PIXELS_PER_WORLD_UNIT +
+    RPG_MAP_EDGE_PADDING * 2,
+  height:
+    MAP_WORLD_DEPTH * RPG_MAP_PIXELS_PER_WORLD_UNIT +
+    RPG_MAP_EDGE_PADDING * 2,
+  padding: RPG_MAP_EDGE_PADDING
+} as const;
+
+export const RPG_MINI_MAP_VIEW_BOX = RPG_MAP_VIEW_BOX;
+export const RPG_WORLD_MAP_VIEW_BOX = RPG_MAP_VIEW_BOX;
+
+/**
+ * Marker sizes live next to the view box because the padding ring exists to
+ * hold them: a visitor standing on the edge of the world still has to be drawn
+ * whole. The projection test asserts the padding is at least the largest of
+ * these.
+ */
+export const RPG_MAP_MARKER_GEOMETRY = {
+  playerHaloRadius: 24,
+  playerDiscRadius: 13,
+  playerArrowLength: 30,
+  arrivalRadius: 12,
+  arrivalRingRadius: 21,
+  compassRadius: 30
+} as const;
+
+export const RPG_MAP_LABEL_FONT_SIZE = 30;
+export const RPG_MINI_MAP_LABEL_CSS_PIXELS = 11;
+
+/**
+ * The cream outline the `.rpg-mini-map-label` rule in app/globals.css strokes
+ * around every name so it stays readable over the districts. Half of it lies
+ * outside the glyphs, which is why the ink band below is wider than the font.
+ */
+export const RPG_MAP_LABEL_OUTLINE_WIDTH = 7;
+
+/**
+ * How far a name's ink reaches above and below its own baseline. SVG text has
+ * no box to measure, so this is the em box: an ascender climbs about three
+ * quarters of the size above the baseline and a descender drops about a
+ * quarter below it, both widened by the outline that is painted around them.
+ * It is what makes "does the visitor marker cover this name" answerable
+ * without knowing which language the name is written in.
+ */
+export const RPG_MAP_LABEL_INK_BAND = {
+  above: RPG_MAP_LABEL_FONT_SIZE * 0.75 + RPG_MAP_LABEL_OUTLINE_WIDTH / 2,
+  below: RPG_MAP_LABEL_FONT_SIZE * 0.25 + RPG_MAP_LABEL_OUTLINE_WIDTH / 2
+} as const;
+export const RPG_MAP_LAND_SOURCE_ID = "town-ground";
+export const RPG_MAP_SCALE_WORLD_UNITS = 20;
+
+export const RPG_MAP_COLORS = {
+  sea: "#12293f",
+  land: "#efe3c8",
+  landEdge: "#7b6448",
+  road: "#cbb896",
+  roadEdge: "#9a8462",
+  canal: "#7fb6cd",
+  canalEdge: "#4d8ba8",
+  bridge: "#c8804f",
+  bridgeEdge: "#8a4f2d"
+} as const;
+
+export const RPG_MAP_ZONE_COLORS: Readonly<Record<DestinationId, string>> = {
+  airport: "#a9c6c0",
+  tokyo: "#a4b3d8",
+  gyukatsu: "#dcc096",
+  sakura: "#e6b6c6",
+  hanabi: "#c2b1dd"
+};
+
+function mapWorldXZ(point: WorldPoint2 | WorldPoint3): WorldPoint2 {
+  return point.length === 3 ? [point[0], point[2]] : point;
+}
+
+const roundMapPixel = (value: number) => {
+  const rounded = Math.round(value * 100) / 100;
+  // Negative zero would reach the DOM as "-0" and read as a different value
+  // from the same angle approached the other way round.
+  return rounded === 0 ? 0 : rounded;
+};
+
+export function projectRpgMapWorldPoint(point: WorldPoint2 | WorldPoint3) {
+  const [x, z] = mapWorldXZ(point);
+  if (!Number.isFinite(x) || !Number.isFinite(z)) {
+    throw new RangeError("Map projection requires finite world coordinates.");
+  }
+  const clampedX = Math.min(
+    RPG_WORLD_BOUNDS.maximumX,
+    Math.max(RPG_WORLD_BOUNDS.minimumX, x)
+  );
+  const clampedZ = Math.min(
+    RPG_WORLD_BOUNDS.maximumZ,
+    Math.max(RPG_WORLD_BOUNDS.minimumZ, z)
+  );
+  return {
+    x: roundMapPixel(
+      RPG_MAP_EDGE_PADDING +
+        (clampedX - RPG_WORLD_BOUNDS.minimumX) * RPG_MAP_PIXELS_PER_WORLD_UNIT
+    ),
+    y: roundMapPixel(
+      RPG_MAP_EDGE_PADDING +
+        (RPG_WORLD_BOUNDS.maximumZ - clampedZ) * RPG_MAP_PIXELS_PER_WORLD_UNIT
+    )
+  };
+}
+
+export function serializeRpgMapWorldPolygon(polygon: WorldPolygon) {
+  return polygon
+    .map((point) => projectRpgMapWorldPoint(point))
+    .map(({ x, y }) => `${x},${y}`)
+    .join(" ");
+}
+
+/**
+ * Degrees for an SVG rotate() on a marker whose rest pose points along +X.
+ * Facing world east reads 0 and draws right; facing world north reads -90 and
+ * draws up, because screen Y grows downward.
+ */
+export function projectRpgMapWorldHeadingRotation(
+  heading: readonly [number, number, number]
+) {
+  const [x, , z] = heading;
+  if (!Number.isFinite(x) || !Number.isFinite(z)) {
+    throw new RangeError("Map heading requires finite world coordinates.");
+  }
+  if (Math.hypot(x, z) < 1e-8) return 0;
+  const rotation = roundMapPixel((Math.atan2(-z, x) * 180) / Math.PI);
+  return rotation === -180 ? 180 : rotation;
+}
+
+export const RPG_MAP_LAND = Object.freeze({
+  sourceId: RPG_MAP_LAND_SOURCE_ID,
+  polygon: RPG_WORLD_COASTLINE
+});
+
+export const RPG_MAP_ROADS = Object.freeze(
+  RPG_WORLD_ROUTES.filter(({ surface }) => surface === "road")
+);
+
+export const RPG_MAP_CANAL = RPG_WORLD_CANAL;
+export const RPG_MAP_BRIDGE = RPG_WORLD_BRIDGE;
+export const RPG_MAP_ZONES = RPG_WORLD_ZONES;
+
+type RpgMapLabelAnchor = "start" | "middle" | "end";
+
+/**
+ * Where each name sits relative to its marker. The offsets are chosen so no two
+ * baselines share a line, which is what keeps the names apart whatever the
+ * locale makes them say, and so every name grows towards the middle of the
+ * frame instead of off the edge.
+ *
+ * They also clear the visitor marker at every arrival. A name used to sit a
+ * little over half the marker's reach from its own dot, so arriving anywhere
+ * buried the top of that district's name, and at Sakura the marker landed in
+ * the middle of "Hanabi" as well. Every offset here is therefore at least the
+ * marker's reach plus the ink the name puts on that side of its baseline.
+ */
+const RPG_MAP_LABEL_PLACEMENT: Readonly<
+  Record<
+    DestinationId,
+    { anchor: RpgMapLabelAnchor; offsetX: number; offsetY: number }
+  >
+> = {
+  airport: { anchor: "start", offsetX: 22, offsetY: -52 },
+  tokyo: { anchor: "middle", offsetX: 0, offsetY: -51 },
+  gyukatsu: { anchor: "middle", offsetX: 0, offsetY: 64 },
+  sakura: { anchor: "middle", offsetX: 0, offsetY: 64 },
+  hanabi: { anchor: "end", offsetX: -22, offsetY: -56 }
+};
+
+export interface RpgMapNode {
+  readonly arrivalId: string;
+  readonly zoneId: DestinationId;
+  readonly worldPosition: WorldPoint3;
+  readonly point: { readonly x: number; readonly y: number };
+  readonly headingRotation: number;
+  readonly label: {
+    readonly x: number;
+    readonly y: number;
+    readonly anchor: RpgMapLabelAnchor;
+  };
+}
+
+export const RPG_MAP_NODES: readonly RpgMapNode[] = Object.freeze(
+  RPG_WORLD_ARRIVALS.map((arrival) => {
+    const point = projectRpgMapWorldPoint(arrival.position);
+    const placement = RPG_MAP_LABEL_PLACEMENT[arrival.zoneId];
+    return Object.freeze({
+      arrivalId: arrival.id,
+      zoneId: arrival.zoneId,
+      worldPosition: arrival.position,
+      point,
+      headingRotation: projectRpgMapWorldHeadingRotation([
+        arrival.heading[0],
+        0,
+        arrival.heading[1]
+      ]),
+      label: Object.freeze({
+        x: point.x + placement.offsetX,
+        y: point.y + placement.offsetY,
+        anchor: placement.anchor
+      })
+    });
+  })
+);
+
+/**
+ * The order the world itself connects its districts in, read off the transition
+ * list rather than written down twice. Where a district has more than one way
+ * out, the lowest ownership priority is the main road on.
+ */
+export const RPG_MAP_TOUR_ORDER: readonly DestinationId[] = Object.freeze(
+  (() => {
+    const nextByZone = new Map<DestinationId, DestinationId>();
+    for (const transition of [...RPG_WORLD_TRANSITIONS].sort(
+      (first, second) => first.ownershipPriority - second.ownershipPriority
+    )) {
+      if (!nextByZone.has(transition.fromZoneId)) {
+        nextByZone.set(transition.fromZoneId, transition.toZoneId);
+      }
+    }
+    const order: DestinationId[] = [RPG_WORLD_ZONE_IDS[0]];
+    const seen = new Set<DestinationId>(order);
+    for (
+      let next = nextByZone.get(order[0]);
+      next !== undefined && !seen.has(next);
+      next = nextByZone.get(next)
+    ) {
+      order.push(next);
+      seen.add(next);
+    }
+    return order;
+  })()
+);
+
+const nextZoneByZone = new Map<DestinationId, DestinationId>(
+  RPG_MAP_TOUR_ORDER.slice(0, -1).map((zoneId, index) => [
+    zoneId,
+    RPG_MAP_TOUR_ORDER[index + 1]
+  ])
+);
+
+export function getRpgMapNextZoneId(
+  zoneId: DestinationId
+): DestinationId | null {
+  return nextZoneByZone.get(zoneId) ?? null;
 }
 
 const primaryLandmarkIds = new Set(
@@ -324,8 +617,6 @@ export const RPG_CANONICAL_MAP_GEOMETRY = Object.freeze({
     polygon: RPG_WORLD_MODEL.bridge.polygon,
     color: bridgeLandmark.color
   }),
-  referenceCoastline: RPG_REFERENCE_MAP_COASTLINE,
-  referenceTransitions: RPG_REFERENCE_MAP_TRANSITIONS,
   referenceNodes: RPG_REFERENCE_MAP_NODES,
   routes: Object.freeze([...RPG_WORLD_MODEL.routes]),
   zones: Object.freeze([...RPG_WORLD_MODEL.zones]),
@@ -335,12 +626,20 @@ export const RPG_CANONICAL_MAP_GEOMETRY = Object.freeze({
   arrivals: Object.freeze([...RPG_WORLD_MODEL.arrivals])
 });
 
+/**
+ * Every feature either map is allowed to draw, and each one is a thing in the
+ * world model. The illustration's shoreline and its five hand-drawn route
+ * polylines used to be in here; they described land and paths at coordinates
+ * the world does not have, so they are gone.
+ */
 export const RPG_CANONICAL_MAP_SOURCE_IDS = Object.freeze([
   ...new Set([
-    "approved-reference-coastline",
-    ...RPG_REFERENCE_MAP_TRANSITIONS.map(({ id }) => id),
-    ...RPG_REFERENCE_MAP_NODES.map(({ zoneId }) => zoneId),
-    ...RPG_REFERENCE_MAP_NODES.map(({ arrivalId }) => arrivalId),
+    RPG_MAP_LAND_SOURCE_ID,
+    ...RPG_MAP_ZONES.map(({ id }) => id),
+    ...RPG_MAP_ROADS.map(({ id }) => id),
+    RPG_MAP_CANAL.id,
+    RPG_MAP_BRIDGE.id,
+    ...RPG_MAP_NODES.map(({ arrivalId }) => arrivalId),
     "player"
   ])
 ]);

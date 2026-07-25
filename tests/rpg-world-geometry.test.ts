@@ -105,8 +105,8 @@ describe("WORLD-02 through WORLD-05 world geometry", () => {
         pixel: [1010, 650]
       },
       {
-        point: [14.3, -18],
-        pixel: [1370, 640]
+        point: [14.3, -20],
+        pixel: [1365, 659]
       },
       {
         point: [26, -18],
@@ -241,7 +241,10 @@ describe("WORLD-02 through WORLD-05 world geometry", () => {
       expect(isWalkable(point), String(point)).toBe(true);
     }
     for (const point of [
-      [16.6, -15],
+      // Mid-canal, one unit clear of each end of the crossing: the water still
+      // stops a visitor everywhere the bridge does not carry them.
+      [16.6, -21],
+      [16.6, -13],
       [16.6, 0],
       [RPG_WORLD_BOUNDS.maximumX + 0.1, 0]
     ] as const) {

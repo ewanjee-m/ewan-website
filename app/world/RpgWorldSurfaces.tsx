@@ -3,6 +3,7 @@
 import { Instance, Instances } from "@react-three/drei";
 import { getSurfaceHeight } from "./RpgWorldGeometry";
 import {
+  RPG_TOWN_SURFACES,
   type RpgTownSurface
 } from "./RpgTownSceneLayout";
 import { RPG_WORLD_BRIDGE, RPG_WORLD_CANAL } from "./RpgWorldModel";
@@ -20,12 +21,61 @@ export interface RpgBridgeDeckSegment {
   readonly rotationZ: number;
 }
 
+/**
+ * Every land surface used to be pinned to `getSurfaceHeight + 0.002`, so the
+ * meadow, the aprons, the roads and the sidewalks all rendered their top face
+ * on one plane. Four of them overlap at the spawn point, which produced the
+ * grey stipple and the green bleed-through. Each surface now gets its own
+ * depth slot: kinds stack in walk order, and surfaces inside one kind are
+ * ranked by the authored height the old code threw away.
+ */
+export const RPG_SURFACE_LAYER_LIFT = 0.002;
+export const RPG_SURFACE_LAYER_STEP = 0.0008;
+/**
+ * The sea used to render its top at -0.55 while the land sat at 0.002, so the
+ * meadow showed a 55 cm vertical wall all round the world edge. Lifting the
+ * rendered waterline leaves a shoreline lip instead of a cliff.
+ */
+export const RPG_SURFACE_WATER_TOP = -0.09;
+
+const SURFACE_KIND_ORDER: Record<RpgTownSurface["kind"], number> = {
+  water: 0,
+  ground: 1,
+  plaza: 2,
+  road: 3,
+  sidewalk: 4
+};
+
+const authoredTop = (surface: Readonly<RpgTownSurface>) =>
+  surface.position[1] + surface.size[1] / 2;
+
+const SURFACE_LAYER_OFFSETS: ReadonlyMap<string, number> = new Map(
+  RPG_TOWN_SURFACES.filter(({ kind }) => kind !== "water")
+    .slice()
+    .sort(
+      (first, second) =>
+        SURFACE_KIND_ORDER[first.kind] - SURFACE_KIND_ORDER[second.kind] ||
+        authoredTop(first) - authoredTop(second) ||
+        (first.id < second.id ? -1 : 1)
+    )
+    .map((surface, index) => [
+      surface.id,
+      index * RPG_SURFACE_LAYER_STEP
+    ] as const)
+);
+
 export function resolveRpgSurfaceMeshPosition(
   surface: Readonly<RpgTownSurface>
 ): readonly [number, number, number] {
-  if (surface.kind === "water") return surface.position;
   const [x, , z] = surface.position;
-  return [x, getSurfaceHeight([x, z]) + 0.002 - surface.size[1] / 2, z];
+  if (surface.kind === "water") {
+    return [x, RPG_SURFACE_WATER_TOP - surface.size[1] / 2, z];
+  }
+  const top =
+    getSurfaceHeight([x, z]) +
+    RPG_SURFACE_LAYER_LIFT +
+    (SURFACE_LAYER_OFFSETS.get(surface.id) ?? 0);
+  return [x, top - surface.size[1] / 2, z];
 }
 
 export function createRpgBridgeDeckSegments(
@@ -34,6 +84,11 @@ export function createRpgBridgeDeckSegments(
   const minimumX = Math.min(...RPG_WORLD_BRIDGE.polygon.map(([x]) => x));
   const maximumX = Math.max(...RPG_WORLD_BRIDGE.polygon.map(([x]) => x));
   const z = (RPG_WORLD_BRIDGE.polygon[0][1] + RPG_WORLD_BRIDGE.polygon[2][1]) / 2;
+  // Read off the deck rather than written down, so a visitor never walks on a
+  // strip of crossing that has no bridge drawn under it.
+  const depth =
+    Math.max(...RPG_WORLD_BRIDGE.polygon.map(([, value]) => value)) -
+    Math.min(...RPG_WORLD_BRIDGE.polygon.map(([, value]) => value));
   const width = (maximumX - minimumX) / segmentCount;
   return Array.from({ length: segmentCount }, (_, index) => {
     const startX = minimumX + index * width;
@@ -50,7 +105,7 @@ export function createRpgBridgeDeckSegments(
         (startHeight + endHeight) / 2 - 0.04,
         z
       ],
-      size: [Math.hypot(width, endHeight - startHeight) + 0.006, 0.08, 2],
+      size: [Math.hypot(width, endHeight - startHeight) + 0.006, 0.08, depth],
       rotationZ
     };
   });

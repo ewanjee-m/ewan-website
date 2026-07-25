@@ -4,7 +4,10 @@ import {
   RPG_WORLD_CANAL,
   RPG_WORLD_SPAWN
 } from "../../app/world/RpgWorldModel";
-import { projectRpgReferenceMapPoint } from "../../app/world/RpgMiniMapProjection";
+import {
+  RPG_MAP_PIXELS_PER_WORLD_UNIT,
+  projectRpgMapWorldPoint
+} from "../../app/world/RpgMiniMapProjection";
 import {
   dragCamera,
   driveCanonicalRoute,
@@ -14,10 +17,30 @@ import {
   enterRpgWorld,
   monitorCameraSafetyDuring,
   observeTrustedMovementDuring,
+  readSettledWorldTelemetry,
   readWorldTelemetry,
   rotateCameraToYaw
 } from "../fixtures/rpg-playwright-world";
 import { RPG_VISUAL_CAMERA_FIXTURES } from "../fixtures/rpg-visual-camera-fixtures";
+import { RPG_CANONICAL_ROUTE } from "../fixtures/rpg-canonical-route";
+import {
+  WORLD_RUN_SPEED,
+  WORLD_WALK_SPEED
+} from "../../app/world/WorldRuntime";
+
+// Derived from the speeds rather than written beside them, so a pace change
+// moves the expectation instead of failing a number nobody can trace.
+const RPG_CANONICAL_ROUTE_LENGTH = RPG_CANONICAL_ROUTE.reduce(
+  (total, point, index) =>
+    index === 0
+      ? total
+      : total +
+        Math.hypot(
+          point[0] - RPG_CANONICAL_ROUTE[index - 1][0],
+          point[1] - RPG_CANONICAL_ROUTE[index - 1][1]
+        ),
+  0
+);
 
 const WORLD = '[data-testid="world-view"]';
 const RENDERER = ".seamless-world-renderer";
@@ -50,47 +73,74 @@ async function exactNavigationState(page: Page) {
   };
 }
 
-async function readScreenshotBlackPixelRatio(page: Page) {
-  const screenshot = await page.screenshot();
-  return page.evaluate(async (encoded) => {
-    const binary = atob(encoded);
-    const bytes = Uint8Array.from(binary, (character) =>
-      character.charCodeAt(0)
+/**
+ * How much of the frame the renderer actually drew came out black, read from
+ * the drawing buffer the visitor is looking at rather than from a screenshot of
+ * it.
+ *
+ * page.screenshot() goes through the browser's compositor, and a WebGL surface
+ * that the compositor cannot hand back — no GPU process, a lost context, a
+ * drawing buffer already recycled — comes back as an opaque black rectangle
+ * with the HTML chrome composited over it perfectly. That failure reads as "the
+ * world rendered black", which is the one thing this check exists to catch, so
+ * the check could not tell its own blind spot from the defect it was hunting.
+ * gl.readPixels asks the context that did the drawing, inside the animation
+ * frame it drew in, so there is no compositor in the path at all.
+ *
+ * Measured over the canvas alone, so a bright HUD cannot dilute a black scene:
+ * the ratio this returns is strictly harder to keep under the threshold than
+ * the whole-viewport ratio it replaces. Anything that stops the buffer being
+ * readable throws rather than returning a number.
+ */
+async function readRenderedBlackPixelRatio(page: Page) {
+  return page.evaluate(async () => {
+    const canvas = document.querySelector("canvas");
+    if (!canvas) throw new Error("the world canvas is missing");
+    const gl =
+      (canvas.getContext("webgl2") as WebGL2RenderingContext | null) ??
+      (canvas.getContext("webgl") as WebGLRenderingContext | null);
+    if (!gl) throw new Error("the world canvas has no WebGL context to read");
+    if (gl.isContextLost()) throw new Error("the world WebGL context is lost");
+    const width = canvas.width;
+    const height = canvas.height;
+    if (width < 1 || height < 1) {
+      throw new Error(`the world drawing buffer is ${width}x${height}`);
+    }
+    // Read inside an animation frame: the buffer is still the frame that was
+    // just drawn, before the compositor takes it away.
+    const pixels = await new Promise<Uint8Array>((resolve) =>
+      requestAnimationFrame(() => {
+        const buffer = new Uint8Array(width * height * 4);
+        gl.readPixels(
+          0,
+          0,
+          width,
+          height,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          buffer
+        );
+        resolve(buffer);
+      })
     );
-    const bitmap = await createImageBitmap(
-      new Blob([bytes.buffer as ArrayBuffer], { type: "image/png" })
-    );
-    const canvas = document.createElement("canvas");
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) throw new Error("2D screenshot context is unavailable");
-    context.drawImage(bitmap, 0, 0);
-    bitmap.close();
-    const pixels = context.getImageData(
-      0,
-      0,
-      canvas.width,
-      canvas.height
-    ).data;
     let black = 0;
     let sampled = 0;
-    for (let y = 0; y < canvas.height; y += 4) {
-      for (let x = 0; x < canvas.width; x += 4) {
-        const index = (y * canvas.width + x) * 4;
+    for (let y = 0; y < height; y += 4) {
+      for (let x = 0; x < width; x += 4) {
+        const index = (y * width + x) * 4;
         if (
           pixels[index] < 12 &&
           pixels[index + 1] < 12 &&
-          pixels[index + 2] < 12 &&
-          pixels[index + 3] > 240
+          pixels[index + 2] < 12
         ) {
           black += 1;
         }
         sampled += 1;
       }
     }
+    if (sampled === 0) throw new Error("no drawing buffer pixels were sampled");
     return black / sampled;
-  }, screenshot.toString("base64"));
+  });
 }
 
 test.describe("desktop fine-pointer rendering", () => {
@@ -121,7 +171,7 @@ test.describe("desktop fine-pointer rendering", () => {
         character
       );
       expect(requested.has(`player-${character}.glb`)).toBe(true);
-      expect(await readScreenshotBlackPixelRatio(page)).toBeLessThan(0.35);
+      expect(await readRenderedBlackPixelRatio(page)).toBeLessThan(0.35);
       await page.reload();
     }
   });
@@ -187,13 +237,16 @@ test("the trusted route binding balances a short two-point drive", async ({
   expect(result.observation?.lastMapUpdateAgeMs).toBeLessThanOrEqual(100);
 });
 
-test("walks the canonical route in 75.8 seconds and only reset returns to the airport", async ({
+test("walks the canonical route at the walking speed and only reset returns to the airport", async ({
   page
 }) => {
   test.setTimeout(120_000);
   await enterRpgWorld(page);
   const result = await driveCanonicalRoute(page, { runRequested: false });
-  withinFivePercent(result.traversalMs, 75_800);
+  withinFivePercent(
+    result.traversalMs,
+    (RPG_CANONICAL_ROUTE_LENGTH / WORLD_WALK_SPEED) * 1000
+  );
   await expect(page.locator(WORLD)).toHaveAttribute("data-current-zone", "hanabi");
   await page.getByRole("button", { name: "Return to start" }).click();
   await expect.poll(async () => {
@@ -213,7 +266,7 @@ test("walks the canonical route in 75.8 seconds and only reset returns to the ai
   );
 });
 
-test("runs the canonical route in 64.3 seconds and preserves the Hanabi child interaction", async ({
+test("runs the canonical route at the running speed and preserves the Hanabi child interaction", async ({
   page
 }) => {
   test.setTimeout(120_000);
@@ -229,7 +282,10 @@ test("runs the canonical route in 64.3 seconds and preserves the Hanabi child in
   expect(route.keyboardTrust.untrustedCount).toBe(0);
   expect(route.keyboardTrust.keydownCount).toBeGreaterThan(0);
   expect(route.keyboardTrust.keyupCount).toBeGreaterThan(0);
-  withinFivePercent(route.traversalMs, 64_300);
+  withinFivePercent(
+    route.traversalMs,
+    (RPG_CANONICAL_ROUTE_LENGTH / WORLD_RUN_SPEED) * 1000
+  );
   expect(route.zones).toEqual([
     "airport",
     "tokyo",
@@ -266,7 +322,15 @@ test("runs the canonical route in 64.3 seconds and preserves the Hanabi child in
     await page.waitForTimeout(500);
     expect(await exactNavigationState(page)).toEqual(beforeInteraction);
 
-    await driveWithKeyboardToPoint(page, [19, -22], {
+    // Moved 0.2 south of (19, -22) for the same reason the bridge approach
+    // moved east. At the 0.53 silhouette radius the chibi rebuild asks for,
+    // hanabi-lantern-1-north at (19, -21.5) with a 0.09 half-size holds the
+    // visitor out to z -22.12, which puts (19, -22) inside a lantern; -22.2 is
+    // clear at that radius and at the narrower one. The canal walk this sets up
+    // is unchanged: x is still 19, still east of the 18.9 the assertion below
+    // wants, and the corridor west from here reaches the canal's east bank with
+    // nothing in the way.
+    await driveWithKeyboardToPoint(page, [19, -22.2], {
       runRequested: true,
       tolerance: 0.03
     });
@@ -446,6 +510,9 @@ test("map inspection and interaction consume Escape without mutating navigation"
   page
 }) => {
   await enterRpgWorld(page);
+  // Same reason as map-accessibility: let the model loads finish bumping the
+  // revision before anything is recorded as the untouched state.
+  await readSettledWorldTelemetry(page);
   const beforeMap = await exactNavigationState(page);
   await page.getByRole("button", { name: "Open world map (M key)" }).click();
   const map = page.getByRole("dialog", { name: "World map" });
@@ -478,7 +545,7 @@ test("map inspection and interaction consume Escape without mutating navigation"
   expect(await exactNavigationState(page)).toEqual(beforeInteraction);
 });
 
-test("all five arrival markers use the registered anchors and headings", async ({
+test("all five arrival markers sit on their world position and the visitor arrow points where the visitor walks", async ({
   page
 }) => {
   await enterRpgWorld(page);
@@ -488,95 +555,168 @@ test("all five arrival markers use the registered anchors and headings", async (
     const marker = page.locator(
       `.rpg-mini-map-destination-${arrival.zoneId}`
     );
+    const expected = projectRpgMapWorldPoint(arrival.position);
+
+    // Measured on the rendered dot rather than on the data, so the view box,
+    // the panel layout, and the CSS all have to agree for this to pass.
     const placementErrorCssPixels = await marker.evaluate(
-      (element, referencePixel) => {
-        const destination = element as SVGGraphicsElement;
-        const svg = destination.ownerSVGElement;
-        const destinationMatrix = destination.getScreenCTM();
+      (element, target) => {
+        const dot = element.querySelector(".rpg-mini-map-destination-dot");
+        const svg = (element as SVGGraphicsElement).ownerSVGElement;
         const svgMatrix = svg?.getScreenCTM();
-        if (!destinationMatrix || !svgMatrix) {
+        if (!dot || !svgMatrix) {
           throw new Error("arrival marker screen transform is missing");
         }
-        const actual = new DOMPoint(0, 0).matrixTransform(
-          destinationMatrix
+        const box = dot.getBoundingClientRect();
+        const drawn = new DOMPoint(target[0], target[1]).matrixTransform(
+          svgMatrix
         );
-        const expected = new DOMPoint(
-          referencePixel[0],
-          referencePixel[1]
-        ).matrixTransform(svgMatrix);
         return Math.hypot(
-          actual.x - expected.x,
-          actual.y - expected.y
+          (box.left + box.right) / 2 - drawn.x,
+          (box.top + box.bottom) / 2 - drawn.y
         );
       },
-      arrival.approvedReferenceFoot.pixel
+      [expected.x, expected.y] as const
     );
     expect(placementErrorCssPixels).toBeLessThanOrEqual(0.5);
+
     const anchor = (await marker.getAttribute("data-anchor-reference"))!
       .split(",")
       .map(Number);
-    expect(Math.abs(anchor[0] - arrival.approvedReferenceFoot.pixel[0]))
-      .toBeLessThanOrEqual(0.5);
-    expect(Math.abs(anchor[1] - arrival.approvedReferenceFoot.pixel[1]))
-      .toBeLessThanOrEqual(0.5);
-    const headingLength = Math.hypot(
-      arrival.heading[0],
-      arrival.heading[1]
-    );
-    const headingSample = projectRpgReferenceMapPoint([
-      arrival.position[0] +
-        (arrival.heading[0] / headingLength) * 0.25,
-      arrival.position[1],
-      arrival.position[2] +
-        (arrival.heading[1] / headingLength) * 0.25
-    ]);
-    const headingError = await marker.evaluate(
-      (element, { anchor, next }) => {
-        const destination = element as SVGGraphicsElement;
-        const svg = destination.ownerSVGElement;
-        const destinationMatrix = destination.getScreenCTM();
-        const svgMatrix = svg?.getScreenCTM();
-        if (!destinationMatrix || !svgMatrix) {
-          throw new Error("arrival heading screen transform is missing");
-        }
-        const actualOrigin = new DOMPoint(0, 0).matrixTransform(
-          destinationMatrix
-        );
-        const actualForward = new DOMPoint(1, 0).matrixTransform(
-          destinationMatrix
-        );
-        const expectedOrigin = new DOMPoint(
-          anchor[0],
-          anchor[1]
-        ).matrixTransform(svgMatrix);
-        const expectedForward = new DOMPoint(
-          next[0],
-          next[1]
-        ).matrixTransform(svgMatrix);
-        const actualAngle = Math.atan2(
-          actualForward.y - actualOrigin.y,
-          actualForward.x - actualOrigin.x
-        );
-        const expectedAngle = Math.atan2(
-          expectedForward.y - expectedOrigin.y,
-          expectedForward.x - expectedOrigin.x
-        );
-        return (
-          Math.abs(
-            Math.atan2(
-              Math.sin(actualAngle - expectedAngle),
-              Math.cos(actualAngle - expectedAngle)
-            )
-          ) *
-          180 /
-          Math.PI
-        );
-      },
-      {
-        anchor: arrival.approvedReferenceFoot.pixel,
-        next: [headingSample.x, headingSample.y] as const
-      }
-    );
-    expect(headingError).toBeLessThanOrEqual(2);
+    expect(Math.abs(anchor[0] - expected.x)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(anchor[1] - expected.y)).toBeLessThanOrEqual(0.5);
+
   }
+
+  // An arrival also publishes a data-heading-rotation, but no arrival is drawn
+  // facing anywhere, and the check that used to stand here read that number
+  // back and recomputed it from the same projection that wrote it: it passed
+  // whatever the map put on screen. The marker that is drawn facing somewhere
+  // is the visitor's, so that is what is measured now — the arrow as drawn
+  // against the step the visitor would take next, as drawn.
+  const stepWorldUnits = 4;
+
+  const readVisitorArrow = async () =>
+    page.evaluate(async () => {
+      const nextFrame = () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const renderer = document.querySelector<HTMLElement>(
+          ".seamless-world-renderer"
+        );
+        const marker = document.querySelector<SVGGraphicsElement>(
+          ".rpg-mini-map-player"
+        );
+        const arrow = marker?.querySelector<SVGGraphicsElement>(
+          ".rpg-mini-map-player-arrow"
+        );
+        if (!renderer || !marker || !arrow) {
+          throw new Error("visitor marker telemetry is missing");
+        }
+        const revision = renderer.dataset.navigationRevision ?? "";
+        const position = renderer.dataset.playerPosition ?? "";
+        const heading = renderer.dataset.playerHeading ?? "";
+        // The world and the marker are read in one frame, so the measured
+        // arrow belongs to the position and heading it is compared against.
+        if (
+          !revision ||
+          marker.dataset.navigationRevision !== revision ||
+          !position ||
+          !heading
+        ) {
+          await nextFrame();
+          continue;
+        }
+        const arrowMatrix = arrow.getScreenCTM();
+        const svgMatrix = arrow.ownerSVGElement?.getScreenCTM();
+        if (!arrowMatrix || !svgMatrix) {
+          throw new Error("visitor marker screen transform is missing");
+        }
+        // The arrow's own geometry, so nothing here has to know how long it
+        // is: the tip is the far end of its box, on its centre line.
+        const box = arrow.getBBox();
+        const origin = new DOMPoint(0, 0).matrixTransform(arrowMatrix);
+        const tip = new DOMPoint(
+          box.x + box.width,
+          box.y + box.height / 2
+        ).matrixTransform(arrowMatrix);
+        if (marker.dataset.navigationRevision !== revision) {
+          await nextFrame();
+          continue;
+        }
+        return {
+          revision,
+          position,
+          heading,
+          drawn: [tip.x - origin.x, tip.y - origin.y] as [number, number],
+          canvas: {
+            a: svgMatrix.a,
+            b: svgMatrix.b,
+            c: svgMatrix.c,
+            d: svgMatrix.d
+          }
+        };
+      }
+      throw new Error("visitor marker never settled on a published revision");
+    });
+
+  const measureVisitorArrow = async (pose: string) => {
+    const sample = await readVisitorArrow();
+    const position = sample.position.split(",").map(Number);
+    const heading = sample.heading.split(",").map(Number);
+    expect(position.length, pose).toBe(3);
+    const headingLength = Math.hypot(heading[0], heading[2]);
+    expect(headingLength, pose).toBeGreaterThan(0.5);
+
+    const from = projectRpgMapWorldPoint([
+      position[0],
+      position[1],
+      position[2]
+    ]);
+    const ahead = projectRpgMapWorldPoint([
+      position[0] + (heading[0] / headingLength) * stepWorldUnits,
+      position[1],
+      position[2] + (heading[2] / headingLength) * stepWorldUnits
+    ]);
+    // A step into the edge of the world is clamped, and a clamped step points
+    // somewhere the visitor is not walking.
+    expect(
+      Math.hypot(ahead.x - from.x, ahead.y - from.y),
+      pose
+    ).toBeCloseTo(stepWorldUnits * RPG_MAP_PIXELS_PER_WORLD_UNIT, 1);
+
+    // Both vectors are put through the matrix the browser drew the map with,
+    // so the question is the one a visitor asks: does the arrow on my map
+    // point at the place my next step is drawn?
+    const deltaX = ahead.x - from.x;
+    const deltaY = ahead.y - from.y;
+    const expectedScreen = [
+      sample.canvas.a * deltaX + sample.canvas.c * deltaY,
+      sample.canvas.b * deltaX + sample.canvas.d * deltaY
+    ];
+    const drawnDegrees =
+      (Math.atan2(sample.drawn[1], sample.drawn[0]) * 180) / Math.PI;
+    const expectedDegrees =
+      (Math.atan2(expectedScreen[1], expectedScreen[0]) * 180) / Math.PI;
+    expect(
+      Math.abs(((drawnDegrees - expectedDegrees + 540) % 360) - 180),
+      pose
+    ).toBeLessThanOrEqual(2);
+    return (Math.atan2(-heading[2], heading[0]) * 180) / Math.PI;
+  };
+
+  const spawnDegrees = await measureVisitorArrow("standing where it began");
+
+  await page.keyboard.down("d");
+  await page.waitForTimeout(600);
+  await page.keyboard.up("d");
+  await page.waitForTimeout(500);
+  const turnedDegrees = await measureVisitorArrow("after turning");
+
+  // Two poses only count as two if the visitor really turned between them.
+  expect(
+    Math.abs(((turnedDegrees - spawnDegrees + 540) % 360) - 180)
+  ).toBeGreaterThan(10);
 });

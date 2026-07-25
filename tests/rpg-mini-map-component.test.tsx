@@ -9,26 +9,32 @@ import { createFlatWorldSession } from "../app/world/FlatWorldSession";
 import { RpgMiniMap } from "../app/world/RpgMiniMap";
 import {
   RPG_CANONICAL_MAP_SOURCE_IDS,
-  RPG_REFERENCE_MAP_NODES,
-  projectRpgReferenceMapHeadingRotation,
-  projectRpgReferenceMapPoint
+  RPG_MAP_COLORS,
+  RPG_MAP_LAND_SOURCE_ID,
+  RPG_MAP_NODES,
+  RPG_MAP_ROADS,
+  RPG_MAP_VIEW_BOX,
+  RPG_MAP_ZONE_COLORS,
+  RPG_MINI_MAP_LABEL_CSS_PIXELS,
+  getRpgMapNextZoneId,
+  projectRpgMapWorldHeadingRotation,
+  projectRpgMapWorldPoint
 } from "../app/world/RpgMiniMapProjection";
 import {
   RPG_WORLD_BRIDGE,
   RPG_WORLD_BOUNDS,
   RPG_WORLD_CANAL,
-  RPG_WORLD_ROUTES,
   RPG_WORLD_SPAWN,
   RPG_WORLD_ZONES,
   RPG_WORLD_ZONE_IDS
 } from "../app/world/RpgWorldModel";
-import { RPG_REFERENCE_MAP_GOLDEN } from "./fixtures/rpg-reference-registration-golden";
 
 const labels = {
   label: "World mini-map",
   expand: "Expand mini-map",
   collapse: "Collapse mini-map",
   currentPosition: "Current position",
+  nextDestination: "Next destination",
   mainRoute: "Main route",
   north: "North",
   destinations: {
@@ -86,7 +92,7 @@ describe("RPG mini-map", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows the route, five destinations, current position, and heading", () => {
+  it("shows the town, five named destinations, the visitor, and the way on", () => {
     const { container } = render(
       <RpgMiniMap
         labels={labels}
@@ -98,25 +104,37 @@ describe("RPG mini-map", () => {
       screen.getByRole("group", { name: "World mini-map" })
     ).toBeVisible();
     expect(screen.getByRole("img", { name: "Main route" })).toBeVisible();
-    for (const destination of Object.values(labels.destinations)) {
-      expect(screen.getByRole("img", { name: destination })).toBeVisible();
+    const nextZoneId = getRpgMapNextZoneId("airport")!;
+    for (const [zoneId, destination] of Object.entries(labels.destinations)) {
+      const name =
+        zoneId === nextZoneId
+          ? `Next destination: ${destination}`
+          : destination;
+      expect(screen.getByRole("img", { name })).toBeVisible();
     }
     expect(
       screen.getByRole("img", {
         name: "Current position: Airport bus stop"
       })
     ).toBeVisible();
+
     const canvas = container.querySelector(".rpg-mini-map-canvas");
-    expect(canvas).toHaveAttribute("viewBox", "0 0 1817 866");
+    expect(canvas).toHaveAttribute(
+      "viewBox",
+      `0 0 ${RPG_MAP_VIEW_BOX.width} ${RPG_MAP_VIEW_BOX.height}`
+    );
+    expect(canvas).toHaveAttribute("data-next-zone", nextZoneId);
     expect(container.querySelector("image")).toBeNull();
     expect(
       container.querySelector('[data-map-layer="model-terrain"]')
     ).not.toBeNull();
+
+    // Every drawn feature is a feature of the world model, at world scale.
     expect(container.querySelectorAll("[data-map-zone]")).toHaveLength(
       RPG_WORLD_ZONES.length
     );
     expect(container.querySelectorAll("[data-map-route]")).toHaveLength(
-      RPG_WORLD_ROUTES.length
+      RPG_MAP_ROADS.length
     );
     expect(
       container.querySelector(`[data-map-water="${RPG_WORLD_CANAL.id}"]`)
@@ -124,28 +142,41 @@ describe("RPG mini-map", () => {
     expect(
       container.querySelector(`[data-map-bridge="${RPG_WORLD_BRIDGE.id}"]`)
     ).not.toBeNull();
-    for (const zone of container.querySelectorAll(
+    const land = container.querySelector(
+      `[data-map-source-id="${RPG_MAP_LAND_SOURCE_ID}"]`
+    );
+    expect(land).toHaveAttribute("fill", RPG_MAP_COLORS.land);
+    expect(land).toHaveAttribute("stroke", RPG_MAP_COLORS.landEdge);
+    expect(land).toHaveAttribute("stroke-width", "3");
+    for (const zone of container.querySelectorAll<SVGElement>(
       ".rpg-map-terrain-zone"
     )) {
-      expect(zone).toHaveAttribute("fill", "#dfcfaa");
-      expect(zone).toHaveAttribute("stroke", "#8d745b");
-      expect(zone).toHaveAttribute("stroke-width", "2");
+      expect(zone).toHaveAttribute(
+        "fill",
+        RPG_MAP_ZONE_COLORS[
+          zone.dataset.mapZone as keyof typeof RPG_MAP_ZONE_COLORS
+        ]
+      );
+      // Fill only: a district outline changes with data-current, so the
+      // stylesheet owns that half and there is no attribute here to assert.
+      // The land, roads, canal and bridge below still carry theirs.
     }
     const water = container.querySelector(".rpg-map-terrain-water");
-    expect(water).toHaveAttribute("fill", "#8bc9d9");
-    expect(water).toHaveAttribute("stroke", "#4d91a8");
+    expect(water).toHaveAttribute("fill", RPG_MAP_COLORS.canal);
+    expect(water).toHaveAttribute("stroke", RPG_MAP_COLORS.canalEdge);
     expect(water).toHaveAttribute("stroke-width", "2");
     for (const route of container.querySelectorAll(
       ".rpg-map-terrain-route"
     )) {
-      expect(route).toHaveAttribute("fill", "#d6b184");
-      expect(route).toHaveAttribute("stroke", "#9a734b");
+      expect(route).toHaveAttribute("fill", RPG_MAP_COLORS.road);
+      expect(route).toHaveAttribute("stroke", RPG_MAP_COLORS.roadEdge);
       expect(route).toHaveAttribute("stroke-width", "2");
     }
     const bridge = container.querySelector(".rpg-map-terrain-bridge");
-    expect(bridge).toHaveAttribute("fill", "#b67d52");
-    expect(bridge).toHaveAttribute("stroke", "#74462d");
+    expect(bridge).toHaveAttribute("fill", RPG_MAP_COLORS.bridge);
+    expect(bridge).toHaveAttribute("stroke", RPG_MAP_COLORS.bridgeEdge);
     expect(bridge).toHaveAttribute("stroke-width", "2");
+
     const sourceIds = [
       ...container.querySelectorAll<SVGElement>("[data-map-source-id]")
     ].map((element) => element.dataset.mapSourceId!);
@@ -154,25 +185,55 @@ describe("RPG mini-map", () => {
     );
     for (const layer of [
       "model-terrain",
-      "coastline",
-      "bridge",
-      "route",
+      "sea",
+      "land",
       "zone",
+      "route",
+      "water",
+      "bridge",
       "arrival",
       "player"
     ]) {
-      expect(container.querySelector(`[data-map-layer="${layer}"]`)).not.toBeNull();
+      expect(
+        container.querySelector(`[data-map-layer="${layer}"]`),
+        layer
+      ).not.toBeNull();
     }
+    expect(
+      container.querySelector('[data-map-layer="coastline"]')
+    ).toBeNull();
+
+    // The five names are on the map itself, not in a list beneath it.
     const mapLabels = [
-      ...container.querySelectorAll<HTMLElement>("[data-map-label]")
+      ...container.querySelectorAll<SVGTextElement>("[data-map-label]")
     ];
     expect(mapLabels).toHaveLength(5);
     expect(
       mapLabels.every(
-        (label) => label.dataset.labelFontTargetCssPx === "10"
+        (label) =>
+          label.tagName.toLowerCase() === "text" &&
+          label.dataset.labelFontTargetCssPx ===
+            String(RPG_MINI_MAP_LABEL_CSS_PIXELS)
       )
     ).toBe(true);
-    for (const node of RPG_REFERENCE_MAP_NODES) {
+    expect(mapLabels.map((label) => label.textContent)).toEqual(
+      RPG_MAP_NODES.map((node) => labels.destinations[node.zoneId])
+    );
+    // Drawn where the projection places the name, not somewhere near it. The
+    // projection test gates those places against the visitor marker, and that
+    // gate is worth nothing if the map is free to put the text elsewhere.
+    for (const node of RPG_MAP_NODES) {
+      const label = container.querySelector(
+        `[data-map-label="${node.zoneId}"]`
+      );
+      expect(label, node.zoneId).toHaveAttribute("x", String(node.label.x));
+      expect(label, node.zoneId).toHaveAttribute("y", String(node.label.y));
+      expect(label, node.zoneId).toHaveAttribute(
+        "text-anchor",
+        node.label.anchor
+      );
+    }
+    for (const node of RPG_MAP_NODES) {
       expect(
         container.querySelector(
           `.rpg-mini-map-destination-${node.zoneId}`
@@ -210,7 +271,10 @@ describe("RPG mini-map", () => {
       const arrival = container.querySelector<SVGGElement>(
         `.rpg-mini-map-destination-${destinationId}`
       );
-      const target = RPG_REFERENCE_MAP_GOLDEN.nodes[destinationId].join(",");
+      const node = RPG_MAP_NODES.find(
+        ({ zoneId }) => zoneId === destinationId
+      )!;
+      const target = `${node.point.x},${node.point.y}`;
       expect(player).toHaveAttribute("data-anchor-reference", target);
       expect(arrival).toHaveAttribute("data-anchor-reference", target);
       expect(player).toHaveAttribute(
@@ -234,17 +298,14 @@ describe("RPG mini-map", () => {
 
     expect(screen.getByRole("img", { name: "North" })).toBeVisible();
     expect(
-      container.querySelectorAll('.rpg-mini-map-zone[data-current="true"]')
+      container.querySelectorAll('.rpg-map-terrain-zone[data-current="true"]')
     ).toHaveLength(1);
     expect(
-      container.querySelector('.rpg-mini-map-zone[data-current="true"]')
-    ).toHaveClass("rpg-mini-map-zone-sakura");
+      container.querySelector('.rpg-map-terrain-zone[data-current="true"]')
+    ).toHaveClass("rpg-map-terrain-zone-sakura");
     const navigation = navigationAt([-8, 0, -24], [0, 0, -1]);
-    const point = projectRpgReferenceMapPoint(navigation.position);
-    const rotation = projectRpgReferenceMapHeadingRotation(
-      navigation.position,
-      navigation.heading
-    );
+    const point = projectRpgMapWorldPoint(navigation.position);
+    const rotation = projectRpgMapWorldHeadingRotation(navigation.heading);
     expect(container.querySelector(".rpg-mini-map-player")).toHaveAttribute(
       "transform",
       `translate(${point.x} ${point.y}) rotate(${rotation})`
@@ -264,11 +325,13 @@ describe("RPG mini-map", () => {
       highlightedZoneIds: ["airport", "gyukatsu"]
     });
     expect(
-      container.querySelectorAll('.rpg-mini-map-zone[data-highlighted="true"]')
+      container.querySelectorAll(
+        '.rpg-map-terrain-zone[data-highlighted="true"]'
+      )
     ).toHaveLength(2);
     expect(
-      container.querySelector('.rpg-mini-map-zone[data-current="true"]')
-    ).toHaveClass("rpg-mini-map-zone-gyukatsu");
+      container.querySelector('.rpg-map-terrain-zone[data-current="true"]')
+    ).toHaveClass("rpg-map-terrain-zone-gyukatsu");
   });
 
   it("updates player position, heading, and zone from one replacement snapshot", () => {
@@ -286,18 +349,15 @@ describe("RPG mini-map", () => {
     expect(
       container.querySelector(".rpg-mini-map-player")
     ).not.toHaveAttribute("transform", initialTransform);
-    const expectedPoint = projectRpgReferenceMapPoint(next.position);
-    const expectedRotation = projectRpgReferenceMapHeadingRotation(
-      next.position,
-      next.heading
-    );
+    const expectedPoint = projectRpgMapWorldPoint(next.position);
+    const expectedRotation = projectRpgMapWorldHeadingRotation(next.heading);
     expect(container.querySelector(".rpg-mini-map-player")).toHaveAttribute(
       "transform",
       `translate(${expectedPoint.x} ${expectedPoint.y}) rotate(${expectedRotation})`
     );
     expect(
-      container.querySelector('.rpg-mini-map-zone[data-current="true"]')
-    ).toHaveClass("rpg-mini-map-zone-gyukatsu");
+      container.querySelector('.rpg-map-terrain-zone[data-current="true"]')
+    ).toHaveClass("rpg-map-terrain-zone-gyukatsu");
   });
 
   it("collapses and expands without storing visitor state", async () => {
@@ -344,6 +404,34 @@ describe("RPG mini-map", () => {
     expect(
       screen.queryByRole("group", { name: "World mini-map" })
     ).not.toBeInTheDocument();
+  });
+
+  it("publishes revision-paired player telemetry on a mobile viewport once opened", async () => {
+    // A route drive on a phone reported "map telemetry is missing" because the
+    // marker only exists while the map is open, and the map starts closed on a
+    // compact viewport by design. Opening it is all a mobile visitor — or a
+    // route harness — has to do; the telemetry itself is not desktop-only.
+    useMobileViewport(true);
+    const user = userEvent.setup();
+    const navigation = navigationAt([4, 0, -12], [0, 0, 1]);
+    const { container } = render(
+      <RpgMiniMap labels={labels} navigation={navigation} />
+    );
+
+    expect(container.querySelector(".rpg-mini-map-player")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Expand mini-map" }));
+
+    const marker = container.querySelector(".rpg-mini-map-player");
+    const anchor = projectRpgMapWorldPoint(navigation.position);
+    expect(marker).toHaveAttribute(
+      "data-anchor-reference",
+      `${anchor.x},${anchor.y}`
+    );
+    expect(marker).toHaveAttribute(
+      "data-navigation-revision",
+      String(navigation.revision)
+    );
   });
 
   it("hydrates without changing the server markup before applying the mobile default", async () => {

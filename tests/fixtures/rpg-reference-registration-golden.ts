@@ -74,7 +74,13 @@ export const RPG_REFERENCE_REGISTRATION_GOLDEN = {
     { id: "calibration-sakura-road-west", referencePixel: [1010, 650], spriteScale: 1.12, depthKey: 0.76, measurementRole: "approved-feature" },
     { id: "calibration-gyukatsu-sakura-transition", referencePixel: [1100, 620], spriteScale: 1.05, depthKey: 0.66, measurementRole: "approved-feature" },
     { id: "calibration-canal-southwest-bank", referencePixel: [1390, 840], spriteScale: 1.22, depthKey: 0.97, measurementRole: "approved-feature" },
-    { id: "calibration-bridge-west-end", referencePixel: [1370, 640], spriteScale: 1.13, depthKey: 0.8, measurementRole: "approved-feature" }
+    // Re-derived when the deck was widened to span both festival roads. Unlike
+    // its neighbours this entry is not yet an independent reading: the corner
+    // moved to (14.3, -20), where the painting draws no bridge, so the value
+    // came from the calibrated surface rather than from the image. It still
+    // guards against a stray polygon edit, but it will only be independent
+    // once someone measures that spot by hand.
+    { id: "calibration-bridge-west-end", referencePixel: [1365, 659], spriteScale: 1.14, depthKey: 0.81, measurementRole: "approved-feature" }
   ],
   arrivalTraversableSurfaceAnnotations: {
     airport: {

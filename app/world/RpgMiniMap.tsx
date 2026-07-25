@@ -3,13 +3,14 @@
 import { useId, useState, useSyncExternalStore } from "react";
 import type { DestinationId } from "../guide/GuideContract";
 import {
+  RPG_MAP_LABEL_FONT_SIZE,
+  RPG_MAP_MARKER_GEOMETRY,
+  RPG_MAP_NODES,
+  RPG_MINI_MAP_LABEL_CSS_PIXELS,
   RPG_MINI_MAP_VIEW_BOX,
-  RPG_REFERENCE_MAP_COASTLINE,
-  RPG_REFERENCE_MAP_NODES,
-  RPG_REFERENCE_MAP_TRANSITIONS,
-  projectRpgReferenceMapHeadingRotation,
-  projectRpgReferenceMapPoint,
-  serializeRpgReferencePoints
+  getRpgMapNextZoneId,
+  projectRpgMapWorldHeadingRotation,
+  projectRpgMapWorldPoint
 } from "./RpgMiniMapProjection";
 import { RpgMapTerrain } from "./RpgMapTerrain";
 import type { WorldNavigationSnapshot } from "./WorldNavigationState";
@@ -19,6 +20,7 @@ export interface RpgMiniMapLabels {
   expand: string;
   collapse: string;
   currentPosition: string;
+  nextDestination: string;
   mainRoute: string;
   north: string;
   destinations: Readonly<Record<DestinationId, string>>;
@@ -31,6 +33,21 @@ interface RpgMiniMapProps {
 
 const COMPACT_MINI_MAP_QUERY =
   "(max-width: 640px), (max-height: 540px) and (pointer: coarse)";
+
+const {
+  playerHaloRadius,
+  playerDiscRadius,
+  playerArrowLength,
+  arrivalRadius,
+  arrivalRingRadius,
+  compassRadius
+} = RPG_MAP_MARKER_GEOMETRY;
+
+const PLAYER_ARROW_PATH =
+  `M ${playerArrowLength} 0 ` +
+  `L ${-playerArrowLength * 0.45} ${playerArrowLength * 0.52} ` +
+  `L ${-playerArrowLength * 0.14} 0 ` +
+  `L ${-playerArrowLength * 0.45} ${-playerArrowLength * 0.52} Z`;
 
 function subscribeToCompactViewport(onStoreChange: () => void) {
   if (typeof window === "undefined" || !window.matchMedia) {
@@ -61,11 +78,9 @@ export function RpgMiniMap({
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
   const expanded = expandedOverride ?? !compactViewport;
   const mapId = useId();
-  const playerPoint = projectRpgReferenceMapPoint(navigation.position);
-  const headingRotation = projectRpgReferenceMapHeadingRotation(
-    navigation.position,
-    navigation.heading
-  );
+  const playerPoint = projectRpgMapWorldPoint(navigation.position);
+  const headingRotation = projectRpgMapWorldHeadingRotation(navigation.heading);
+  const nextZoneId = getRpgMapNextZoneId(navigation.currentZoneId);
 
   return (
     <div className="rpg-mini-map" data-expanded={expanded}>
@@ -86,8 +101,7 @@ export function RpgMiniMap({
       </button>
 
       {expanded ? (
-        <>
-          <svg
+        <svg
           id={mapId}
           className="rpg-mini-map-canvas"
           viewBox={`0 0 ${RPG_MINI_MAP_VIEW_BOX.width} ${RPG_MINI_MAP_VIEW_BOX.height}`}
@@ -101,96 +115,66 @@ export function RpgMiniMap({
               : navigation.transitionProgress.toFixed(6)
           }
           data-current-zone={navigation.currentZoneId}
+          data-next-zone={nextZoneId ?? ""}
           data-highlighted-zones={navigation.highlightedZoneIds.join(",")}
         >
-          <RpgMapTerrain />
-          <polygon
-            className="rpg-mini-map-coastline"
-            data-map-layer="coastline"
-            data-map-source-id="approved-reference-coastline"
-            fill="none"
-            stroke="rgba(255, 255, 255, 0.78)"
-            strokeWidth="5"
-            points={serializeRpgReferencePoints(RPG_REFERENCE_MAP_COASTLINE)}
+          <RpgMapTerrain
+            currentZoneId={navigation.currentZoneId}
+            highlightedZoneIds={navigation.highlightedZoneIds}
+            routeLabel={labels.mainRoute}
           />
 
-          <g className="rpg-mini-map-zones" aria-hidden="true">
-            {RPG_REFERENCE_MAP_NODES.map((node) => (
-              <circle
-                key={node.zoneId}
-                className={`rpg-mini-map-zone rpg-mini-map-zone-${node.zoneId}`}
-                data-map-layer="zone"
-                data-map-source-id={node.zoneId}
-                data-anchor-reference={node.referencePixel.join(",")}
-                data-marker-diameter-reference="48"
-                data-current={node.zoneId === navigation.currentZoneId}
-                data-highlighted={navigation.highlightedZoneIds.includes(
-                  node.zoneId
-                )}
-                cx={node.referencePixel[0]}
-                cy={node.referencePixel[1]}
-                r="24"
-                style={{
-                  opacity: navigation.highlightedZoneIds.includes(node.zoneId)
-                    ? 1
-                    : 0.45
-                }}
-              />
-            ))}
-          </g>
-
-          <g
-            className="rpg-mini-map-route"
-            role="img"
-            aria-label={labels.mainRoute}
-          >
-            {RPG_REFERENCE_MAP_TRANSITIONS.map((route) => (
-              <polyline
-                key={route.id}
-                className={`rpg-mini-map-route-segment rpg-mini-map-route-${route.kind}`}
-                data-map-layer={route.kind === "bridge" ? "bridge" : "route"}
-                data-map-source-id={route.id}
-                fill="none"
-                style={{
-                  fill: "none",
-                  stroke:
-                    route.kind === "bridge" ? "#ffb15f" : "#fff3cf",
-                  strokeWidth: route.kind === "bridge" ? 16 : 12
-                }}
-                points={serializeRpgReferencePoints(route.points)}
-              />
-            ))}
-          </g>
-
           <g className="rpg-mini-map-destinations">
-            {RPG_REFERENCE_MAP_NODES.map(
-              (arrival) => {
-              const destinationId = arrival.zoneId;
+            {RPG_MAP_NODES.map((node) => {
+              const isNext = node.zoneId === nextZoneId;
+              const isCurrent = node.zoneId === navigation.currentZoneId;
               return (
                 <g
-                  key={arrival.arrivalId}
-                  className={`rpg-mini-map-destination rpg-mini-map-destination-${destinationId}`}
+                  key={node.arrivalId}
+                  className={`rpg-mini-map-destination rpg-mini-map-destination-${node.zoneId}`}
                   data-map-layer="arrival"
-                  data-map-source-id={arrival.arrivalId}
+                  data-map-source-id={node.arrivalId}
                   data-navigation-revision={navigation.revision}
-                  data-anchor-reference={arrival.referencePixel.join(",")}
-                  data-heading-rotation={arrival.headingRotation}
-                  data-marker-diameter-reference="40"
-                  data-current={destinationId === navigation.currentZoneId}
+                  data-anchor-reference={`${node.point.x},${node.point.y}`}
+                  data-heading-rotation={node.headingRotation}
+                  data-marker-diameter-reference={arrivalRadius * 2}
+                  data-current={isCurrent}
+                  data-next={isNext}
+                  data-highlighted={navigation.highlightedZoneIds.includes(
+                    node.zoneId
+                  )}
                   role="img"
-                  aria-label={labels.destinations[destinationId]}
-                  transform={
-                    `translate(${arrival.referencePixel[0]} ` +
-                    `${arrival.referencePixel[1]}) ` +
-                    `rotate(${arrival.headingRotation})`
+                  aria-label={
+                    isNext
+                      ? `${labels.nextDestination}: ${labels.destinations[node.zoneId]}`
+                      : labels.destinations[node.zoneId]
                   }
                 >
-                  <circle r="20" />
-                  <path
-                    className="rpg-mini-map-destination-heading"
-                    d="M 27 0 L 13 -7 L 13 7 Z"
-                    fill="#06111f"
+                  {isNext ? (
+                    <circle
+                      className="rpg-mini-map-destination-next"
+                      cx={node.point.x}
+                      cy={node.point.y}
+                      r={arrivalRingRadius}
+                    />
+                  ) : null}
+                  <circle
+                    className="rpg-mini-map-destination-dot"
+                    cx={node.point.x}
+                    cy={node.point.y}
+                    r={arrivalRadius}
                   />
+                  <text
+                    className="rpg-mini-map-label"
+                    data-map-label={node.zoneId}
+                    data-label-font-target-css-px={RPG_MINI_MAP_LABEL_CSS_PIXELS}
+                    x={node.label.x}
+                    y={node.label.y}
+                    textAnchor={node.label.anchor}
+                    fontSize={RPG_MAP_LABEL_FONT_SIZE}
+                  >
+                    {labels.destinations[node.zoneId]}
+                  </text>
                 </g>
               );
             })}
@@ -202,16 +186,16 @@ export function RpgMiniMap({
             data-map-source-id="player"
             data-navigation-revision={navigation.revision}
             data-anchor-reference={`${playerPoint.x},${playerPoint.y}`}
-            data-marker-diameter-reference="42"
+            data-marker-diameter-reference={playerHaloRadius * 2}
             role="img"
             aria-label={`${labels.currentPosition}: ${labels.destinations[navigation.currentZoneId]}`}
             transform={`translate(${playerPoint.x} ${playerPoint.y}) rotate(${headingRotation})`}
           >
-            <circle className="rpg-mini-map-player-halo" r="34" />
-            <circle className="rpg-mini-map-player-disc" r="21" />
+            <circle className="rpg-mini-map-player-halo" r={playerHaloRadius} />
+            <circle className="rpg-mini-map-player-disc" r={playerDiscRadius} />
             <path
               className="rpg-mini-map-player-arrow"
-              d="M 36 0 L -16 19 L -5 0 L -16 -19 Z"
+              d={PLAYER_ARROW_PATH}
             />
           </g>
 
@@ -219,31 +203,16 @@ export function RpgMiniMap({
             className="rpg-mini-map-compass"
             role="img"
             aria-label={labels.north}
-            transform={`translate(${RPG_MINI_MAP_VIEW_BOX.width - 92} 92)`}
+            transform={
+              `translate(${RPG_MINI_MAP_VIEW_BOX.width - compassRadius - 10} ` +
+              `${compassRadius + 10})`
+            }
           >
-            <circle r="42" />
-            <path d="M 0 -31 L 18 16 L 0 5 L -18 16 Z" />
-            <text y="38">N</text>
+            <circle r={compassRadius} />
+            <path d="M 0 -19 L 11 9 L 0 3 L -11 9 Z" />
+            <text y="25">N</text>
           </g>
-          </svg>
-          <div
-            className="rpg-mini-map-labels"
-            data-map-label-layout="non-overlapping-grid"
-          >
-            {RPG_REFERENCE_MAP_NODES.map((node) => (
-              <span
-                key={node.arrivalId}
-                className={`rpg-mini-map-label rpg-mini-map-label-${node.zoneId}`}
-                data-map-label={node.zoneId}
-                data-label-font-target-css-px="10"
-                data-anchor-reference={node.referencePixel.join(",")}
-              >
-                <span aria-hidden="true" />
-                {labels.destinations[node.zoneId]}
-              </span>
-            ))}
-          </div>
-        </>
+        </svg>
       ) : null}
     </div>
   );

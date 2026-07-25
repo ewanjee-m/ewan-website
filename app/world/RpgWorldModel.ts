@@ -330,7 +330,7 @@ export const RPG_WORLD_TRANSITIONS: readonly WorldTransition[] = [
   transition("airport-to-gyukatsu", "airport", "gyukatsu", rectangle(-21, -19, -3, 3), [[-21, 0], [-19, 0]], 20, "airport-bus-plaza", "gyukatsu-stone-plaza"),
   transition("tokyo-to-gyukatsu", "tokyo", "gyukatsu", rectangle(-11, -5, 9, 11), [[-8, 11], [-8, 9]], 30, "district-volume-tokyo-east-tower", "gyukatsu-teahouse-machiya"),
   transition("gyukatsu-to-sakura", "gyukatsu", "sakura", rectangle(5, 11, -11, -9), [[8, -9], [8, -11]], 40, "gyukatsu-stone-plaza", "sakura-riverside-garden"),
-  transition("sakura-to-hanabi", "sakura", "hanabi", rectangle(15, 17, -18, -16), [[15, -17], [17, -17]], 50, "sakura-bridge", "hanabi-festival-plaza")
+  transition("sakura-to-hanabi", "sakura", "hanabi", rectangle(15, 17, -20, -14), [[15, -17], [17, -17]], 50, "sakura-bridge", "hanabi-festival-plaza")
 ] as const;
 
 export const RPG_TRANSITION_PROTECTED_PAIRS = [
@@ -341,7 +341,16 @@ export const RPG_TRANSITION_PROTECTED_PAIRS = [
   { transitionId: "sakura-to-hanabi", fromId: "sakura-bridge", toId: "hanabi-festival-plaza", fromRectangle: RPG_REFERENCE_TRANSITION_PROTECTED_RECTANGLES["sakura-to-hanabi:from"], toRectangle: RPG_REFERENCE_TRANSITION_PROTECTED_RECTANGLES["sakura-to-hanabi:to"] }
 ] as const;
 
-const RPG_WORLD_BRIDGE_POLYGON = rectangle(14.3, 18.9, -18, -16);
+/**
+ * The canal runs the full depth of the town and this is the only way over it,
+ * so the deck spans the union of the two roads it joins — the sakura festival
+ * road at z -20 to -16 and the hanabi one at -19 to -14 — rather than the
+ * two-unit window where those roads happened to overlap. A visitor walking
+ * west from the festival used to reach the water and find nothing to step
+ * onto. The deck now overhangs each approach by a unit or two, which is the
+ * price of a crossing you cannot miss.
+ */
+const RPG_WORLD_BRIDGE_POLYGON = rectangle(14.3, 18.9, -20, -14);
 
 export const RPG_WORLD_ROUTES: readonly WorldRoute[] = [
   { id: "airport-arrival-road", polygon: rectangle(-32.5, -27, -7.5, 20), surface: "road", renderableId: "airport-arrival-road-surface" },
@@ -1124,7 +1133,64 @@ export const RPG_WORLD_ARRIVALS: readonly WorldArrival[] = [
     spriteHeightRangePixels: [105, 125]
   })
 ];
+/**
+ * The clearance the TOWN is authored to: how far the ground dressing, the
+ * navigation cells, the paving, the patrol paths and the scenic camera stops
+ * all stand off a blocker's own rectangle. Every one of those is measured
+ * against this number, and the tightest of them — a crossing stripe on the
+ * tokyo connector — sits 0.37 units from its nearest blocker, so this constant
+ * cannot rise past about a third of a unit without moving town content.
+ *
+ * It is NOT the visitor's own half-width; see RPG_PLAYER_WALL_STANDOFF.
+ */
 export const RPG_PLAYER_COLLISION_RADIUS = 0.3;
+
+/**
+ * How far the visitor's own body is held off a solid wall.
+ *
+ * The chibi rebuild made the SKULL the widest part of the figure. Measured on
+ * the shipped meshes and scaled to the height each player is drawn at, the head
+ * reaches 0.5217 units either side of the body axis on the male player and
+ * 0.5298 on the female, against a torso half-width near 0.16. Held off a wall
+ * by the town's own 0.3 clearance the head sank 0.23 units into it, and the
+ * head is what the chase camera fills the frame with.
+ *
+ * 0.49 rather than the skull's own 0.53 because that is as far as the town
+ * itself goes: the east parasol seat on the gyukatsu plaza stands 0.500 from
+ * the noren machiya, and every seat has to remain walkable ground. So 0.04 of
+ * skull is still allowed inside a wall — a finger where it was a face — and
+ * rpg-character-model-contract asserts that bound from both sides so it can
+ * neither fall behind a future skull nor be padded past one.
+ */
+export const RPG_PLAYER_WALL_STANDOFF = 0.49;
+
+/**
+ * WHICH OBSTACLES GET THE SILHOUETTE STANDOFF.
+ *
+ * A single world-wide radius of 0.49 is not available. The open ground could
+ * take it — measured on the shipped world nothing is stranded at any radius up
+ * to 0.7, the whole spawn-to-arrival network stays walkable at a bottleneck of
+ * 0.80, and the canonical route clears at 0.5567 — but the town's authored
+ * content is laid out to the 0.3 clearance above and would have to move: a
+ * crossing stripe sits 0.37 from its blocker, planter walls 0.50, hedges 0.505,
+ * and the reachable floor of the square falls from 85% to 84.1%.
+ *
+ * So the standoff goes where the defect is instead. A wall, a shopfront and a
+ * stall counter are solid from the ground past the top of the head, they are
+ * broad enough that the visitor walks along them, and the head disappearing
+ * into one is the clipping that shows. A lantern post is 0.18 wide, a torii is
+ * a gate the road runs through, and a cherry tree is a canopy on a thin trunk:
+ * the head passing near those does not read as a wall clip, and it is exactly
+ * those three kinds the tightest authored content stands beside.
+ */
+export const RPG_SILHOUETTE_STANDOFF_KINDS: ReadonlySet<WorldSceneLandmarkKind> = new Set<WorldSceneLandmarkKind>([
+  "terminal",
+  "tower",
+  "machiya",
+  "stall"
+]);
+const SILHOUETTE_STANDOFF =
+  RPG_PLAYER_WALL_STANDOFF - RPG_PLAYER_COLLISION_RADIUS;
 
 export const RPG_WORLD_STATIC_BLOCKERS = [
   {
@@ -1149,8 +1215,12 @@ export const RPG_WORLD_COLLISIONS: readonly WorldCollisionShape[] = [
       kind: "orientedRect" as const,
       center: [landmark.position[0], landmark.position[2]] as const,
       halfSize: [
-        landmark.size[0] / 2 + (landmark.collisionPadding?.[0] ?? 0),
-        landmark.size[2] / 2 + (landmark.collisionPadding?.[1] ?? 0)
+        landmark.size[0] / 2 +
+          (landmark.collisionPadding?.[0] ?? 0) +
+          (RPG_SILHOUETTE_STANDOFF_KINDS.has(landmark.kind) ? SILHOUETTE_STANDOFF : 0),
+        landmark.size[2] / 2 +
+          (landmark.collisionPadding?.[1] ?? 0) +
+          (RPG_SILHOUETTE_STANDOFF_KINDS.has(landmark.kind) ? SILHOUETTE_STANDOFF : 0)
       ] as const,
       rotationRadians: landmark.rotationY ?? 0
     })),
@@ -1417,7 +1487,12 @@ const retainedReferenceCalibrationControls: readonly ReferenceCalibrationControl
   measuredCalibrationControl("calibration-sakura-road-west", { kind: "route-vertex", id: "sakura-festival-road", vertexIndex: 0 }, [1010, 650], 1.12, 0.76),
   measuredCalibrationControl("calibration-gyukatsu-sakura-transition", { kind: "transition-centerline", id: "gyukatsu-to-sakura", pointIndex: 0 }, [1100, 620], 1.05, 0.66),
   measuredCalibrationControl("calibration-canal-southwest-bank", { kind: "canal-vertex", id: "sakura-canal", vertexIndex: 0 }, [1390, 840], 1.22, 0.97),
-  measuredCalibrationControl("calibration-bridge-west-end", { kind: "bridge-vertex", id: "sakura-bridge", vertexIndex: 0 }, [1370, 640], 1.13, 0.8)
+  // The deck's southwest corner, which moved from (14.3, -18) to (14.3, -20)
+  // when the crossing was widened. This pixel was read off the calibrated
+  // surface at the corner's new position and then checked against the painting
+  // for gross error, not measured on the painting directly: the painted bridge
+  // is the narrow one, so it does not draw a corner two units further south.
+  measuredCalibrationControl("calibration-bridge-west-end", { kind: "bridge-vertex", id: "sakura-bridge", vertexIndex: 0 }, [1365, 659], 1.14, 0.81)
 ] as const;
 
 export const RPG_REFERENCE_CALIBRATION_OBSERVATIONS: readonly ReferenceCalibrationControl[] = [

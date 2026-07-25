@@ -4,10 +4,13 @@ import {
   projectWorldToReference
 } from "../app/world/RpgWorldGeometry";
 import {
+  RPG_MAP_EDGE_PADDING,
+  RPG_MAP_PIXELS_PER_WORLD_UNIT,
+  RPG_MAP_VIEW_BOX,
   RPG_MINI_MAP_VIEW_BOX,
-  RPG_REFERENCE_MAP_COASTLINE,
   RPG_REFERENCE_MAP_NODES,
   RPG_REFERENCE_MAP_TRANSITIONS,
+  RPG_REFERENCE_MAP_VIEW_BOX,
   RPG_WORLD_MAP_VIEW_BOX,
   createRpgMapProjection,
   projectRpgReferenceMapHeadingRotation,
@@ -24,19 +27,8 @@ import {
 import { RPG_CANONICAL_ROUTE } from "./fixtures/rpg-canonical-route";
 import { RPG_REFERENCE_MAP_GOLDEN } from "./fixtures/rpg-reference-registration-golden";
 
-const GOLDEN_COASTLINE = RPG_REFERENCE_MAP_GOLDEN.coastline;
 const GOLDEN_TRANSITIONS = RPG_REFERENCE_MAP_GOLDEN.routes;
 const GOLDEN_NODES = RPG_REFERENCE_MAP_GOLDEN.nodes;
-
-function pointInPolygon([x, y]: RpgReferencePoint, polygon: readonly RpgReferencePoint[]) {
-  let inside = false;
-  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
-    const [ax, ay] = polygon[previous];
-    const [bx, by] = polygon[index];
-    if ((ay > y) !== (by > y) && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) inside = !inside;
-  }
-  return inside;
-}
 
 function distanceToSegment(point: RpgReferencePoint, start: RpgReferencePoint, end: RpgReferencePoint) {
   const dx = end[0] - start[0];
@@ -75,13 +67,22 @@ function densify(line: readonly RpgReferencePoint[], step: number, closed = fals
 }
 
 describe("RPG terrain map projection", () => {
-  it("uses the registered reference coordinate system", () => {
-    expect(RPG_MINI_MAP_VIEW_BOX).toEqual({
+  it("keeps the reference image size apart from the drawn map window", () => {
+    // The illustration's pixel size still describes the registration mesh, but
+    // the map the visitor reads is a square window on a square world.
+    expect(RPG_REFERENCE_MAP_VIEW_BOX).toEqual({
       width: RPG_REFERENCE_MAP_GOLDEN.imageSize[0],
       height: RPG_REFERENCE_MAP_GOLDEN.imageSize[1],
       padding: 0
     });
-    expect(RPG_WORLD_MAP_VIEW_BOX).toBe(RPG_MINI_MAP_VIEW_BOX);
+    expect(RPG_MINI_MAP_VIEW_BOX).toBe(RPG_MAP_VIEW_BOX);
+    expect(RPG_WORLD_MAP_VIEW_BOX).toBe(RPG_MAP_VIEW_BOX);
+    expect(RPG_MAP_VIEW_BOX.width).toBe(RPG_MAP_VIEW_BOX.height);
+    expect(RPG_MAP_VIEW_BOX.width).toBe(
+      (RPG_WORLD_BOUNDS.maximumX - RPG_WORLD_BOUNDS.minimumX) *
+        RPG_MAP_PIXELS_PER_WORLD_UNIT +
+        RPG_MAP_EDGE_PADDING * 2
+    );
   });
 
   it("round-trips walkable map points within 0.1 world units", () => {
@@ -165,8 +166,7 @@ describe("RPG terrain map projection", () => {
     ).toThrow(RangeError);
   });
 
-  it("keeps the independent coastline, transition, and five-node golden exact", () => {
-    expect(RPG_REFERENCE_MAP_COASTLINE).toEqual(GOLDEN_COASTLINE);
+  it("keeps the independent transition and five-node golden exact", () => {
     expect(Object.fromEntries(RPG_REFERENCE_MAP_TRANSITIONS.map(({ id, points }) => [id, points]))).toEqual(GOLDEN_TRANSITIONS);
     expect(Object.fromEntries(RPG_REFERENCE_MAP_NODES.map(({ zoneId, referencePixel }) => [zoneId, referencePixel]))).toEqual(GOLDEN_NODES);
     expect(RPG_REFERENCE_MAP_NODES.map(({ arrivalId }) => arrivalId)).toEqual([
@@ -182,36 +182,6 @@ describe("RPG terrain map projection", () => {
         node.arrivalId
       ).toBeLessThanOrEqual(0.5);
     }
-  });
-
-  it("meets the coastline raster and symmetric boundary gates", () => {
-    let intersection = 0;
-    let union = 0;
-    let waterIntersection = 0;
-    let waterUnion = 0;
-    for (let y = 0; y <= 864; y += 2) {
-      for (let x = 0; x <= 1816; x += 2) {
-        const point = [x + 1, y + 1] as const;
-        const goldenLand = pointInPolygon(point, GOLDEN_COASTLINE);
-        const actualLand = pointInPolygon(point, RPG_REFERENCE_MAP_COASTLINE);
-        if (goldenLand && actualLand) intersection += 1;
-        if (goldenLand || actualLand) union += 1;
-        if (distanceToPolyline(point, GOLDEN_COASTLINE, true) <= 64) {
-          if (goldenLand && actualLand) waterIntersection += 1;
-          if (goldenLand || actualLand) waterUnion += 1;
-        }
-      }
-    }
-    expect(intersection / union).toBeGreaterThanOrEqual(0.72);
-    expect(waterIntersection / waterUnion).toBeGreaterThanOrEqual(0.82);
-
-    const symmetricDistances = [
-      ...densify(GOLDEN_COASTLINE, 2, true).map((point) => distanceToPolyline(point, RPG_REFERENCE_MAP_COASTLINE, true)),
-      ...densify(RPG_REFERENCE_MAP_COASTLINE, 2, true).map((point) => distanceToPolyline(point, GOLDEN_COASTLINE, true))
-    ].sort((a, b) => a - b);
-    const p95 = symmetricDistances[Math.ceil(symmetricDistances.length * 0.95) - 1];
-    expect(p95).toBeLessThanOrEqual(18);
-    expect(symmetricDistances.at(-1)).toBeLessThanOrEqual(32);
   });
 
   it("meets symmetric densified route, endpoint, and curved bridge gates", () => {

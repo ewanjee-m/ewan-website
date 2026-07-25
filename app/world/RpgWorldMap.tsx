@@ -3,13 +3,14 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { DestinationId } from "../guide/GuideContract";
 import {
-  RPG_REFERENCE_MAP_COASTLINE,
-  RPG_REFERENCE_MAP_NODES,
-  RPG_REFERENCE_MAP_TRANSITIONS,
+  RPG_MAP_MARKER_GEOMETRY,
+  RPG_MAP_NODES,
+  RPG_MAP_PIXELS_PER_WORLD_UNIT,
+  RPG_MAP_SCALE_WORLD_UNITS,
   RPG_WORLD_MAP_VIEW_BOX,
-  projectRpgReferenceMapHeadingRotation,
-  projectRpgReferenceMapPoint,
-  serializeRpgReferencePoints
+  getRpgMapNextZoneId,
+  projectRpgMapWorldHeadingRotation,
+  projectRpgMapWorldPoint
 } from "./RpgMiniMapProjection";
 import { RpgMapTerrain } from "./RpgMapTerrain";
 import type { WorldNavigationSnapshot } from "./WorldNavigationState";
@@ -21,6 +22,7 @@ export interface RpgWorldMapLabels {
   hint: string;
   inspect: string;
   currentPosition: string;
+  nextDestination: string;
   mainRoute: string;
   north: string;
   legendLabel: string;
@@ -38,29 +40,59 @@ interface RpgWorldMapProps {
   onClose: () => void;
 }
 
-const SCALE_WORLD_DISTANCE = 20;
+const {
+  playerHaloRadius,
+  playerDiscRadius,
+  playerArrowLength,
+  arrivalRadius,
+  arrivalRingRadius,
+  compassRadius
+} = RPG_MAP_MARKER_GEOMETRY;
 
-const MOBILE_ZONE_CONTROL_TARGETS = {
-  airport: [218, 130],
-  tokyo: [909, 130],
-  gyukatsu: [1599, 130],
-  sakura: [527, 736],
-  hanabi: [1290, 736]
+const PLAYER_ARROW_PATH =
+  `M ${playerArrowLength} 0 ` +
+  `L ${-playerArrowLength * 0.45} ${playerArrowLength * 0.52} ` +
+  `L ${-playerArrowLength * 0.14} 0 ` +
+  `L ${-playerArrowLength * 0.45} ${-playerArrowLength * 0.52} Z`;
+
+/**
+ * On a phone the five buttons need a 44px touch target each, which is more room
+ * than the markers leave, so they move out to a fixed ring around the edge and
+ * a dashed leader keeps each one tied to its place. The percentages match the
+ * mobile rules in globals.css.
+ */
+const MOBILE_ZONE_CONTROL_FRACTIONS = {
+  airport: [0.12, 0.15],
+  tokyo: [0.5, 0.15],
+  gyukatsu: [0.88, 0.15],
+  sakura: [0.29, 0.85],
+  hanabi: [0.71, 0.85]
 } as const satisfies Readonly<
   Record<DestinationId, readonly [number, number]>
 >;
 
-const ZONE_MARKERS = RPG_REFERENCE_MAP_NODES.map((arrival) => {
+const ZONE_MARKERS = RPG_MAP_NODES.map((node) => {
+  const [fractionX, fractionY] =
+    MOBILE_ZONE_CONTROL_FRACTIONS[node.zoneId];
   return {
-    arrivalId: arrival.arrivalId,
-    destinationId: arrival.zoneId,
-    left: (arrival.referencePixel[0] / RPG_WORLD_MAP_VIEW_BOX.width) * 100,
-    top: (arrival.referencePixel[1] / RPG_WORLD_MAP_VIEW_BOX.height) * 100,
-    anchor: arrival.referencePixel,
-    headingRotation: arrival.headingRotation,
-    mobileControlTarget: MOBILE_ZONE_CONTROL_TARGETS[arrival.zoneId]
+    arrivalId: node.arrivalId,
+    destinationId: node.zoneId,
+    left: (node.point.x / RPG_WORLD_MAP_VIEW_BOX.width) * 100,
+    top: (node.point.y / RPG_WORLD_MAP_VIEW_BOX.height) * 100,
+    anchor: [node.point.x, node.point.y] as const,
+    headingRotation: node.headingRotation,
+    mobileControlTarget: [
+      Math.round(fractionX * RPG_WORLD_MAP_VIEW_BOX.width),
+      Math.round(fractionY * RPG_WORLD_MAP_VIEW_BOX.height)
+    ] as const
   };
 });
+
+const SCALE_BAR_LENGTH =
+  RPG_MAP_SCALE_WORLD_UNITS * RPG_MAP_PIXELS_PER_WORLD_UNIT;
+const SCALE_BAR_X = RPG_WORLD_MAP_VIEW_BOX.padding;
+const SCALE_BAR_Y =
+  RPG_WORLD_MAP_VIEW_BOX.height - RPG_WORLD_MAP_VIEW_BOX.padding + 18;
 
 export function RpgWorldMap({
   labels,
@@ -73,11 +105,9 @@ export function RpgWorldMap({
   const [selectedZoneId, setSelectedZoneId] = useState<DestinationId>(
     navigation.currentZoneId
   );
-  const playerPoint = projectRpgReferenceMapPoint(navigation.position);
-  const headingRotation = projectRpgReferenceMapHeadingRotation(
-    navigation.position,
-    navigation.heading
-  );
+  const playerPoint = projectRpgMapWorldPoint(navigation.position);
+  const headingRotation = projectRpgMapWorldHeadingRotation(navigation.heading);
+  const nextZoneId = getRpgMapNextZoneId(navigation.currentZoneId);
 
   useEffect(() => {
     closeButton.current?.focus();
@@ -134,6 +164,9 @@ export function RpgWorldMap({
           <h2 id={titleId}>{labels.title}</h2>
           <p className="rpg-world-map-status">
             {`${labels.currentPosition}: ${labels.destinations[navigation.currentZoneId]}`}
+            {nextZoneId
+              ? ` · ${labels.nextDestination}: ${labels.destinations[nextZoneId]}`
+              : ""}
           </p>
         </div>
         <button
@@ -149,10 +182,7 @@ export function RpgWorldMap({
 
       <p className="rpg-world-map-hint">{labels.hint}</p>
 
-      <div
-        className="rpg-world-map-plane"
-        style={{ aspectRatio: `${RPG_WORLD_MAP_VIEW_BOX.width} / ${RPG_WORLD_MAP_VIEW_BOX.height}` }}
-      >
+      <div className="rpg-world-map-plane">
         <svg
           className="rpg-world-map-canvas"
           viewBox={`0 0 ${RPG_WORLD_MAP_VIEW_BOX.width} ${RPG_WORLD_MAP_VIEW_BOX.height}`}
@@ -165,43 +195,14 @@ export function RpgWorldMap({
               : navigation.transitionProgress.toFixed(6)
           }
           data-current-zone={navigation.currentZoneId}
+          data-next-zone={nextZoneId ?? ""}
           data-highlighted-zones={navigation.highlightedZoneIds.join(",")}
         >
-          <RpgMapTerrain />
-          <polygon
-            className="rpg-world-map-coastline"
-            data-map-layer="coastline"
-            data-map-source-id="approved-reference-coastline"
-            fill="none"
-            stroke="rgba(255, 255, 255, 0.82)"
-            strokeWidth="5"
-            points={serializeRpgReferencePoints(RPG_REFERENCE_MAP_COASTLINE)}
+          <RpgMapTerrain
+            currentZoneId={navigation.currentZoneId}
+            highlightedZoneIds={navigation.highlightedZoneIds}
+            routeLabel={labels.mainRoute}
           />
-
-          <g className="rpg-world-map-zones">
-            {RPG_REFERENCE_MAP_NODES.map((node) => (
-              <circle
-                key={node.zoneId}
-                className={`rpg-world-map-zone rpg-world-map-zone-${node.zoneId}`}
-                data-map-layer="zone"
-                data-map-source-id={node.zoneId}
-                data-anchor-reference={node.referencePixel.join(",")}
-                data-marker-diameter-reference="56"
-                data-current={node.zoneId === navigation.currentZoneId}
-                data-highlighted={navigation.highlightedZoneIds.includes(
-                  node.zoneId
-                )}
-                cx={node.referencePixel[0]}
-                cy={node.referencePixel[1]}
-                r="28"
-                style={{
-                  opacity: navigation.highlightedZoneIds.includes(node.zoneId)
-                    ? 1
-                    : 0.45
-                }}
-              />
-            ))}
-          </g>
 
           <g className="rpg-world-map-mobile-leaders" aria-hidden="true">
             {ZONE_MARKERS.map(
@@ -219,22 +220,30 @@ export function RpgWorldMap({
             )}
           </g>
 
-          <g className="rpg-world-map-route">
-            {RPG_REFERENCE_MAP_TRANSITIONS.map((route) => (
-              <polyline
-                key={route.id}
-                className={`rpg-world-map-route-segment rpg-world-map-route-${route.kind}`}
-                data-map-layer={route.kind === "bridge" ? "bridge" : "route"}
-                data-map-source-id={route.id}
-                fill="none"
-                style={{
-                  fill: "none",
-                  stroke:
-                    route.kind === "bridge" ? "#ffb15f" : "#fff3cf",
-                  strokeWidth: route.kind === "bridge" ? 18 : 14
-                }}
-                points={serializeRpgReferencePoints(route.points)}
-              />
+          <g className="rpg-world-map-destinations">
+            {RPG_MAP_NODES.map((node) => (
+              <g
+                key={node.arrivalId}
+                className={`rpg-world-map-destination rpg-world-map-destination-${node.zoneId}`}
+                data-map-destination={node.zoneId}
+                data-current={node.zoneId === navigation.currentZoneId}
+                data-next={node.zoneId === nextZoneId}
+              >
+                {node.zoneId === nextZoneId ? (
+                  <circle
+                    className="rpg-world-map-destination-next"
+                    cx={node.point.x}
+                    cy={node.point.y}
+                    r={arrivalRingRadius}
+                  />
+                ) : null}
+                <circle
+                  className="rpg-world-map-destination-dot"
+                  cx={node.point.x}
+                  cy={node.point.y}
+                  r={arrivalRadius}
+                />
+              </g>
             ))}
           </g>
 
@@ -244,24 +253,40 @@ export function RpgWorldMap({
             data-map-source-id="player"
             data-navigation-revision={navigation.revision}
             data-anchor-reference={`${playerPoint.x},${playerPoint.y}`}
-            data-marker-diameter-reference="30"
+            data-marker-diameter-reference={playerHaloRadius * 2}
             transform={`translate(${playerPoint.x} ${playerPoint.y}) rotate(${headingRotation})`}
           >
-            <circle className="rpg-world-map-player-halo" r="26" />
-            <circle className="rpg-world-map-player-disc" r="15" />
+            <circle className="rpg-world-map-player-halo" r={playerHaloRadius} />
+            <circle className="rpg-world-map-player-disc" r={playerDiscRadius} />
             <path
               className="rpg-world-map-player-arrow"
-              d="M 30 0 L -13 15 L -4 0 L -13 -15 Z"
+              d={PLAYER_ARROW_PATH}
+            />
+          </g>
+
+          <g
+            className="rpg-world-map-scale-bar"
+            data-map-scale-world-units={RPG_MAP_SCALE_WORLD_UNITS}
+            data-map-scale-reference-pixels={SCALE_BAR_LENGTH}
+          >
+            <rect
+              x={SCALE_BAR_X}
+              y={SCALE_BAR_Y}
+              width={SCALE_BAR_LENGTH}
+              height="6"
             />
           </g>
 
           <g
             className="rpg-world-map-compass"
-            transform={`translate(${RPG_WORLD_MAP_VIEW_BOX.width - 92} 92)`}
+            transform={
+              `translate(${RPG_WORLD_MAP_VIEW_BOX.width - compassRadius - 10} ` +
+              `${compassRadius + 10})`
+            }
           >
-            <circle r="26" />
-            <path d="M 0 -18 L 9 8 L 0 3 L -9 8 Z" />
-            <text y="22">N</text>
+            <circle r={compassRadius} />
+            <path d="M 0 -19 L 11 9 L 0 3 L -11 9 Z" />
+            <text y="25">N</text>
           </g>
         </svg>
 
@@ -271,7 +296,7 @@ export function RpgWorldMap({
           left,
           top,
           anchor,
-          headingRotation,
+          headingRotation: nodeHeadingRotation,
           mobileControlTarget
         }) => (
           <button
@@ -285,12 +310,13 @@ export function RpgWorldMap({
             data-map-source-id={arrivalId}
             data-navigation-revision={navigation.revision}
             data-anchor-reference={anchor.join(",")}
-            data-heading-rotation={headingRotation}
+            data-heading-rotation={nodeHeadingRotation}
             data-mobile-control-reference={mobileControlTarget.join(",")}
             data-touch-target-min-css="44x44"
             data-touch-rect-mobile-css="76x44"
             data-label-font-target-css-px="12"
             data-current={destinationId === selectedZoneId}
+            data-next={destinationId === nextZoneId}
             onClick={() => setSelectedZoneId(destinationId)}
           >
             <span className="rpg-world-map-zone-dot" aria-hidden="true" />
@@ -315,11 +341,14 @@ export function RpgWorldMap({
         <span className="rpg-world-map-legend-item rpg-world-map-legend-player">
           {labels.legendPlayer}
         </span>
+        <span className="rpg-world-map-legend-item rpg-world-map-legend-next">
+          {labels.nextDestination}
+        </span>
         <span className="rpg-world-map-legend-item rpg-world-map-legend-north">
           {labels.north}
         </span>
         <span className="rpg-world-map-scale-note">
-          {`${labels.scale} · ${SCALE_WORLD_DISTANCE}m`}
+          {`${labels.scale} · ${RPG_MAP_SCALE_WORLD_UNITS}m`}
         </span>
       </section>
     </div>

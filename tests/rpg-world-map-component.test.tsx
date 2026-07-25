@@ -5,21 +5,24 @@ import { adaptFlatWorldNavigationSnapshot } from "../app/world/FlatWorldNavigati
 import { createFlatWorldSession } from "../app/world/FlatWorldSession";
 import {
   RPG_CANONICAL_MAP_SOURCE_IDS,
-  RPG_REFERENCE_MAP_NODES,
-  projectRpgReferenceMapHeadingRotation,
-  projectRpgReferenceMapPoint
+  RPG_MAP_NODES,
+  RPG_MAP_ROADS,
+  RPG_MAP_SCALE_WORLD_UNITS,
+  RPG_MAP_VIEW_BOX,
+  getRpgMapNextZoneId,
+  projectRpgMapWorldHeadingRotation,
+  projectRpgMapWorldPoint
 } from "../app/world/RpgMiniMapProjection";
 import {
   RPG_WORLD_BRIDGE,
   RPG_WORLD_BOUNDS,
   RPG_WORLD_CANAL,
-  RPG_WORLD_ROUTES,
   RPG_WORLD_SPAWN,
-  RPG_WORLD_ZONES
+  RPG_WORLD_ZONES,
+  RPG_WORLD_ZONE_IDS
 } from "../app/world/RpgWorldModel";
 import { RpgWorldMap } from "../app/world/RpgWorldMap";
 import { createWorldRuntime } from "../app/world/WorldRuntime";
-import { RPG_REFERENCE_MAP_GOLDEN } from "./fixtures/rpg-reference-registration-golden";
 
 const labels = {
   title: "World map",
@@ -28,6 +31,7 @@ const labels = {
   hint: "Select a place to inspect it. Walk there through the world.",
   inspect: "Inspect",
   currentPosition: "Current position",
+  nextDestination: "Next destination",
   mainRoute: "Main route",
   north: "North is up",
   legendLabel: "Map legend",
@@ -102,7 +106,11 @@ describe("RPG world map", () => {
     expect(
       screen.getByRole("region", { name: "Map legend" })
     ).toBeVisible();
-    expect(screen.getByText("Current position: Airport")).toBeVisible();
+    expect(
+      screen.getByText(
+        "Current position: Airport · Next destination: Tokyo"
+      )
+    ).toBeVisible();
   });
 
   it("offers every zone for inspection and reports the visitor's zone", () => {
@@ -119,7 +127,7 @@ describe("RPG world map", () => {
       screen.getByRole("button", { name: "Inspect: Hanabi" })
     ).toHaveAttribute("aria-pressed", "true");
     expect(
-      container.querySelectorAll('.rpg-world-map-zone[data-current="true"]')
+      container.querySelectorAll('.rpg-map-terrain-zone[data-current="true"]')
     ).toHaveLength(1);
     const buttons = [
       ...container.querySelectorAll<HTMLButtonElement>(
@@ -140,7 +148,7 @@ describe("RPG world map", () => {
     expect(
       container.querySelectorAll("[data-map-mobile-leader]")
     ).toHaveLength(5);
-    for (const node of RPG_REFERENCE_MAP_NODES) {
+    for (const node of RPG_MAP_NODES) {
       expect(
         container.querySelector(
           `.rpg-world-map-zone-button-${node.zoneId}`
@@ -225,17 +233,17 @@ describe("RPG world map", () => {
     expect(close).toHaveFocus();
   });
 
-  it("draws the town, the route network, and the visitor facing", () => {
+  it("draws the town, the road network, and the visitor facing", () => {
     const { container } = renderWorldMap({
       navigation: navigationAt([8, 0, 0], [0, 0, -1])
     });
 
-    expect(container.querySelectorAll(".rpg-world-map-zone")).toHaveLength(5);
+    expect(container.querySelectorAll(".rpg-map-terrain-zone")).toHaveLength(5);
     expect(
-      container.querySelectorAll(".rpg-world-map-route-segment").length
-    ).toBeGreaterThan(1);
+      container.querySelectorAll(".rpg-map-terrain-route")
+    ).toHaveLength(RPG_MAP_ROADS.length);
     expect(
-      container.querySelector(".rpg-world-map-route-bridge")
+      container.querySelector(".rpg-map-terrain-bridge")
     ).not.toBeNull();
     expect(container.querySelector(".rpg-world-map-canvas")).toHaveAttribute(
       "aria-hidden",
@@ -243,7 +251,7 @@ describe("RPG world map", () => {
     );
     expect(container.querySelector(".rpg-world-map-canvas")).toHaveAttribute(
       "viewBox",
-      "0 0 1817 866"
+      `0 0 ${RPG_MAP_VIEW_BOX.width} ${RPG_MAP_VIEW_BOX.height}`
     );
     expect(container.querySelector("image")).toBeNull();
     expect(
@@ -253,7 +261,7 @@ describe("RPG world map", () => {
       RPG_WORLD_ZONES.length
     );
     expect(container.querySelectorAll("[data-map-route]")).toHaveLength(
-      RPG_WORLD_ROUTES.length
+      RPG_MAP_ROADS.length
     );
     expect(
       container.querySelector(`[data-map-water="${RPG_WORLD_CANAL.id}"]`)
@@ -261,12 +269,18 @@ describe("RPG world map", () => {
     expect(
       container.querySelector(`[data-map-bridge="${RPG_WORLD_BRIDGE.id}"]`)
     ).not.toBeNull();
-    const navigation = navigationAt([8, 0, 0], [0, 0, -1]);
-    const playerPoint = projectRpgReferenceMapPoint(navigation.position);
-    const rotation = projectRpgReferenceMapHeadingRotation(
-      navigation.position,
-      navigation.heading
+
+    // A real scale bar, because the drawing is now at one uniform scale.
+    expect(
+      container.querySelector(".rpg-world-map-scale-bar")
+    ).toHaveAttribute(
+      "data-map-scale-world-units",
+      String(RPG_MAP_SCALE_WORLD_UNITS)
     );
+
+    const navigation = navigationAt([8, 0, 0], [0, 0, -1]);
+    const playerPoint = projectRpgMapWorldPoint(navigation.position);
+    const rotation = projectRpgMapWorldHeadingRotation(navigation.heading);
     expect(container.querySelector(".rpg-world-map-player")).toHaveAttribute(
       "transform",
       `translate(${playerPoint.x} ${playerPoint.y}) rotate(${rotation})`
@@ -279,15 +293,52 @@ describe("RPG world map", () => {
     );
     for (const layer of [
       "model-terrain",
-      "coastline",
-      "bridge",
-      "route",
+      "sea",
+      "land",
       "zone",
+      "route",
+      "water",
+      "bridge",
       "arrival",
       "player"
     ]) {
-      expect(container.querySelector(`[data-map-layer="${layer}"]`)).not.toBeNull();
+      expect(
+        container.querySelector(`[data-map-layer="${layer}"]`),
+        layer
+      ).not.toBeNull();
     }
+    expect(
+      container.querySelector('[data-map-layer="coastline"]')
+    ).toBeNull();
+  });
+
+  it("marks the district the visitor should head for next", () => {
+    const { container } = renderWorldMap({
+      navigation: navigationAt([8, 0, 0], [0, 0, -1])
+    });
+
+    const nextZoneId = getRpgMapNextZoneId("gyukatsu");
+    expect(nextZoneId).toBe("sakura");
+    expect(
+      container.querySelectorAll('.rpg-world-map-destination[data-next="true"]')
+    ).toHaveLength(1);
+    expect(
+      container.querySelector('.rpg-world-map-destination[data-next="true"]')
+    ).toHaveClass(`rpg-world-map-destination-${nextZoneId}`);
+    expect(
+      container.querySelector(
+        `.rpg-world-map-zone-button-${nextZoneId}`
+      )
+    ).toHaveAttribute("data-next", "true");
+
+    // The last stop on the chain has nowhere further to send the visitor.
+    const { container: atTheEnd } = renderWorldMap({
+      navigation: navigationAt([26, 0, -18], [1, 0, 0])
+    });
+    expect(getRpgMapNextZoneId(RPG_WORLD_ZONE_IDS.at(-1)!)).toBeNull();
+    expect(
+      atTheEnd.querySelectorAll('.rpg-world-map-destination[data-next="true"]')
+    ).toHaveLength(0);
   });
 
   it("highlights both canonical zones at the transition midpoint", () => {
@@ -297,11 +348,13 @@ describe("RPG world map", () => {
     expect(navigation.currentZoneId).toBe("gyukatsu");
     expect(navigation.highlightedZoneIds).toEqual(["airport", "gyukatsu"]);
     expect(
-      container.querySelectorAll('.rpg-world-map-zone[data-highlighted="true"]')
+      container.querySelectorAll(
+        '.rpg-map-terrain-zone[data-highlighted="true"]'
+      )
     ).toHaveLength(2);
     expect(
-      container.querySelector('.rpg-world-map-zone[data-current="true"]')
-    ).toHaveClass("rpg-world-map-zone-gyukatsu");
+      container.querySelector('.rpg-map-terrain-zone[data-current="true"]')
+    ).toHaveClass("rpg-map-terrain-zone-gyukatsu");
   });
 
   it("uses the same projected arrival authority for destination and player", () => {
@@ -311,14 +364,15 @@ describe("RPG world map", () => {
       moveSpeed: 4
     });
 
-    for (const destinationId of Object.keys(
-      RPG_REFERENCE_MAP_GOLDEN.nodes
-    ) as Array<keyof typeof RPG_REFERENCE_MAP_GOLDEN.nodes>) {
+    for (const destinationId of RPG_WORLD_ZONE_IDS) {
       const navigation = adaptFlatWorldNavigationSnapshot(
         session.fastTravel(destinationId)
       );
       const { container, unmount } = renderWorldMap({ navigation });
-      const target = RPG_REFERENCE_MAP_GOLDEN.nodes[destinationId].join(",");
+      const node = RPG_MAP_NODES.find(
+        ({ zoneId }) => zoneId === destinationId
+      )!;
+      const target = `${node.point.x},${node.point.y}`;
       expect(
         container.querySelector('[data-map-layer="player"]')
       ).toHaveAttribute("data-anchor-reference", target);

@@ -155,7 +155,7 @@ describe("WORLD-01 canonical RPG world model", () => {
       ["gyukatsu-cross-street", [[-27, -3], [11, -3], [11, 3], [-27, 3]]],
       ["center-south-connector", [[5, -20], [11, -20], [11, 3], [5, 3]]],
       ["sakura-festival-road", [[-12, -20], [14.3, -20], [14.3, -16], [-12, -16]]],
-      ["sakura-bridge-route", [[14.3, -18], [18.9, -18], [18.9, -16], [14.3, -16]]],
+      ["sakura-bridge-route", [[14.3, -20], [18.9, -20], [18.9, -14], [14.3, -14]]],
       ["hanabi-festival-road", [[18.9, -19], [26, -19], [26, -14], [18.9, -14]]]
     ]);
     expect(
@@ -169,7 +169,7 @@ describe("WORLD-01 canonical RPG world model", () => {
       ["airport-to-gyukatsu", [[-21, -3], [-19, -3], [-19, 3], [-21, 3]], [[-21, 0], [-19, 0]]],
       ["tokyo-to-gyukatsu", [[-11, 9], [-5, 9], [-5, 11], [-11, 11]], [[-8, 11], [-8, 9]]],
       ["gyukatsu-to-sakura", [[5, -11], [11, -11], [11, -9], [5, -9]], [[8, -9], [8, -11]]],
-      ["sakura-to-hanabi", [[15, -18], [17, -18], [17, -16], [15, -16]], [[15, -17], [17, -17]]]
+      ["sakura-to-hanabi", [[15, -20], [17, -20], [17, -14], [15, -14]], [[15, -17], [17, -17]]]
     ]);
     expect(RPG_WORLD_TRANSITIONS.map(({ id }) => id)).not.toContain(
       "airport-to-sakura"
@@ -474,10 +474,10 @@ describe("WORLD-01 canonical RPG world model", () => {
       {
         id: "calibration-bridge-west-end",
         source: { kind: "bridge-vertex", id: "sakura-bridge", vertexIndex: 0 },
-        worldXZ: [14.3, -18],
-        referencePixel: [1370, 640],
-        spriteScale: 1.13,
-        depthKey: 0.8
+        worldXZ: [14.3, -20],
+        referencePixel: [1365, 659],
+        spriteScale: 1.14,
+        depthKey: 0.81
       }
     ] as const) {
       expect(
