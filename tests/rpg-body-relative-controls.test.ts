@@ -138,6 +138,33 @@ describe("body-relative controls", () => {
     );
   });
 
+  it("comes about in a pivot rather than at the steering rate", () => {
+    // Held turning and coming about are different things. At the steering rate
+    // a half turn took 1.2 seconds, which reads as being spun; a pivot lands
+    // in a fraction of a second, which is what every third-person action game
+    // does with a look-behind.
+    const state = createChaseOrbitCameraState();
+    const startYaw = state.yaw;
+    let elapsed = 0;
+    for (let frame = 0; frame < 600; frame += 1) {
+      advanceChaseOrbitCamera(state, {
+        deltaSeconds: 1 / 60,
+        drag: still,
+        turn: 0,
+        aboutFace: true,
+        navigationRegion: airportRegion
+      });
+      if (state.aboutFaceRemaining <= 0) break;
+      elapsed += 1 / 60;
+    }
+    expect(elapsed).toBeLessThan(0.35);
+    expect(
+      Math.abs(
+        Math.atan2(Math.sin(state.yaw - startYaw), Math.cos(state.yaw - startYaw))
+      )
+    ).toBeCloseTo(Math.PI, 6);
+  });
+
   it("turns exactly once round however long back is held", () => {
     // The reported defect: the visitor kept spinning for as long as the down
     // control was held instead of coming about once.

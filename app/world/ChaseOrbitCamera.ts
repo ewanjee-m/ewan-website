@@ -73,6 +73,18 @@ const MAXIMUM_CAMERA_PITCH_DEGREES = 74;
 const TURN_RATE_RADIANS_PER_SECOND = Math.PI / 1.2;
 
 /**
+ * How fast the visitor comes about when they ask to face the other way.
+ *
+ * Held turning and coming about are two different things and third-person
+ * action games treat them as such: a held turn is a steering rate, while an
+ * about-face is a pivot that lands in a fraction of a second. Running the
+ * pivot at the steering rate took 1.2 seconds, which reads as being spun
+ * rather than as turning to look behind. 0.28 seconds is a pivot the eye
+ * follows without waiting on.
+ */
+const ABOUT_FACE_RATE_RADIANS_PER_SECOND = Math.PI / 0.28;
+
+/**
  * How long the back control has to be let go of before it can turn the visitor
  * again.
  *
@@ -280,7 +292,7 @@ export function advanceChaseOrbitCamera(
   state.aboutFaceHeld = aboutFace;
   const swing = Math.min(
     state.aboutFaceRemaining,
-    TURN_RATE_RADIANS_PER_SECOND * delta
+    ABOUT_FACE_RATE_RADIANS_PER_SECOND * delta
   );
   state.aboutFaceRemaining = Math.max(0, state.aboutFaceRemaining - swing);
 
