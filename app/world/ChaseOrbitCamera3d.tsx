@@ -288,7 +288,9 @@ export function ChaseOrbitCamera3d({
     advanceChaseOrbitCamera(runtime.getCameraState(), {
       deltaSeconds: delta,
       drag: pending,
-      turn: inputLocked ? 0 : input.readMovement(cameraMovement.current).x,
+      turn: inputLocked ? 0 : input.readTurn(),
+      aboutFace:
+        !inputLocked && input.readMovement(cameraMovement.current).y < 0,
       navigationRegion: snapshot.navigationRegion,
       viewport: mobile.current ? "mobile" : "desktop"
     });

@@ -82,12 +82,15 @@ describe("body-relative controls", () => {
       expect(forward.x).toBeCloseTo(basis.forwardX, 10);
       expect(forward.z).toBeCloseTo(basis.forwardZ, 10);
 
+      // Back is not a reverse gear: it turns the visitor round, and by the
+      // time travel is resolved they are already facing the other way. So it
+      // walks along the facing exactly as forward does.
       const back = resolveCameraRelativeDirection(
         { x: 0, y: -1, runRequested: false },
         yaw
       );
-      expect(back.x).toBeCloseTo(-basis.forwardX, 10);
-      expect(back.z).toBeCloseTo(-basis.forwardZ, 10);
+      expect(back.x).toBeCloseTo(basis.forwardX, 10);
+      expect(back.z).toBeCloseTo(basis.forwardZ, 10);
 
       // The left and right keys turn the body; they move nobody anywhere.
       for (const sideways of [-1, 1]) {
@@ -144,9 +147,13 @@ describe("body-relative controls", () => {
       resolve(process.cwd(), "app/world/ChaseOrbitCamera3d.tsx"),
       "utf8"
     );
-    expect(source).toMatch(/turn:[^\n]*input\.readMovement\(/);
+    // Turning takes its own unscaled axis: sharing readMovement's diagonal
+    // scale made the visitor turn 30 per cent slower whenever they also held
+    // forward, which is the case they turn in most.
+    expect(source).toMatch(/turn:[^\n]*input\.readTurn\(\)/);
     // Turning is movement, so it stops when a dialog takes the keyboard.
     expect(source).toMatch(/turn:\s*inputLocked \? 0 :/);
+    expect(source).toMatch(/aboutFace:/);
     // Nothing chases a heading any more; the view is the heading.
     expect(source).not.toMatch(/headingYaw/);
   });

@@ -75,6 +75,23 @@ export function createInputController() {
       cameraDrag.deltaY += deltaY;
       cameraDrag.pointerKind = pointerKind;
     },
+    /**
+     * The left-right axis on its own, unscaled.
+     *
+     * `readMovement` divides a diagonal down so that walking north-east is not
+     * faster than walking north. Turning is not travel, so taking that same
+     * scale made the visitor turn 30 per cent slower the moment they also held
+     * forward — which is the case they turn in most, rounding a corner.
+     */
+    readTurn() {
+      if (touchMovement) return touchMovement.x;
+      let x = 0;
+      for (const key of pressed) {
+        const direction = movementKeys.get(key);
+        if (direction) x += direction[0];
+      }
+      return Math.min(1, Math.max(-1, x));
+    },
     readMovement(target: WorldMovementIntent) {
       if (touchMovement) return Object.assign(target, touchMovement);
       let x = 0;

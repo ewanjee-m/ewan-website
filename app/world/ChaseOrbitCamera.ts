@@ -76,6 +76,14 @@ export interface ChaseOrbitCameraState {
   yaw: number;
   pitch: number;
   /**
+   * How much of an about-face is still to be turned, in radians, and whether
+   * the back key was already down last frame. Pressing back turns the visitor
+   * round rather than walking them backwards, so it has to fire once per press
+   * instead of every frame the key is held.
+   */
+  aboutFaceRemaining: number;
+  aboutFaceHeld: boolean;
+  /**
    * How far above or below the zone's own framing the visitor has dragged.
    * Kept separately from `pitch` so that walking on, or crossing into a zone
    * that frames the world differently, moves the base under them without
@@ -191,6 +199,8 @@ export function createChaseOrbitCameraState(): ChaseOrbitCameraState {
   return {
     yaw: 0,
     pitch: (PROFILE.airport.pitchDegrees * Math.PI) / 180,
+    aboutFaceRemaining: 0,
+    aboutFaceHeld: false,
     pitchOffsetRadians: 0,
     distance: PROFILE.airport.distance
   };
@@ -219,6 +229,8 @@ export function advanceChaseOrbitCamera(
     deltaSeconds: number;
     drag: Readonly<WorldCameraDragIntent>;
     turn?: number;
+    /** True while the visitor is asking to face the other way. */
+    aboutFace?: boolean;
     navigationRegion: NavigationRegion;
     viewport?: "desktop" | "mobile";
   }
@@ -233,9 +245,24 @@ export function advanceChaseOrbitCamera(
     ? Math.min(1, Math.max(-1, input.turn ?? 0))
     : 0;
 
+  // Back is a turn, not a reverse gear: it swings the visitor round to face
+  // the other way and then they walk on. Latched on the press so that holding
+  // the key does not spin them.
+  const aboutFace = Boolean(input.aboutFace);
+  if (aboutFace && !state.aboutFaceHeld) {
+    state.aboutFaceRemaining = Math.PI;
+  }
+  state.aboutFaceHeld = aboutFace;
+  const swing = Math.min(
+    state.aboutFaceRemaining,
+    TURN_RATE_RADIANS_PER_SECOND * delta
+  );
+  state.aboutFaceRemaining -= swing;
+
   // Turning right lowers the yaw, and dragging right lowers it by the same
   // sign, so a key and a drag can never disagree about which way is right.
   state.yaw -= turn * TURN_RATE_RADIANS_PER_SECOND * delta;
+  state.yaw -= swing;
   state.yaw -= input.drag.deltaX * sensitivity;
   state.yaw = Math.atan2(Math.sin(state.yaw), Math.cos(state.yaw));
 
