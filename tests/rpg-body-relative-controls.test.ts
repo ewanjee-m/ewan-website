@@ -83,15 +83,12 @@ describe("body-relative controls", () => {
       expect(forward.x).toBeCloseTo(basis.forwardX, 10);
       expect(forward.z).toBeCloseTo(basis.forwardZ, 10);
 
-      // Back is not a reverse gear: it turns the visitor round, and by the
-      // time travel is resolved they are already facing the other way. So it
-      // walks along the facing exactly as forward does.
-      const back = resolveCameraRelativeDirection(
-        { x: 0, y: -1, runRequested: false },
-        yaw
-      );
-      expect(back.x).toBeCloseTo(basis.forwardX, 10);
-      expect(back.z).toBeCloseTo(basis.forwardZ, 10);
+      // Back is not a reverse gear and not a walk either: it turns the
+      // visitor round and leaves them standing, so where they go next is
+      // still their choice.
+      expect(
+        resolveCameraRelativeDirection({ x: 0, y: -1, runRequested: false }, yaw)
+      ).toEqual({ x: 0, z: 0, strength: 0 });
 
       // The left and right keys turn the body; they move nobody anywhere.
       for (const sideways of [-1, 1]) {

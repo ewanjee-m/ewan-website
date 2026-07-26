@@ -33,18 +33,21 @@ const GRAVITY = 15;
 /**
  * Where a movement intent carries the visitor.
  *
- * Always along the way they are facing. The left-right axis turns them and the
- * back key turns them round, both spent on the camera's yaw before this is
- * called, so by the time travel is resolved there is only one direction left
- * to go. Nobody walks sideways and nobody walks backwards: those are the two
- * cases where the view and the eyes cannot agree.
+ * Always along the way they are facing, and only when they ask to go forward.
+ * The left-right axis turns them and the back key turns them round, both spent
+ * on the camera's yaw before this is called; neither carries them anywhere.
+ * Nobody walks sideways and nobody walks backwards, which are the two cases
+ * where the view and the eyes cannot agree, and coming about does not set them
+ * walking on its own.
  */
 export function resolveCameraRelativeDirection(
   intent: Readonly<WorldMovementIntent>,
   yaw: number
 ) {
   if (!Number.isFinite(intent.y)) return { x: 0, z: 0, strength: 0 };
-  const strength = Math.min(1, Math.abs(intent.y));
+  // Only forward carries anybody. Back turns them round and leaves them
+  // standing there, so that where they go next is still their choice.
+  const strength = Math.min(1, Math.max(0, intent.y));
   if (strength <= 1e-8) return { x: 0, z: 0, strength: 0 };
   const basis = getChaseOrbitCameraBasis(yaw);
   return { x: basis.forwardX, z: basis.forwardZ, strength };
