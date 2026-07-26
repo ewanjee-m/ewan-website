@@ -528,10 +528,87 @@ const PERIMETER_MID_RING: readonly RpgPerimeterBuilding[] = Array.from(
   }
 );
 
+/**
+ * The far ring is a modern city because Japanese towns do sit under one, but a
+ * city of nothing but glass boxes is a city anywhere. What names the horizon
+ * is the one old roof standing in it: a pagoda over the rooftops, a castle
+ * keep on its stone base. Three of them, one on each side the walk faces
+ * outward from, so wherever the visitor looks past the town something in the
+ * distance is Japanese.
+ *
+ * Each is stacked from ordinary perimeter boxes with tiled hip roofs, so they
+ * cost instances in batches that already exist rather than any new draw.
+ */
+/**
+ * Sized against the rooftops in front of it rather than against a photograph.
+ * From the spawn the nearest perimeter ring tops out around 12 degrees above
+ * the eye; a landmark that only clears that by a couple of degrees is a
+ * landmark nobody notices, so these stand at roughly 21.
+ */
+const PAGODA_TIERS = [
+  { width: 10, height: 7, bottom: 0 },
+  { width: 8.8, height: 6.2, bottom: 7 },
+  { width: 7.7, height: 5.5, bottom: 13.2 },
+  { width: 6.8, height: 4.8, bottom: 18.7 },
+  { width: 6, height: 4.2, bottom: 23.5 }
+] as const;
+
+/** Vermilion post-and-beam, the colour a pagoda reads as from a distance. */
+const PAGODA_WALL = "#a8392c";
+const CASTLE_WALL = "#e6e1d6";
+const CASTLE_BASE = "#6c6a63";
+
+/**
+ * A keep is a stone base with the white-plaster storeys stacked on it. The
+ * base carries most of the height because the nearer rooftops reach about 11
+ * units and a keep that does not clear them is a keep nobody ever sees.
+ */
+const CASTLE_TIERS = [
+  { width: 15, height: 11, bottom: 0, color: CASTLE_BASE },
+  { width: 11.5, height: 6.6, bottom: 11, color: CASTLE_WALL },
+  { width: 9.2, height: 5.6, bottom: 17.6, color: CASTLE_WALL },
+  { width: 7.4, height: 4.8, bottom: 23.2, color: CASTLE_WALL }
+] as const;
+
+const createPerimeterLandmark = (
+  id: string,
+  x: number,
+  z: number,
+  rotationY: number,
+  tiers: readonly {
+    width: number;
+    height: number;
+    bottom: number;
+    color?: string;
+  }[],
+  wall: string
+): readonly RpgPerimeterBuilding[] =>
+  tiers.map((tier, index) => ({
+    id: `${id}-tier-${index}`,
+    position: [x, tier.bottom + tier.height / 2, z],
+    // Square in plan, the way both a pagoda and a keep are.
+    size: [tier.width, tier.height, tier.width],
+    rotationY,
+    color: tier.color ?? wall,
+    accent: RPG_MACHIYA_TRIM_COLORS[1],
+    roofColor: pickKawara(index + 2),
+    roofStyle: "hip",
+    // No office grid on a temple or a keep; the eaves are the detail.
+    windowRows: 0,
+    windowColumns: 0
+  }));
+
+const PERIMETER_LANDMARK_RING: readonly RpgPerimeterBuilding[] = [
+  ...createPerimeterLandmark("perimeter-pagoda-north", -6, 58, 0, PAGODA_TIERS, PAGODA_WALL),
+  ...createPerimeterLandmark("perimeter-pagoda-east", 58, -6, Math.PI / 2, PAGODA_TIERS, PAGODA_WALL),
+  ...createPerimeterLandmark("perimeter-castle-south", 6, -58, Math.PI, CASTLE_TIERS, CASTLE_WALL)
+];
+
 export const RPG_PERIMETER_NEIGHBORHOOD: readonly RpgPerimeterBuilding[] = [
   ...PERIMETER_NEIGHBORHOOD_RING,
   ...PERIMETER_MID_RING,
-  ...PERIMETER_SKYLINE_RING
+  ...PERIMETER_SKYLINE_RING,
+  ...PERIMETER_LANDMARK_RING
 ];
 
 export const RPG_PERIMETER_NEAR_RING_IDS: readonly string[] =
@@ -540,6 +617,8 @@ export const RPG_PERIMETER_MID_RING_IDS: readonly string[] =
   PERIMETER_MID_RING.map(({ id }) => id);
 export const RPG_PERIMETER_SKYLINE_RING_IDS: readonly string[] =
   PERIMETER_SKYLINE_RING.map(({ id }) => id);
+export const RPG_PERIMETER_LANDMARK_IDS: readonly string[] =
+  PERIMETER_LANDMARK_RING.map(({ id }) => id);
 
 /**
  * How far a tiled roof projects past the wall below it, per side. Deep eaves
@@ -604,6 +683,7 @@ function createTiledRoof(
 export const RPG_TILED_ROOF_STRUCTURES: readonly RpgTiledRoof[] = [
   ...PERIMETER_NEIGHBORHOOD_RING,
   ...PERIMETER_MID_RING,
+  ...PERIMETER_LANDMARK_RING,
   ...RPG_DISTRICT_ARCHITECTURE.filter(({ kind }) => kind === "machiya")
 ].map(createTiledRoof);
 

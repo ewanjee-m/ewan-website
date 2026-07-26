@@ -6,6 +6,7 @@ import {
   RPG_MACHIYA_TIMBER_COLORS,
   RPG_MACHIYA_WALL_COLORS,
   RPG_TIMBER_WALL_MAX_HEIGHT,
+  RPG_PERIMETER_LANDMARK_IDS,
   RPG_PERIMETER_MID_RING_IDS,
   RPG_PERIMETER_NEAR_RING_IDS,
   RPG_PERIMETER_NEIGHBORHOOD,
@@ -85,6 +86,85 @@ describe("Japanese roof silhouette", () => {
     expect(
       new Set(RPG_PERIMETER_NEIGHBORHOOD.map(({ roofStyle }) => roofStyle)).size
     ).toBe(4);
+  });
+
+  it("stands an old roof in the far city on every side the walk looks out from", () => {
+    // A modern far ring is right — Japanese towns do sit under one — but a
+    // ring of nothing but glass boxes is a horizon anywhere. What names it is
+    // the one old roof standing in it.
+    const byId = new Map(
+      RPG_PERIMETER_NEIGHBORHOOD.map((building) => [building.id, building])
+    );
+    expect(RPG_PERIMETER_LANDMARK_IDS.length).toBeGreaterThanOrEqual(13);
+
+    for (const id of RPG_PERIMETER_LANDMARK_IDS) {
+      const building = byId.get(id);
+      expect(building, id).toBeDefined();
+      // Tiled hip roofs, and no office window grid on a temple or a keep.
+      expect(building!.roofStyle, id).toBe("hip");
+      expect(building!.windowRows, id).toBe(0);
+      expect(building!.windowColumns, id).toBe(0);
+      // Square in plan, the way both a pagoda and a keep are.
+      expect(building!.size[0], id).toBeCloseTo(building!.size[2], 10);
+    }
+
+    const roofed = new Set(
+      RPG_TILED_ROOF_STRUCTURES.map(({ structureId }) => structureId)
+    );
+    for (const id of RPG_PERIMETER_LANDMARK_IDS) {
+      expect(roofed.has(id), `${id} has a tiled roof`).toBe(true);
+    }
+  });
+
+  it("stands each landmark clear of the rooftops in front of it", () => {
+    // Measured rather than eyeballed. A landmark that clears the nearest ring
+    // by a degree or two is a landmark nobody notices, which is exactly what
+    // happened to the keep before it was raised: it sat 1.5 degrees above a
+    // skyline tower on the same bearing and never read.
+    const eye = 3;
+    const elevationFrom = (
+      from: readonly [number, number],
+      building: (typeof RPG_PERIMETER_NEIGHBORHOOD)[number]
+    ) => {
+      const [x, y, z] = building.position;
+      const top = y + building.size[1] / 2;
+      const distance = Math.max(1e-6, Math.hypot(x - from[0], z - from[1]));
+      return (Math.atan2(top - eye, distance) * 180) / Math.PI;
+    };
+    const bearingFrom = (
+      from: readonly [number, number],
+      building: (typeof RPG_PERIMETER_NEIGHBORHOOD)[number]
+    ) => Math.atan2(building.position[0] - from[0], building.position[2] - from[1]);
+
+    const landmarks = new Set(RPG_PERIMETER_LANDMARK_IDS);
+    const byId = new Map(
+      RPG_PERIMETER_NEIGHBORHOOD.map((building) => [building.id, building])
+    );
+
+    for (const [name, from, topId] of [
+      ["airport", [-30, 0], "perimeter-pagoda-north-tier-4"],
+      ["hanabi", [26, -18], "perimeter-pagoda-east-tier-4"],
+      ["sakura", [9, -20], "perimeter-castle-south-tier-3"]
+    ] as const) {
+      const target = byId.get(topId)!;
+      const targetBearing = bearingFrom(from, target);
+      let tallestBlocker = 0;
+      for (const building of RPG_PERIMETER_NEIGHBORHOOD) {
+        if (landmarks.has(building.id)) continue;
+        const delta = Math.abs(
+          Math.atan2(
+            Math.sin(bearingFrom(from, building) - targetBearing),
+            Math.cos(bearingFrom(from, building) - targetBearing)
+          )
+        );
+        if (delta > (8 * Math.PI) / 180) continue;
+        tallestBlocker = Math.max(tallestBlocker, elevationFrom(from, building));
+      }
+      expect(
+        elevationFrom(from, target) - tallestBlocker,
+        `${topId} seen from ${name}`
+      ).toBeGreaterThan(4);
+    }
   });
 
   it("gives every tiled roof an eave that overhangs the wall it sits on", () => {
