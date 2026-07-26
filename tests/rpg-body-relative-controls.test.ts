@@ -6,6 +6,7 @@ import {
   createChaseOrbitCameraState,
   getChaseOrbitCameraBasis
 } from "../app/world/ChaseOrbitCamera";
+import { asksToTurnAround } from "../app/world/ChaseOrbitCamera3d";
 import { resolveCameraRelativeDirection } from "../app/world/WorldRuntime";
 
 const airportRegion = {
@@ -138,6 +139,124 @@ describe("body-relative controls", () => {
       lookedUp - ((14 - 9) * Math.PI) / 180,
       10
     );
+  });
+
+  it("turns exactly once round however long back is held", () => {
+    // The reported defect: the visitor kept spinning for as long as the down
+    // control was held instead of coming about once.
+    const state = createChaseOrbitCameraState();
+    const startYaw = state.yaw;
+    let swept = 0;
+    let previous = startYaw;
+    for (let frame = 0; frame < 600; frame += 1) {
+      advanceChaseOrbitCamera(state, {
+        deltaSeconds: 1 / 60,
+        drag: still,
+        turn: 0,
+        aboutFace: true,
+        navigationRegion: airportRegion
+      });
+      swept += Math.abs(
+        Math.atan2(
+          Math.sin(state.yaw - previous),
+          Math.cos(state.yaw - previous)
+        )
+      );
+      previous = state.yaw;
+    }
+    expect(swept).toBeCloseTo(Math.PI, 6);
+  });
+
+  it("ignores a back input that arrives while one is still swinging", () => {
+    // Releasing and pressing again is a second turn and should be. What must
+    // not happen is a turn queued on top of the one still running, which is
+    // how a single press could end up spinning the visitor further than round.
+    const state = createChaseOrbitCameraState();
+    let swept = 0;
+    let previous = state.yaw;
+    for (let frame = 0; frame < 200; frame += 1) {
+      advanceChaseOrbitCamera(state, {
+        deltaSeconds: 1 / 60,
+        drag: still,
+        turn: 0,
+        // Held throughout, but dropped for single frames the way a thumb
+        // resting on the edge of the stick does.
+        aboutFace: frame % 7 !== 3,
+        navigationRegion: airportRegion
+      });
+      swept += Math.abs(
+        Math.atan2(
+          Math.sin(state.yaw - previous),
+          Math.cos(state.yaw - previous)
+        )
+      );
+      previous = state.yaw;
+    }
+    // 200 frames is 3.3 seconds, long enough for nearly three about-faces at
+    // the turn rate. A one-frame drop is not a release, so it stays at one.
+    expect(swept).toBeCloseTo(Math.PI, 6);
+  });
+
+  it("does not let a leaning stick keep turning through an about-face", () => {
+    // The stick is round, so "down" always carries some sideways lean. That
+    // lean used to ride on top of the swing and keep turning afterwards.
+    const state = createChaseOrbitCameraState();
+    let previous = state.yaw;
+    let swept = 0;
+    for (let frame = 0; frame < 600; frame += 1) {
+      const swinging = state.aboutFaceRemaining > 0 || frame === 0;
+      advanceChaseOrbitCamera(state, {
+        deltaSeconds: 1 / 60,
+        drag: still,
+        turn: swinging ? 0.4 : 0,
+        aboutFace: swinging,
+        navigationRegion: airportRegion
+      });
+      swept += Math.abs(
+        Math.atan2(
+          Math.sin(state.yaw - previous),
+          Math.cos(state.yaw - previous)
+        )
+      );
+      previous = state.yaw;
+    }
+    expect(swept).toBeCloseTo(Math.PI, 6);
+  });
+
+  it("still turns again when the visitor really lets go and presses again", () => {
+    const state = createChaseOrbitCameraState();
+    const hold = (seconds: number, aboutFace: boolean) => {
+      for (let frame = 0; frame < Math.round(seconds * 60); frame += 1) {
+        advanceChaseOrbitCamera(state, {
+          deltaSeconds: 1 / 60,
+          drag: still,
+          turn: 0,
+          aboutFace,
+          navigationRegion: airportRegion
+        });
+      }
+    };
+    const start = state.yaw;
+    hold(1.5, true);
+    hold(0.4, false);
+    hold(1.5, true);
+    // Two deliberate presses, so two turns: back where they started.
+    expect(
+      Math.abs(
+        Math.atan2(Math.sin(state.yaw - start), Math.cos(state.yaw - start))
+      )
+    ).toBeLessThan(0.01);
+  });
+
+  it("reads a turn-around only from a push that is mostly backward", () => {
+    expect(asksToTurnAround({ x: 0, y: -1 })).toBe(true);
+    expect(asksToTurnAround({ x: -0.4, y: -0.9 })).toBe(true);
+    // Mostly sideways, and a shallow lean below the horizontal: neither is a
+    // visitor asking to come about.
+    expect(asksToTurnAround({ x: -0.9, y: -0.4 })).toBe(false);
+    expect(asksToTurnAround({ x: 0, y: -0.2 })).toBe(false);
+    expect(asksToTurnAround({ x: 0, y: 1 })).toBe(false);
+    expect(asksToTurnAround({ x: Number.NaN, y: -1 })).toBe(false);
   });
 
   it("drives the turn from the movement axis in the live camera", () => {

@@ -203,6 +203,22 @@ export function forEachRpgCameraOccluderMaterial(
   });
 }
 
+/**
+ * Whether the visitor is asking to face the other way.
+ *
+ * A key is unambiguous, but the on-screen stick is round: everything below the
+ * horizontal reads as some amount of back, so a push meant as "left" used to
+ * turn them round as well. It has to be mostly back, and pushed with intent.
+ */
+export function asksToTurnAround(intent: { x: number; y: number }) {
+  return (
+    Number.isFinite(intent.x) &&
+    Number.isFinite(intent.y) &&
+    intent.y <= -0.5 &&
+    Math.abs(intent.x) <= Math.abs(intent.y)
+  );
+}
+
 export function ChaseOrbitCamera3d({
   runtime,
   input,
@@ -289,8 +305,9 @@ export function ChaseOrbitCamera3d({
       deltaSeconds: delta,
       drag: pending,
       turn: inputLocked ? 0 : input.readTurn(),
-      aboutFace:
-        !inputLocked && input.readMovement(cameraMovement.current).y < 0,
+      aboutFace: !inputLocked && asksToTurnAround(
+        input.readMovement(cameraMovement.current)
+      ),
       navigationRegion: snapshot.navigationRegion,
       viewport: mobile.current ? "mobile" : "desktop"
     });

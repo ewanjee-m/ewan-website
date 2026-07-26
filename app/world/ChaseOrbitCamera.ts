@@ -72,6 +72,17 @@ const MAXIMUM_CAMERA_PITCH_DEGREES = 74;
  */
 const TURN_RATE_RADIANS_PER_SECOND = Math.PI / 1.2;
 
+/**
+ * How long the back control has to be let go of before it can turn the visitor
+ * again.
+ *
+ * A person releasing a key and pressing it again is away for a fifth of a
+ * second at the very least. An intent that merely flickers off for a frame,
+ * which is what a thumb resting on the edge of the stick does, is not a second
+ * press, and treating it as one is what spun the visitor on and on.
+ */
+const RPG_ABOUT_FACE_RELEASE_SECONDS = 0.2;
+
 export interface ChaseOrbitCameraState {
   yaw: number;
   pitch: number;
@@ -83,6 +94,7 @@ export interface ChaseOrbitCameraState {
    */
   aboutFaceRemaining: number;
   aboutFaceHeld: boolean;
+  aboutFaceReleasedSeconds: number;
   /**
    * How far above or below the zone's own framing the visitor has dragged.
    * Kept separately from `pitch` so that walking on, or crossing into a zone
@@ -201,6 +213,7 @@ export function createChaseOrbitCameraState(): ChaseOrbitCameraState {
     pitch: (PROFILE.airport.pitchDegrees * Math.PI) / 180,
     aboutFaceRemaining: 0,
     aboutFaceHeld: false,
+    aboutFaceReleasedSeconds: RPG_ABOUT_FACE_RELEASE_SECONDS,
     pitchOffsetRadians: 0,
     distance: PROFILE.airport.distance
   };
@@ -246,10 +259,22 @@ export function advanceChaseOrbitCamera(
     : 0;
 
   // Back is a turn, not a reverse gear: it swings the visitor round to face
-  // the other way and then they walk on. Latched on the press so that holding
-  // the key does not spin them.
+  // the other way and then they walk on.
+  //
+  // Latched on the press, and refused while one is still swinging, so that a
+  // held key turns them once instead of spinning them and a thumb wobbling on
+  // the stick cannot queue another turn on top of the one running.
   const aboutFace = Boolean(input.aboutFace);
-  if (aboutFace && !state.aboutFaceHeld) {
+  // Read how long it has been let go of before this frame's press resets it,
+  // or the press would always find its own zero and never arm.
+  const releasedFor = state.aboutFaceReleasedSeconds;
+  state.aboutFaceReleasedSeconds = aboutFace ? 0 : releasedFor + delta;
+  if (
+    aboutFace &&
+    !state.aboutFaceHeld &&
+    state.aboutFaceRemaining <= 0 &&
+    releasedFor >= RPG_ABOUT_FACE_RELEASE_SECONDS
+  ) {
     state.aboutFaceRemaining = Math.PI;
   }
   state.aboutFaceHeld = aboutFace;
@@ -257,11 +282,17 @@ export function advanceChaseOrbitCamera(
     state.aboutFaceRemaining,
     TURN_RATE_RADIANS_PER_SECOND * delta
   );
-  state.aboutFaceRemaining -= swing;
+  state.aboutFaceRemaining = Math.max(0, state.aboutFaceRemaining - swing);
 
   // Turning right lowers the yaw, and dragging right lowers it by the same
   // sign, so a key and a drag can never disagree about which way is right.
-  state.yaw -= turn * TURN_RATE_RADIANS_PER_SECOND * delta;
+  //
+  // The turn axis is ignored while an about-face runs. A stick pushed "down"
+  // is never exactly down, and that leftover sideways lean used to ride on top
+  // of the swing and keep turning the visitor after it finished.
+  if (swing <= 0) {
+    state.yaw -= turn * TURN_RATE_RADIANS_PER_SECOND * delta;
+  }
   state.yaw -= swing;
   state.yaw -= input.drag.deltaX * sensitivity;
   state.yaw = Math.atan2(Math.sin(state.yaw), Math.cos(state.yaw));
