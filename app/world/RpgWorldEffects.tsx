@@ -19,7 +19,9 @@ import {
   calculateRpgFireworkFrameInto,
   createRpgHanabiShell,
   getRpgHanabiRenderBudget,
+  resolveRpgHanabiAdditiveMix,
   resolveRpgHanabiIntensity,
+  resolveRpgSkyLuminance,
   type RpgFireworkFrame,
   type RpgFireworkFrameInput,
   type RpgHanabiBurst
@@ -157,6 +159,8 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
   const petalGroup = useRef<Group>(null);
   const fireworkGroups = useRef<Array<{ visible: boolean } | null>>([]);
   const fireworkMaterials = useRef<Array<PointsMaterial | null>>([]);
+  const daylightGroups = useRef<Array<{ visible: boolean } | null>>([]);
+  const daylightMaterials = useRef<Array<PointsMaterial | null>>([]);
   const trailGroups = useRef<Array<{ visible: boolean } | null>>([]);
   const trailMaterials = useRef<Array<PointsMaterial | null>>([]);
   const fireworkFrames = useRef<RpgFireworkFrame[]>([]);
@@ -171,6 +175,12 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
       referenceParticlesPerBurst:
         getRpgHanabiRenderBudget("high").particlesPerBurst
     });
+    // How much of each shell glows rather than shows its colour. Under the
+    // festival's night sky it is all glow; under a daylit one the glow would
+    // clip to white speckle, so the hue carries it instead.
+    const additiveMix = resolveRpgHanabiAdditiveMix(
+      resolveRpgSkyLuminance(state.sky)
+    );
     if (petalMaterial.current) {
       petalMaterial.current.opacity = Math.min(1, sakuraIntensity);
     }
@@ -196,12 +206,20 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
       });
       const group = fireworkGroups.current[index];
       const material = fireworkMaterials.current[index];
+      const daylightGroup = daylightGroups.current[index];
+      const daylightMaterial = daylightMaterials.current[index];
       const trailGroup = trailGroups.current[index];
       const trailMaterial = trailMaterials.current[index];
-      if (group) group.visible = frame.visible;
-      if (material) material.opacity = frame.opacity;
-      if (trailGroup) trailGroup.visible = trail.visible;
-      if (trailMaterial) trailMaterial.opacity = trail.opacity;
+      // The two layers always sum to the shell's own opacity, so the shell is
+      // as bright at every point of the cross-fade as it is at either end.
+      if (group) group.visible = frame.visible && additiveMix > 0;
+      if (material) material.opacity = frame.opacity * additiveMix;
+      if (daylightGroup) daylightGroup.visible = frame.visible && additiveMix < 1;
+      if (daylightMaterial) {
+        daylightMaterial.opacity = frame.opacity * (1 - additiveMix);
+      }
+      if (trailGroup) trailGroup.visible = trail.visible && additiveMix > 0;
+      if (trailMaterial) trailMaterial.opacity = trail.opacity * additiveMix;
     }
   }, -1);
 
@@ -264,6 +282,41 @@ export const RpgWorldEffects = memo(function RpgWorldEffects({
               // blends it additively, so a fogged spark ADDS bright sky
               // instead of receding. The bursts sit past every zone's fog far
               // plane, which turned each shell into a rectangle of haze.
+              fog={false}
+            />
+          </points>
+          <points
+            ref={(group) => {
+              daylightGroups.current[index] = group;
+            }}
+            userData={{
+              effectOwner: "RpgHanabiLayout",
+              burstId: burst.id,
+              layer: "daylight"
+            }}
+          >
+            <bufferGeometry>
+              <bufferAttribute
+                attach="attributes-position"
+                args={[shell.positions, 3]}
+              />
+            </bufferGeometry>
+            <pointsMaterial
+              ref={(material) => {
+                daylightMaterials.current[index] = material;
+              }}
+              color={burst.color}
+              size={qualitySettings.fireworks.pointSize}
+              map={fireworkSparkTexture}
+              alphaTest={0.02}
+              transparent
+              opacity={0}
+              depthWrite={false}
+              blending={1}
+              toneMapped={false}
+              // Same reason as the glowing layer: the bursts sit past every
+              // zone's fog far plane, and fog would turn each one into a
+              // rectangle of haze.
               fog={false}
             />
           </points>

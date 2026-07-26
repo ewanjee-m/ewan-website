@@ -5,10 +5,15 @@ import {
   RPG_HANABI_BURSTS,
   RPG_HANABI_DISTANT_INTENSITY,
   getRpgHanabiRenderBudget,
-  resolveRpgHanabiIntensity
+  resolveRpgHanabiAdditiveMix,
+  resolveRpgHanabiIntensity,
+  resolveRpgSkyLuminance
 } from "../app/world/RpgHanabiLayout";
 import { RPG_WORLD_CAMERA_FAR } from "../app/world/RpgLightingDesign";
-import { RPG_REGION_PRESENTATION_PROFILES } from "../app/world/RpgRegionPresentation";
+import {
+  RPG_REGION_PRESENTATION_COLORS,
+  RPG_REGION_PRESENTATION_PROFILES
+} from "../app/world/RpgRegionPresentation";
 import { getSceneQuality, type SceneQualityLevel } from "../app/world/SceneQuality";
 
 const LEVELS = ["high", "medium", "low"] as const;
@@ -144,23 +149,74 @@ describe("Hanabi bursts as a cross-map landmark", () => {
     expect(source).not.toMatch(/hanabiIntensity\s*=\s*[^;]*effectIntensity/);
   });
 
-  it("keeps the shells on one blend mode so no transition can pop them", () => {
-    // Additive washes daylight bursts toward white. Switching to normal
-    // blending over a bright sky restores the hue but the flip is visible
-    // (tmp/blend-pop-compare.png) and lands inside the sakura->hanabi
-    // transition, i.e. in the reference zone. Until the cross-fade described
-    // in RpgHanabiLayout lands, the mode stays fixed.
+  it("cross-fades between the two blend modes instead of switching one", () => {
+    // Additive washes a daylight burst toward white; normal blending keeps its
+    // hue but cannot glow at night. Flipping between them is a visible pop and
+    // it would land inside the sakura->hanabi transition. Each shell is drawn
+    // on both modes and cross-faded by opacity, which is the same composite
+    // without anything to pop.
     const source = read("RpgWorldEffects.tsx");
     const materials = source
       .split("<pointsMaterial")
       .slice(1)
-      .filter((chunk) => chunk.slice(0, chunk.indexOf("/>")).includes("blending"));
+      .map((chunk) => chunk.slice(0, chunk.indexOf("/>")))
+      .filter((chunk) => chunk.includes("blending"));
 
-    expect(materials.length).toBeGreaterThanOrEqual(2);
-    for (const material of materials) {
-      expect(material.slice(0, material.indexOf("/>"))).toContain("blending={2}");
-    }
+    expect(materials.filter((m) => m.includes("blending={2}")).length)
+      .toBeGreaterThanOrEqual(2);
+    expect(materials.filter((m) => m.includes("blending={1}")).length)
+      .toBeGreaterThanOrEqual(1);
+    // A mode that changes at runtime is exactly the pop this avoids.
     expect(source).not.toContain("material.blending =");
+    expect(source).toContain("resolveRpgHanabiAdditiveMix");
+  });
+
+  it("keeps a shell as bright at every point of the cross-fade", () => {
+    // The two layers are one shell. If they did not sum to its opacity the
+    // burst would dim or bloom halfway through the walk into the festival.
+    for (const luminance of [0, 0.05, 0.2, 0.35, 0.5, 0.9, 4]) {
+      const mix = resolveRpgHanabiAdditiveMix(luminance);
+      expect(mix).toBeGreaterThanOrEqual(0);
+      expect(mix).toBeLessThanOrEqual(1);
+      expect(mix + (1 - mix)).toBeCloseTo(1, 12);
+    }
+    const source = read("RpgWorldEffects.tsx");
+    expect(source).toMatch(/opacity\s*=\s*frame\.opacity \* additiveMix/);
+    expect(source).toMatch(/frame\.opacity \* \(1 - additiveMix\)/);
+  });
+
+  it("glows under the festival night and shows its colour under daylight", () => {
+    const night = resolveRpgSkyLuminance(
+      RPG_REGION_PRESENTATION_COLORS.hanabi.sky
+    );
+    expect(resolveRpgHanabiAdditiveMix(night)).toBeCloseTo(1, 6);
+
+    // Every other zone is daylit or dusk, and a glow clips to white speckle
+    // over all of them, so each one has to be carrying hue instead.
+    for (const zone of ["airport", "tokyo", "gyukatsu", "sakura"] as const) {
+      const luminance = resolveRpgSkyLuminance(
+        RPG_REGION_PRESENTATION_COLORS[zone].sky
+      );
+      expect(
+        resolveRpgHanabiAdditiveMix(luminance),
+        `${zone} sky`
+      ).toBeCloseTo(0, 6);
+    }
+  });
+
+  it("moves between the two smoothly rather than in a step", () => {
+    // A sampled sweep across the whole range: no single step may carry more
+    // than a small part of the change, which is what a mode flip would.
+    let previous = resolveRpgHanabiAdditiveMix(0);
+    let biggestStep = 0;
+    for (let step = 1; step <= 200; step += 1) {
+      const luminance = (step / 200) * 0.6;
+      const mix = resolveRpgHanabiAdditiveMix(luminance);
+      biggestStep = Math.max(biggestStep, Math.abs(mix - previous));
+      expect(mix).toBeLessThanOrEqual(previous + 1e-12);
+      previous = mix;
+    }
+    expect(biggestStep).toBeLessThan(0.05);
   });
 
   it("authors every shell centre above the tallest building in the town", () => {

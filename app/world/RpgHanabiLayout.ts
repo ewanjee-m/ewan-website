@@ -1,3 +1,4 @@
+import { RPG_REGION_PRESENTATION_COLORS } from "./RpgRegionPresentation";
 import type { SceneQualityLevel } from "./SceneQuality";
 
 export interface RpgHanabiBurst {
@@ -212,23 +213,75 @@ export const RPG_HANABI_DISTANT_INTENSITY = 0.62;
 const RPG_HANABI_DENSITY_FLOOR = 0.65;
 
 /**
- * KNOWN LIMITATION, measured but deliberately not fixed here.
+ * How much of a shell is drawn additively.
  *
- * The shells blend additively (RpgWorldEffects). Additive cannot darken, so
- * over a bright sky every channel clips and a gold shell renders as white
- * speckle: from the airport and Tokyo the bursts read but carry no hue.
+ * Additive light cannot darken what is behind it, so over a bright sky every
+ * channel clips and a gold shell renders as white speckle: from the airport
+ * and Tokyo the bursts were there but carried no hue, which is the same thing
+ * as not being there. Normal blending over a bright sky restores the hue, but
+ * flipping the mode is a visible pop, and it would land inside the sakura to
+ * hanabi transition.
  *
- * Switching to normal blending over bright skies restores the hue, but the
- * mode flip is visible — measured at tmp/blend-pop-compare.png — and it lands
- * inside the 2-unit sakura->hanabi transition, i.e. in the reference zone.
+ * So each shell is drawn twice and cross-faded, which is exactly the same
+ * thing as interpolating the two blend equations: a normal layer at
+ * `opacity * (1 - k)` over an additive layer at `opacity * k` composites to
+ * `dst * (1 - opacity + opacity * k) + colour * opacity`, the lerp from normal
+ * at k = 0 to additive at k = 1. Nothing pops because nothing switches. It
+ * costs one extra draw call per shell.
  *
- * The continuous fix is to draw each shell twice and cross-fade, which is
- * exactly equivalent to interpolating the two blend equations: with a normal
- * layer at `opacity * (1 - k)` and an additive layer at `opacity * k`, the
- * result is `dst * (1 - opacity + opacity * k) + colour * opacity`, which is
- * the lerp from normal (k = 0) to additive (k = 1). Drive `k` from sky
- * luminance and nothing pops. It costs one extra draw call per shell.
+ * `k` follows the sky the visitor is standing under, so the night over the
+ * festival gets the glow and a daylit sky gets the hue.
  */
+function skyLuminanceOf(color: { r: number; g: number; b: number }) {
+  return 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
+}
+
+export function resolveRpgSkyLuminance(color: {
+  r: number;
+  g: number;
+  b: number;
+}) {
+  return Number.isFinite(color.r + color.g + color.b)
+    ? skyLuminanceOf(color)
+    : 0;
+}
+
+const ZONE_SKY_LUMINANCES = Object.values(RPG_REGION_PRESENTATION_COLORS).map(
+  ({ sky }) => skyLuminanceOf(sky)
+);
+
+/**
+ * Read off the palette rather than written down, so the thresholds cannot
+ * drift from the zone skies they describe and so they hold whichever colour
+ * space the renderer hands us.
+ */
+export const RPG_HANABI_DARKEST_SKY_LUMINANCE = Math.min(
+  ...ZONE_SKY_LUMINANCES
+);
+export const RPG_HANABI_BRIGHTEST_SKY_LUMINANCE = Math.max(
+  ...ZONE_SKY_LUMINANCES
+);
+
+/**
+ * How far from the darkest sky toward the brightest the glow is fully spent.
+ * Every zone but the festival sits above this, so the walk is lit by hue and
+ * only the festival by glow.
+ */
+const RPG_HANABI_GLOW_SPAN = 0.35;
+
+export function resolveRpgHanabiAdditiveMix(skyLuminance: number) {
+  if (!Number.isFinite(skyLuminance)) return 1;
+  const span =
+    (RPG_HANABI_BRIGHTEST_SKY_LUMINANCE - RPG_HANABI_DARKEST_SKY_LUMINANCE) *
+    RPG_HANABI_GLOW_SPAN;
+  if (span <= 0) return 1;
+  const t = clamp(
+    (skyLuminance - RPG_HANABI_DARKEST_SKY_LUMINANCE) / span,
+    0,
+    1
+  );
+  return 1 - t * t * (3 - 2 * t);
+}
 
 export interface RpgHanabiIntensityInput {
   /** 1 inside Hanabi, 0 anywhere else, lerped through the transition. */
