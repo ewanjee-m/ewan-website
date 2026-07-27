@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, useSyncExternalStore } from "react";
+import { useId, useState } from "react";
 import type { DestinationId } from "../guide/GuideContract";
 import {
   RPG_MAP_LABEL_FONT_SIZE,
@@ -31,9 +31,6 @@ interface RpgMiniMapProps {
   navigation: WorldNavigationSnapshot;
 }
 
-const COMPACT_MINI_MAP_QUERY =
-  "(max-width: 640px), (max-height: 540px) and (pointer: coarse)";
-
 const {
   playerHaloRadius,
   playerDiscRadius,
@@ -49,34 +46,15 @@ const PLAYER_ARROW_PATH =
   `L ${-playerArrowLength * 0.14} 0 ` +
   `L ${-playerArrowLength * 0.45} ${-playerArrowLength * 0.52} Z`;
 
-function subscribeToCompactViewport(onStoreChange: () => void) {
-  if (typeof window === "undefined" || !window.matchMedia) {
-    return () => undefined;
-  }
-  const mediaQuery = window.matchMedia(COMPACT_MINI_MAP_QUERY);
-  mediaQuery.addEventListener("change", onStoreChange);
-  return () => mediaQuery.removeEventListener("change", onStoreChange);
-}
-
-function getCompactViewportSnapshot() {
-  return typeof window !== "undefined" && Boolean(window.matchMedia)
-    ? window.matchMedia(COMPACT_MINI_MAP_QUERY).matches
-    : false;
-}
-
-const getCompactViewportServerSnapshot = () => false;
-
 export function RpgMiniMap({
   labels,
   navigation
 }: RpgMiniMapProps) {
-  const compactViewport = useSyncExternalStore(
-    subscribeToCompactViewport,
-    getCompactViewportSnapshot,
-    getCompactViewportServerSnapshot
-  );
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
-  const expanded = expandedOverride ?? !compactViewport;
+  // Open on every screen. A phone is where this world is mostly walked, and a
+  // map that starts folded away is a map nobody knows is there; the narrow
+  // layout makes it small rather than absent, and the toggle still folds it.
+  const expanded = expandedOverride ?? true;
   const mapId = useId();
   const playerPoint = projectRpgMapWorldPoint(navigation.position);
   const headingRotation = projectRpgMapWorldHeadingRotation(navigation.heading);
@@ -90,11 +68,7 @@ export function RpgMiniMap({
         aria-label={expanded ? labels.collapse : labels.expand}
         aria-controls={mapId}
         aria-expanded={expanded}
-        onClick={() =>
-          setExpandedOverride(
-            (current) => !(current ?? !compactViewport)
-          )
-        }
+        onClick={() => setExpandedOverride((current) => !(current ?? true))}
       >
         <span>{labels.label}</span>
         <span aria-hidden="true">{expanded ? "−" : "+"}</span>

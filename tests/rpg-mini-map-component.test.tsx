@@ -388,7 +388,11 @@ describe("RPG mini-map", () => {
     expect(window.localStorage).toHaveLength(0);
   });
 
-  it("starts collapsed on a mobile viewport", () => {
+  it("starts open on a mobile viewport", () => {
+    // A phone is where this world is mostly walked. The map used to fold away
+    // on a narrow screen, which meant the visitor who most needed it was the
+    // one who never saw it — and the player marker, which only exists while
+    // the map is open, went missing with it.
     useMobileViewport(true);
 
     render(
@@ -399,6 +403,27 @@ describe("RPG mini-map", () => {
     );
 
     expect(
+      screen.getByRole("button", { name: "Collapse mini-map" })
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByRole("group", { name: "World mini-map" })
+    ).toBeVisible();
+  });
+
+  it("still folds away on a mobile viewport when the visitor asks", async () => {
+    useMobileViewport(true);
+    const user = userEvent.setup();
+
+    render(
+      <RpgMiniMap
+        labels={labels}
+        navigation={navigationAt([0, 0, 0], [0, 0, 1])}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "Collapse mini-map" }));
+
+    expect(
       screen.getByRole("button", { name: "Expand mini-map" })
     ).toHaveAttribute("aria-expanded", "false");
     expect(
@@ -406,21 +431,16 @@ describe("RPG mini-map", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("publishes revision-paired player telemetry on a mobile viewport once opened", async () => {
+  it("publishes revision-paired player telemetry on a mobile viewport", async () => {
     // A route drive on a phone reported "map telemetry is missing" because the
-    // marker only exists while the map is open, and the map starts closed on a
-    // compact viewport by design. Opening it is all a mobile visitor — or a
-    // route harness — has to do; the telemetry itself is not desktop-only.
+    // marker only exists while the map is open and the map used to start
+    // closed on a narrow screen. It is open from the first frame now, so the
+    // marker is there without anybody having to find the toggle first.
     useMobileViewport(true);
-    const user = userEvent.setup();
     const navigation = navigationAt([4, 0, -12], [0, 0, 1]);
     const { container } = render(
       <RpgMiniMap labels={labels} navigation={navigation} />
     );
-
-    expect(container.querySelector(".rpg-mini-map-player")).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: "Expand mini-map" }));
 
     const marker = container.querySelector(".rpg-mini-map-player");
     const anchor = projectRpgMapWorldPoint(navigation.position);
@@ -434,7 +454,7 @@ describe("RPG mini-map", () => {
     );
   });
 
-  it("hydrates without changing the server markup before applying the mobile default", async () => {
+  it("hydrates to the same markup the server sent on a mobile viewport", async () => {
     useMobileViewport(true);
     const props = {
       labels,
@@ -454,10 +474,16 @@ describe("RPG mini-map", () => {
       await Promise.resolve();
     });
 
+    // The map used to open on the server and fold on the client once the
+    // viewport was measured, which is a state the visitor sees flicker past.
+    // It is open on both now, so there is nothing to reconcile.
     expect(serverMarkup).toContain('aria-expanded="true"');
     expect(
-      container.querySelector('.rpg-mini-map-toggle[aria-expanded="false"]')
+      container.querySelector('.rpg-mini-map-toggle[aria-expanded="true"]')
     ).not.toBeNull();
+    expect(
+      container.querySelector('.rpg-mini-map-toggle[aria-expanded="false"]')
+    ).toBeNull();
     expect(
       consoleError.mock.calls.flat().join(" ")
     ).not.toMatch(/hydration|did not match/i);

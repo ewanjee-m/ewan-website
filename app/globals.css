@@ -1047,6 +1047,17 @@ a:focus-visible {
   width: auto;
 }
 
+/*
+ * A phone keeps the map, at a size that leaves the walk room. Matches the
+ * viewport rule the component folds on, so the two cannot describe different
+ * screens.
+ */
+@media (max-width: 640px), (max-height: 540px) and (pointer: coarse) {
+  .rpg-mini-map {
+    width: min(11rem, calc(50vw - 1rem));
+  }
+}
+
 .rpg-mini-map-toggle {
   display: flex;
   width: 100%;
