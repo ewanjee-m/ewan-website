@@ -10,12 +10,8 @@ import {
   type PointerEvent as ReactPointerEvent
 } from "react";
 import type { Locale } from "../i18n/messages";
-import {
-  GuidePanel,
-  type ActiveGuideRecommendation,
-  type GuideLabels,
-  type PlayerNavigationState
-} from "../guide/GuidePanel";
+import type { DestinationId } from "../guide/GuideContract";
+import type { GuideLabels } from "../guide/GuidePanel";
 import type { createCameraRig } from "./CameraRig";
 import type { PlayerCharacterId } from "./CharacterAssets";
 import { createInputController } from "./InputController";
@@ -100,8 +96,9 @@ export function shareWorldNavigationSnapshot(
 
 export function WorldView({ character, locale, labels }: WorldViewProps) {
   const [input] = useState(() => createInputController());
-  const [activeRecommendation, setActiveRecommendation] =
-    useState<ActiveGuideRecommendation | null>(null);
+  // The guide that used to suggest a destination is gone, so nothing marks one
+  // any more.
+  const activeDestinationId: DestinationId | null = null;
   const [navigation, setNavigation] =
     useState<WorldNavigationSnapshot>(
       createInitialWorldNavigationSnapshot
@@ -291,7 +288,7 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
           character={character}
           input={input}
           inputLocked={interactionOpen}
-          activeDestinationId={activeRecommendation?.destinationId ?? null}
+          activeDestinationId={activeDestinationId}
           onInteractionRequest={requestInteraction}
           onNavigationChange={updateNavigation}
           onRetry={retryWorld}
@@ -332,15 +329,6 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
         />
       </div>
 
-      <GuidePanel
-          locale={locale}
-          labels={labels.guide}
-          navigation={
-            sharedNavigation.guide as unknown as PlayerNavigationState
-          }
-          activeRecommendation={activeRecommendation}
-          onActiveRecommendationChange={setActiveRecommendation}
-      />
 
       <RpgMiniMap
           labels={labels.miniMap}

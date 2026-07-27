@@ -21,9 +21,12 @@ const labels = {
 };
 
 describe("mobile portfolio landmarks", () => {
-  it("starts as one compact control and restores the list after closing an entry", async () => {
+  it("shows nothing until a conversation asks for something", async () => {
+    // The world used to carry a "View work" toggle and a landmark menu beside
+    // it. Both are gone: the way into a piece of work is to walk up to it and
+    // talk. With nothing requested there is nothing on screen.
     const user = userEvent.setup();
-    render(
+    const { rerender } = render(
       <PortfolioGuide
         labels={labels}
         requestedEntryId={null}
@@ -33,29 +36,28 @@ describe("mobile portfolio landmarks", () => {
       />
     );
 
-    const toggle = screen.getByRole("button", { name: "View work" });
-    const landmarks = screen.getByRole("navigation", {
-      name: "Portfolio landmarks"
-    });
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(landmarks).toHaveAttribute("data-menu-open", "false");
+    expect(screen.queryByRole("button", { name: "View work" })).toBeNull();
+    expect(
+      screen.queryByRole("navigation", { name: "Portfolio landmarks" })
+    ).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
 
-    await user.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(toggle).toHaveAccessibleName("Close work list");
-    expect(landmarks).toHaveAttribute("data-menu-open", "true");
-
-    await user.click(
-      screen.getByRole("button", { name: "Festival World Design" })
+    // What a conversation asks for still opens, and closing it leaves the
+    // world clear again rather than dropping the visitor into a menu.
+    rerender(
+      <PortfolioGuide
+        labels={labels}
+        requestedEntryId="world-design"
+        requestedDialogue={null}
+        onOpenChange={vi.fn()}
+        onRequestHandled={vi.fn()}
+      />
     );
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByRole("dialog")).toBeVisible();
 
-    await user.click(
-      screen.getByRole("button", { name: "Close portfolio" })
-    );
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(landmarks).toHaveAttribute("data-menu-open", "true");
+    await user.click(screen.getByRole("button", { name: "Close portfolio" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("button", { name: "View work" })).toBeNull();
   });
 
   it("handles a controlled request once and shares Escape with the close path", async () => {

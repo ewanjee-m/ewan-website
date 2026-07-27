@@ -340,9 +340,14 @@ describe("start experience", () => {
     expect(
       screen.queryByRole("button", { name: "Reset camera" })
     ).not.toBeInTheDocument();
+    // The landmark menu and the "View work" toggle that opened it are gone:
+    // the way into a piece of work is to walk up to it and talk.
     expect(
-      screen.getByRole("navigation", { name: "Portfolio landmarks" })
-    ).toBeVisible();
+      screen.queryByRole("navigation", { name: "Portfolio landmarks" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "View work" })
+    ).not.toBeInTheDocument();
   });
 
   it("locks interaction movement for 30 frames and resumes the unchanged world", async () => {
@@ -415,40 +420,6 @@ describe("start experience", () => {
     ).toBe(false);
   });
 
-  it("lets visitors open and close the same readable portfolio in the world fallback", async () => {
-    const user = userEvent.setup();
-    render(<ExperienceShell locale="en" />);
-
-    await user.click(screen.getByRole("button", { name: "START" }));
-    await user.click(
-      screen.getByRole("button", { name: "Select female character" })
-    );
-    await user.click(screen.getByRole("button", { name: "ENTER WORLD" }));
-
-    expect(
-      screen.getByRole("navigation", { name: "Portfolio landmarks" })
-    ).toBeVisible();
-    const worldDesignLandmark = screen.getByRole("button", {
-      name: "Festival World Design"
-    });
-    await user.click(worldDesignLandmark);
-
-    expect(
-      screen.getByRole("dialog", { name: "Festival World Design" })
-    ).toBeVisible();
-    expect(
-      screen.getByText(/airport bus, Tokyo, gyukatsu, sakura, and hanabi/i)
-    ).toBeVisible();
-
-    const closePortfolio = screen.getByRole("button", {
-      name: "Close portfolio"
-    });
-    expect(closePortfolio).toHaveFocus();
-    await user.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(worldDesignLandmark).toHaveFocus();
-  });
-
   it("jumps on Space even when a world button holds the focus, and presses it on Enter", async () => {
     const user = userEvent.setup();
     render(<ExperienceShell locale="en" />);
@@ -459,22 +430,17 @@ describe("start experience", () => {
     );
     await user.click(screen.getByRole("button", { name: "ENTER WORLD" }));
 
-    const landmark = screen.getByRole("button", {
-      name: "Festival World Design"
-    });
-    landmark.focus();
+    const worldButton = screen.getByRole("button", { name: "Open world map (M key)" });
+    worldButton.focus();
     await user.keyboard(" ");
 
     // Space jumps. A focused button answering it is what made walking along
     // and jumping re-open the map the visitor had just closed.
-    expect(
-      screen.queryByRole("dialog", { name: "Festival World Design" })
-    ).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
 
+    // Enter is how a focused button is still pressed.
     await user.keyboard("{Enter}");
-    expect(
-      screen.getByRole("dialog", { name: "Festival World Design" })
-    ).toBeVisible();
+    expect(screen.getByRole("dialog")).toBeVisible();
   });
 });
 

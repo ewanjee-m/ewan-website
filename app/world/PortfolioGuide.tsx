@@ -77,20 +77,6 @@ export function PortfolioGuide({
     onOpenChange(false);
   }, [onOpenChange]);
 
-  const openPortfolio = useCallback(
-    (entryId: string, trigger: HTMLElement | null) => {
-      activeTrigger.current = trigger;
-      setMenuOpen(false);
-      setActiveDialogue(null);
-      setActiveId(entryId);
-      if (!open.current) {
-        open.current = true;
-        onOpenChange(true);
-      }
-    },
-    [onOpenChange]
-  );
-
   useEffect(() => {
     if (requestedEntryId === null) {
       acknowledgedRequestId.current = null;
@@ -142,41 +128,12 @@ export function PortfolioGuide({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeEntry, closePortfolio]);
 
+  // The world used to carry a "View work" toggle and a landmark menu beside
+  // it. Both are gone: the way into a piece of work is to walk up to it and
+  // talk, which is what the world is for. This still renders whatever that
+  // conversation asks for.
   return (
     <div className="portfolio-guide">
-      <button
-        className="portfolio-menu-toggle"
-        type="button"
-        aria-expanded={menuOpen}
-        aria-controls="portfolio-landmarks"
-        aria-label={
-          menuOpen ? labels.closePortfolioMenu : labels.openPortfolio
-        }
-        onClick={() => setMenuOpen((current) => !current)}
-      >
-        <span aria-hidden="true">◇</span>
-        {labels.openPortfolio}
-      </button>
-      <nav
-        id="portfolio-landmarks"
-        className="portfolio-landmarks"
-        aria-label={labels.portfolioLabel}
-        data-menu-open={menuOpen}
-      >
-        {labels.portfolioItems.map((entry, index) => (
-          <button
-            key={entry.id}
-            type="button"
-            aria-pressed={entry.id === activeId}
-            onClick={(event) => {
-              openPortfolio(entry.id, event.currentTarget);
-            }}
-          >
-            <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
-            {entry.title}
-          </button>
-        ))}
-      </nav>
 
       {activeEntry ? (
         <section
