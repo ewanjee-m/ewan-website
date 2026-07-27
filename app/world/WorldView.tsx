@@ -404,7 +404,20 @@ export function WorldView({ character, locale, labels }: WorldViewProps) {
           type="button"
           aria-label={labels.jump}
           disabled={interactionOpen}
-          onClick={() => input.queueJump()}
+          // Fires on the press rather than on the click. A click needs the
+          // finger to land and lift on the same element with nothing in
+          // between; on a phone a touch that the browser decides was a drag
+          // never produces one, and the visitor gets no jump and no reason
+          // why. The keyboard still reaches it through onClick.
+          onPointerDown={(event) => {
+            if (event.pointerType === "mouse" && event.button !== 0) return;
+            if (!interactionOpen) input.queueJump();
+          }}
+          onClick={(event) => {
+            // A pointer press already queued it; only a keyboard activation,
+            // which has no pointer behind it, needs this.
+            if (event.detail === 0 && !interactionOpen) input.queueJump();
+          }}
         >
           ↑
         </button>

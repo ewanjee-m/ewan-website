@@ -1676,6 +1676,20 @@ a:focus-visible {
   color: var(--gold-soft);
 }
 
+/*
+ * A thumb is about 9mm across and the camera-drag surface sits directly
+ * behind this button, so a tap that misses by a few pixels turns the view
+ * instead of jumping. On a touch screen the button grows to a size a thumb
+ * cannot miss.
+ */
+@media (pointer: coarse) {
+  .jump-button {
+    width: 5.5rem;
+    height: 5.5rem;
+    font-size: 1.5rem;
+  }
+}
+
 @media (hover: hover) and (pointer: fine) {
   .mobile-move-zone {
     opacity: 0.46;
