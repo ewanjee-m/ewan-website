@@ -53,8 +53,12 @@ export function WorldCameraInput({ label, onDrag }: WorldCameraInputProps) {
       aria-label={label}
       onPointerDown={(event) => {
         const target = event.target;
+        // Any finger may look around, not only the first one down. On a phone
+        // the thumb on the movement stick is the primary pointer for as long
+        // as it is held, so requiring primary here meant a visitor walking
+        // could not turn the camera at the same time - which is most of the
+        // time they would want to. One drag at a time is still the rule.
         if (
-          !event.isPrimary ||
           active.current !== null ||
           (target instanceof Element &&
             target.closest(WORLD_CAMERA_INPUT_BLOCK_SELECTOR) !== null)

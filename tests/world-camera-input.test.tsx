@@ -122,6 +122,44 @@ describe("world camera pointer input", () => {
     expect(onDrag).toHaveBeenCalledTimes(1);
   });
 
+  it("lets a finger look around while another holds the movement stick", () => {
+    // On a phone the thumb on the stick is the primary pointer for as long as
+    // it is held, so a camera drag that insisted on primary meant a visitor
+    // walking could never turn at the same time.
+    const onDrag = vi.fn();
+    render(
+      <div>
+        <div className="mobile-move-zone">stick</div>
+        <WorldCameraInput label="Rotate camera" onDrag={onDrag} />
+      </div>
+    );
+    const stick = screen.getByText("stick");
+    fireEvent.pointerDown(stick, {
+      pointerId: 1,
+      pointerType: "touch",
+      isPrimary: true,
+      clientX: 40,
+      clientY: 700
+    });
+
+    const layer = screen.getByLabelText("Rotate camera");
+    fireEvent.pointerDown(layer, {
+      pointerId: 2,
+      pointerType: "touch",
+      isPrimary: false,
+      clientX: 300,
+      clientY: 300
+    });
+    fireEvent.pointerMove(layer, {
+      pointerId: 2,
+      pointerType: "touch",
+      clientX: 340,
+      clientY: 290
+    });
+
+    expect(onDrag).toHaveBeenCalledWith(40, -10, "touch");
+  });
+
   it("releases ownership after lost pointer capture", () => {
     const onDrag = vi.fn();
     render(<WorldCameraInput label="Rotate camera" onDrag={onDrag} />);
